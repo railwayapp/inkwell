@@ -56,7 +56,7 @@ cd packages/inkwell
 npm version patch --no-git-tag-version  # or minor / major
 cd ../..
 git add packages/inkwell/package.json
-git commit -m "release: v$(node -p "require('./packages/inkwell/package.json').version")"
+git commit -m "🚀 release: v$(node -p "require('./packages/inkwell/package.json').version")"
 git tag "v$(node -p "require('./packages/inkwell/package.json').version")"
 git push && git push --tags
 ```

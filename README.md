@@ -1,9 +1,9 @@
 # ✒️ Inkwell
 
-[![inkwell.build](https://img.shields.io/badge/inkwell.build-8b5cf6)](https://inkwell.build)
-[![llms.txt](https://img.shields.io/badge/llms.txt-8b5cf6)](https://inkwell.build/llms.txt)
-[![ci](https://img.shields.io/github/actions/workflow/status/railwayapp/inkwell/ci.yml?branch=main)](https://github.com/railwayapp/inkwell/actions)
-[![npm](https://img.shields.io/npm/v/@railway/inkwell)](https://www.npmjs.com/package/@railway/inkwell)
+[![inkwell.build](https://img.shields.io/badge/inkwell.build-7B3FA0)](https://inkwell.build)
+[![llms.txt](https://img.shields.io/badge/llms.txt-7B3FA0)](https://inkwell.build/llms.txt)
+[![ci](https://img.shields.io/github/actions/workflow/status/railwayapp/inkwell/ci.yml?branch=main&label=ci&color=7B3FA0)](https://github.com/railwayapp/inkwell/actions)
+[![npm](https://img.shields.io/npm/v/@railway/inkwell?color=7B3FA0)](https://www.npmjs.com/package/@railway/inkwell)
 
 Inkwell is a Markdown editor and renderer for React with an extensible plugin
 system and real-time collaboration support.

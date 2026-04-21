@@ -1,0 +1,137 @@
+---
+title: "Getting Started"
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Inkwell is a Markdown editor and renderer for React. You write and edit
+content in a visual WYSIWYG interface, but the underlying data is always
+plain Markdown. Markdown in, Markdown out.
+
+Built on [Slate.js](https://www.slatejs.org/), with an extensible plugin
+system and optional real-time collaboration via [Yjs](https://yjs.dev/).
+
+For LLMs, see [/llms.txt](/llms.txt).
+
+## Installation
+
+<Tabs>
+  <TabItem label="npm">
+    ```bash
+    npm install @railway/inkwell
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```bash
+    pnpm add @railway/inkwell
+    ```
+  </TabItem>
+  <TabItem label="yarn">
+    ```bash
+    yarn add @railway/inkwell
+    ```
+  </TabItem>
+  <TabItem label="bun">
+    ```bash
+    bun add @railway/inkwell
+    ```
+  </TabItem>
+</Tabs>
+
+Requires React 19 or later as a peer dependency.
+
+## Your first editor
+
+`InkwellEditor` is a controlled component. Pass it a Markdown string and
+an `onChange` handler.
+
+```tsx
+import { InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
+
+function App() {
+  const [content, setContent] = useState("# Hello **world**");
+  return <InkwellEditor content={content} onChange={setContent} />;
+}
+```
+
+That gives you a fully featured Markdown editor out of the box:
+
+- **Block formatting** — headings, lists, blockquotes, and fenced code
+  blocks, all triggered by typing their Markdown syntax
+- **Inline formatting** — bold, italic, strikethrough, and inline code,
+  rendered visually as you type
+- **Floating toolbar** — select text to reveal bold, italic, and
+  strikethrough buttons
+- **Syntax highlighting** — fenced code blocks are highlighted
+  automatically
+- **Keyboard shortcuts** — `⌘B` bold, `⌘I` italic, `⌘D` strikethrough
+
+## Rendering Markdown
+
+`InkwellRenderer` turns a Markdown string into formatted HTML. No browser
+dependencies — works anywhere React runs, including server-side rendering.
+
+```tsx
+import { InkwellRenderer } from "@railway/inkwell";
+
+function Preview({ content }: { content: string }) {
+  return <InkwellRenderer content={content} />;
+}
+```
+
+Pair them together for a live preview:
+
+```tsx
+import { InkwellEditor, InkwellRenderer } from "@railway/inkwell";
+import { useState } from "react";
+
+function EditorWithPreview() {
+  const [content, setContent] = useState("# Hello **world**");
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+      <InkwellEditor content={content} onChange={setContent} />
+      <InkwellRenderer content={content} />
+    </div>
+  );
+}
+```
+
+## Styling
+
+Inkwell applies CSS classes to every element but ships no default styles.
+You control how things look. Here's a minimal starting point:
+
+```css
+.inkwell-editor {
+  min-height: 200px;
+  padding: 1.5rem;
+  outline: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.inkwell-renderer {
+  font-size: 1rem;
+  line-height: 1.7;
+}
+```
+
+See the [Styling](/docs/styling) guide for the full list of CSS classes
+and a complete example stylesheet.
+
+## Next steps
+
+- [Editor](/docs/editor) — formatting options, syntax highlighting, and
+  the full props reference
+- [Renderer](/docs/renderer) — custom component overrides and rendering
+  configuration
+- [Plugins](/docs/editor-plugins) — built-in plugins, custom plugins, and
+  keyboard shortcuts
+- [Collaboration](/docs/collaboration) — real-time multi-user editing via
+  Yjs
+- [Styling](/docs/styling) — CSS classes for every element in the editor
+  and renderer

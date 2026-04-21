@@ -1,0 +1,16 @@
+{
+  "name": "@railway/inkwell-demo-collab-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix --unsafe ."
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "y-websocket": "^2.1.0"
+  }
+}

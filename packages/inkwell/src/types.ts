@@ -1,0 +1,291 @@
+import type {
+  JSX,
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+  RefObject,
+} from "react";
+import type { Plugin } from "unified";
+import type { Awareness } from "y-protocols/awareness";
+import type { XmlText as YXmlText } from "yjs";
+
+// biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
+type RehypePlugin = Plugin<any[], any>;
+
+export type RehypePluginConfig =
+  | RehypePlugin
+  | [RehypePlugin, Record<string, unknown>];
+
+/**
+ * Props for the InkwellEditor component.
+ */
+export interface InkwellEditorProps {
+  /**
+   * Markdown content string
+   */
+  content: string;
+  /**
+   * Called with serialized markdown on every document change
+   */
+  onChange?: (content: string) => void;
+  /**
+   * Additional CSS class for the wrapper element
+   */
+  className?: string;
+  /**
+   * Placeholder text shown when editor is empty
+   */
+  placeholder?: string;
+  /**
+   * Editor plugins (bubble toolbar, snippets, custom)
+   */
+  plugins?: InkwellPlugin[];
+  /**
+   * Custom rehype plugins for the syntax highlighting pipeline
+   */
+  rehypePlugins?: RehypePluginConfig[];
+  /**
+   * Configure which block-level decorations the editor recognizes. All enabled by default.
+   */
+  decorations?: InkwellDecorations;
+  /**
+   * Enable real-time collaborative editing via Yjs
+   */
+  collaboration?: CollaborationConfig;
+  /**
+   * Include the built-in bubble menu plugin (default: true). Pass `false` to
+   * disable the built-in toolbar; consumers can still add their own via `plugins`.
+   */
+  bubbleMenu?: boolean;
+}
+
+/**
+ * Props for the InkwellRenderer component.
+ */
+export interface InkwellRendererProps {
+  /**
+   * Markdown content string
+   */
+  content: string;
+  /**
+   * Additional CSS class for the wrapper element
+   */
+  className?: string;
+  /**
+   * Custom component overrides for rendered markdown elements
+   */
+  components?: InkwellComponents;
+  /**
+   * Custom rehype plugins for the markdown pipeline
+   */
+  rehypePlugins?: RehypePluginConfig[];
+  /**
+   * Show a copy button on fenced code blocks (default: true)
+   */
+  copyButton?: boolean;
+}
+
+/**
+ * Map of HTML element names to custom React components
+ */
+export type InkwellComponents = Partial<{
+  [K in keyof JSX.IntrinsicElements]: (
+    props: JSX.IntrinsicElements[K] & { children?: ReactNode },
+  ) => ReactNode;
+}>;
+
+/**
+ * Keyboard trigger for a plugin.
+ *
+ * Uses tinykeys-style key strings:
+ * - `"Control+/"` — modifier combo, prevents default
+ * - `"@"` — single character, typed into editor (e.g. for mentions)
+ */
+export interface PluginTrigger {
+  /**
+   * Key combo (tinykeys format)
+   */
+  key: string;
+}
+
+/**
+ * Props passed to every plugin's render function on every render
+ */
+export interface PluginRenderProps {
+  /**
+   * Whether this plugin's trigger has fired (always true for plugins without triggers)
+   */
+  active: boolean;
+  /**
+   * Text typed after the trigger fired
+   */
+  query: string;
+  /**
+   * Insert text into the editor at the current cursor position
+   */
+  onSelect: (text: string) => void;
+  /**
+   * Deactivate this plugin (resets `active` to false)
+   */
+  onDismiss: () => void;
+  /**
+   * Cursor position when the trigger fired
+   */
+  position: { top: number; left: number };
+  /**
+   * Ref to the editor's contenteditable element
+   */
+  editorRef: RefObject<HTMLDivElement | null>;
+  /**
+   * Wrap the current selection with markdown markers
+   */
+  wrapSelection: (before: string, after: string) => void;
+}
+
+/**
+ * Context passed to a plugin's `onKeyDown` handler.
+ */
+export interface PluginKeyDownContext {
+  /**
+   * Wrap the current selection with markdown markers
+   */
+  wrapSelection: (before: string, after: string) => void;
+}
+
+/**
+ * A Inkwell editor plugin.
+ *
+ * Every plugin is always rendered. Plugins with a `trigger` receive
+ * `active: true` when the trigger fires and `active: false` otherwise.
+ * Plugins without a trigger always receive `active: true`.
+ */
+export interface InkwellPlugin {
+  /**
+   * Unique plugin name
+   */
+  name: string;
+  /**
+   * Optional keyboard trigger
+   */
+  trigger?: PluginTrigger;
+  /**
+   * Render the plugin UI. Return `null` when inactive.
+   */
+  render: (props: PluginRenderProps) => ReactNode;
+  /**
+   * Optional keydown handler. Runs for events on the editor before trigger
+   * matching, and is skipped while another plugin is active. Call
+   * `event.preventDefault()` to stop further dispatch for this event.
+   */
+  onKeyDown?: (event: ReactKeyboardEvent, ctx: PluginKeyDownContext) => void;
+}
+
+/**
+ * Props passed to each bubble menu item component.
+ */
+export interface BubbleMenuItemProps {
+  /**
+   * Wrap or unwrap the current selection with markdown markers. Toggles if already wrapped.
+   */
+  wrapSelection: (before: string, after: string) => void;
+}
+
+/**
+ * An item in the bubble menu.
+ */
+export interface BubbleMenuItem {
+  /**
+   * Unique key for React reconciliation
+   */
+  key: string;
+  /**
+   * Optional keyboard shortcut (single key, used with Cmd/Ctrl).
+   */
+  shortcut?: string;
+  /**
+   * Action to run when the shortcut fires. Receives wrapSelection.
+   */
+  onShortcut?: (wrapSelection: (before: string, after: string) => void) => void;
+  /**
+   * React component to render in the menu. Receives `wrapSelection`.
+   */
+  render: (props: BubbleMenuItemProps) => ReactNode;
+}
+
+/**
+ * Snippet item for the snippets plugin
+ */
+export interface Snippet {
+  /**
+   * Display title (searchable)
+   */
+  title: string;
+  /**
+   * Markdown content to insert
+   */
+  content: string;
+}
+
+/**
+ * Controls which markdown block elements the editor recognizes.
+ * All decorations are enabled by default. Pass `false` to disable.
+ */
+export interface InkwellDecorations {
+  /**
+   * Recognize `# ` as h1 (default: true)
+   */
+  heading1?: boolean;
+  /**
+   * Recognize `## ` as h2 (default: true)
+   */
+  heading2?: boolean;
+  /**
+   * Recognize `### ` as h3 (default: true)
+   */
+  heading3?: boolean;
+  /**
+   * Recognize `#### ` as h4 (default: true)
+   */
+  heading4?: boolean;
+  /**
+   * Recognize `##### ` as h5 (default: true)
+   */
+  heading5?: boolean;
+  /**
+   * Recognize `###### ` as h6 (default: true)
+   */
+  heading6?: boolean;
+  /**
+   * Recognize `- `, `* `, `+ ` as list items (default: true)
+   */
+  lists?: boolean;
+  /**
+   * Recognize `> ` as blockquotes (default: true)
+   */
+  blockquotes?: boolean;
+  /**
+   * Recognize ``` fences as code blocks (default: true)
+   */
+  codeBlocks?: boolean;
+}
+
+/**
+ * Configuration for real-time collaborative editing via Yjs.
+ *
+ * The consumer owns the Yjs document and provider (WebSocket,
+ * WebRTC, Hocuspocus, etc.). Inkwell only needs the shared type
+ * and awareness instance.
+ */
+export interface CollaborationConfig {
+  /**
+   * Yjs shared type for the document. Create via `doc.get("content", Y.XmlText)`.
+   */
+  sharedType: YXmlText;
+  /**
+   * Awareness instance for remote cursor/presence sharing.
+   */
+  awareness: Awareness;
+  /**
+   * Local user metadata, displayed on remote cursors.
+   */
+  user: { name: string; color: string };
+}

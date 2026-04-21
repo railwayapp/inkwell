@@ -1,0 +1,389 @@
+---
+import "../styles/globals.css";
+import "highlight.js/styles/github-dark.css";
+// biome-ignore lint/correctness/noUnusedImports: required for Astro client:only directive
+import { Demo } from "../components/demo";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inkwell</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="description" content="Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration support." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(ellipse at top, hsl(270, 38%, 10%) 0%, hsl(270, 40%, 5%) 100%);
+        overflow-x: hidden;
+        color: var(--pink-900);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      .landing {
+        max-width: 80rem;
+        margin: 0 auto;
+        padding: 3rem 1.5rem;
+        position: relative;
+        overflow: clip;
+      }
+      @keyframes aurora-drift {
+        0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+        20% { transform: translate3d(3%, -4%, 0) rotate(2deg) scale(1.05); }
+        45% { transform: translate3d(-2%, 3%, 0) rotate(-1.5deg) scale(0.97); }
+        70% { transform: translate3d(4%, 2%, 0) rotate(1deg) scale(1.03); }
+      }
+      @keyframes aurora-glow {
+        0%, 100% { opacity: 0.82; }
+        50% { opacity: 1; }
+      }
+      @keyframes aurora-conic {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .landing::before {
+        content: "";
+        position: fixed;
+        inset: -25%;
+        background:
+          /* Bright primary glow — top-left, pink-500 */
+          radial-gradient(ellipse 55% 65% at 18% 22%, hsla(270, 65%, 55%, 0.42) 0%, transparent 55%),
+          /* Lighter pink accent — top-right, pink-600/700 */
+          radial-gradient(ellipse 45% 55% at 82% 18%, hsla(270, 72%, 68%, 0.28) 0%, transparent 50%),
+          /* Warm violet — mid-right, pink-400 */
+          radial-gradient(ellipse 38% 50% at 88% 52%, hsla(270, 58%, 48%, 0.3) 0%, transparent 50%),
+          /* Deep plum — bottom-left, pink-300 */
+          radial-gradient(ellipse 50% 50% at 15% 78%, hsla(270, 55%, 38%, 0.4) 0%, transparent 55%),
+          /* Wide low glow — pink-400 */
+          radial-gradient(ellipse 60% 35% at 55% 100%, hsla(270, 60%, 50%, 0.32) 0%, transparent 55%),
+          /* Soft pink-700 highlight — upper-center */
+          radial-gradient(ellipse 32% 28% at 52% 35%, hsla(270, 70%, 72%, 0.12) 0%, transparent 45%),
+          /* Tiny hot spot — pink-800 near top-right */
+          radial-gradient(circle at 76% 24%, hsla(270, 85%, 82%, 0.18) 0%, transparent 12%),
+          /* Tiny hot spot — pink-600 left */
+          radial-gradient(circle at 22% 48%, hsla(270, 78%, 70%, 0.14) 0%, transparent 10%);
+        filter: blur(72px) saturate(1.4);
+        animation: aurora-drift 28s ease-in-out infinite, aurora-glow 9s ease-in-out infinite;
+        pointer-events: none;
+        z-index: 0;
+        will-change: transform, opacity;
+      }
+      .landing .conic-aura {
+        position: fixed;
+        inset: -30%;
+        background: conic-gradient(
+          from 0deg at 50% 50%,
+          hsla(270, 65%, 55%, 0.08) 0deg,
+          transparent 50deg,
+          hsla(270, 72%, 68%, 0.06) 130deg,
+          transparent 180deg,
+          hsla(270, 58%, 48%, 0.08) 240deg,
+          transparent 300deg,
+          hsla(270, 65%, 55%, 0.08) 360deg
+        );
+        filter: blur(90px);
+        animation: aurora-conic 60s linear infinite;
+        pointer-events: none;
+        z-index: 0;
+        mix-blend-mode: screen;
+      }
+      .landing::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(hsla(270, 70%, 72%, 0.09) 1px, transparent 2px),
+          linear-gradient(90deg, hsla(270, 70%, 72%, 0.09) 1px, transparent 2px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(ellipse 85% 55% at 50% 45%, hsla(0, 0%, 0%, 0.55) 0%, transparent 60%);
+        -webkit-mask-image: radial-gradient(ellipse 85% 55% at 50% 45%, hsla(0, 0%, 0%, 0.55) 0%, transparent 60%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      .landing > *:not(.conic-aura) {
+        position: relative;
+        z-index: 1;
+      }
+      .layout {
+        display: flex;
+        gap: 5rem;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 6rem);
+      }
+      .left {
+        width: 320px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+      .left h1 {
+        font-family: "Rubik", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 3rem;
+        font-weight: 600;
+        margin: 0;
+        letter-spacing: -0.03em;
+        background: linear-gradient(135deg, var(--pink-950) 0%, var(--pink-800) 50%, var(--pink-600) 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .by-railway {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--pink-700);
+        text-decoration: none;
+        transition: color 0.15s;
+      }
+      .by-railway:hover {
+        color: var(--pink-950);
+      }
+      .by-railway svg {
+        width: 0.85em;
+        height: 0.85em;
+      }
+      @media (max-width: 768px) {
+        .layout {
+          flex-direction: column;
+          align-items: stretch;
+          min-height: auto;
+          gap: 2rem;
+          padding-top: 2rem;
+        }
+        .left {
+          width: 100%;
+          text-align: center;
+        }
+        .left h1 { font-size: 2rem; }
+        .actions { justify-content: center; }
+        .right { width: 100%; }
+      }
+      .left p {
+        font-size: 1rem;
+        color: var(--pink-700);
+        margin: 0.75rem 0 0;
+        line-height: 1.6;
+      }
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        border-radius: 0.5rem;
+        text-decoration: none;
+        transition: all 0.15s;
+        cursor: pointer;
+      }
+      .btn-primary {
+        background: var(--pink-500);
+        color: white;
+        border: none;
+        box-shadow: 0 2px 14px -2px hsla(270, 60%, 52%, 0.5);
+      }
+      .btn-primary:hover {
+        background: var(--pink-400);
+        box-shadow: 0 4px 20px -2px hsla(270, 60%, 52%, 0.7);
+      }
+      .btn-secondary {
+        background: hsla(270, 40%, 16%, 0.4);
+        color: var(--pink-800);
+        border: 1px solid var(--pink-200);
+        backdrop-filter: blur(8px);
+      }
+      .btn-secondary:hover {
+        background: hsla(270, 40%, 20%, 0.6);
+        border-color: var(--pink-300);
+        color: var(--pink-900);
+      }
+      .install-wrapper {
+        width: 100%;
+      }
+      .install-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: -1px;
+      }
+      .install-tab {
+        padding: 0.3rem 0.65rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        border-radius: 0.375rem 0.375rem 0 0;
+        background: transparent;
+        color: var(--pink-400);
+        margin-right: -1px;
+        position: relative;
+        transition: color 0.15s;
+      }
+      .install-tab:hover { color: var(--pink-900); }
+      .install-tab[data-active="true"] {
+        background: var(--pink-900);
+        color: var(--pink-50);
+        border-color: var(--pink-900);
+        z-index: 1;
+        transition: background 0.6s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .install {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        border-radius: 0 0.5rem 0.5rem 0.5rem;
+        background: var(--pink-900);
+        cursor: pointer;
+        transition: background 0.6s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        width: 100%;
+        border: none;
+      }
+      .install:hover { background: var(--pink-950); }
+      .install[data-copied="true"] {
+        box-shadow: 0 0 24px hsla(270, 60%, 52%, 0.5);
+      }
+      .install-prompt {
+        color: var(--pink-300);
+        user-select: none;
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        font-size: 0.8rem;
+        transition: color 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .install code {
+        font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+        color: var(--pink-50);
+        font-size: 0.8rem;
+        transition: color 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .install .copy {
+        font-size: 0.7rem;
+        color: var(--pink-300);
+        margin-left: auto;
+        font-weight: 500;
+        transition: color 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .install[data-copied="true"] .copy {
+        color: var(--pink-500);
+      }
+      .right {
+        flex: 1;
+        min-width: 0;
+        max-width: 620px;
+        position: relative;
+      }
+      .right::before {
+        content: "";
+        position: absolute;
+        inset: -40%;
+        border-radius: 50%;
+        filter: blur(80px);
+        pointer-events: none;
+        z-index: -1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="landing">
+      <div class="conic-aura" aria-hidden="true"></div>
+      <div class="layout">
+        <div class="left">
+          <div>
+            <a href="https://railway.com?utm_source=inkwell" target="_blank" rel="noopener" class="by-railway">by <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.756 438.175A520.713 520.713 0 0 0 0 489.735h777.799c-2.716-5.306-6.365-10.09-10.045-14.772-132.97-171.791-204.498-156.896-306.819-161.26-34.114-1.403-57.249-1.967-193.037-1.967-72.677 0-151.688.185-228.628.39-9.96 26.884-19.566 52.942-24.243 74.14h398.571v51.909H4.756ZM783.93 541.696H.399c.82 13.851 2.112 27.517 3.978 40.999h723.39c32.248 0 50.299-18.297 56.162-40.999ZM45.017 724.306S164.941 1018.77 511.46 1024c207.112 0 385.071-123.006 465.907-299.694H45.017Z" fill="currentColor"/><path d="M511.454 0C319.953 0 153.311 105.16 65.31 260.612c68.771-.144 202.704-.226 202.704-.226h.031v-.051c158.309 0 164.193.707 195.118 1.998l19.149.706c66.7 2.224 148.683 9.384 213.19 58.19 35.015 26.471 85.571 84.896 115.708 126.52 27.861 38.499 35.876 82.756 16.933 125.158-17.436 38.97-54.952 62.215-100.383 62.215H16.69s4.233 17.944 10.58 37.751h970.632A510.385 510.385 0 0 0 1024 512.218C1024.01 229.355 794.532 0 511.454 0Z" fill="currentColor"/></svg> Railway</a>
+            <h1>Inkwell</h1>
+            <p>Markdown editor and renderer for React.</p>
+          </div>
+
+          <div class="actions">
+            <a href="/docs/quickstart" class="btn btn-primary">Docs</a>
+            <a href="/llms.txt" class="btn btn-secondary">llms.txt</a>
+            <a
+              href="https://github.com/railwayapp/inkwell"
+              target="_blank"
+              rel="noopener"
+              class="btn btn-secondary"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"></path>
+              </svg>
+              GitHub
+            </a>
+          </div>
+
+          <div class="install-wrapper">
+            <div class="install-tabs">
+              <button class="install-tab" data-pm="npm" data-active="true">npm</button>
+              <button class="install-tab" data-pm="pnpm">pnpm</button>
+              <button class="install-tab" data-pm="yarn">yarn</button>
+              <button class="install-tab" data-pm="bun">bun</button>
+            </div>
+            <button class="install" id="copy-btn">
+              <span class="install-prompt" aria-hidden="true">$</span>
+              <code id="install-cmd">npm install @railway/inkwell</code>
+              <span class="copy" id="copy-text">Copy</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="right">
+          <Demo client:only="react" />
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const commands: Record<string, string> = {
+        npm: "npm install @railway/inkwell",
+        pnpm: "pnpm add @railway/inkwell",
+        yarn: "yarn add @railway/inkwell",
+        bun: "bun add @railway/inkwell",
+      };
+
+      const tabs = document.querySelectorAll<HTMLButtonElement>(".install-tab");
+      const cmd = document.getElementById("install-cmd");
+      const copyText = document.getElementById("copy-text");
+
+      tabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+          tabs.forEach((t) => t.setAttribute("data-active", "false"));
+          tab.setAttribute("data-active", "true");
+          const pm = tab.getAttribute("data-pm") || "npm";
+          if (cmd) cmd.textContent = commands[pm];
+          if (copyText) copyText.textContent = "Copy";
+        });
+      });
+
+      const copyBtn = document.getElementById("copy-btn");
+      const installWrapper = document.querySelector(".install-wrapper");
+      copyBtn?.addEventListener("click", () => {
+        const text = cmd?.textContent || "";
+        navigator.clipboard.writeText(text);
+        copyBtn.setAttribute("data-copied", "true");
+        installWrapper?.setAttribute("data-copied", "true");
+        if (copyText) copyText.textContent = "Copied!";
+        setTimeout(() => {
+          copyBtn.setAttribute("data-copied", "false");
+          installWrapper?.setAttribute("data-copied", "false");
+          if (copyText) copyText.textContent = "Copy";
+        }, 3000);
+      });
+    </script>
+  </body>
+</html>

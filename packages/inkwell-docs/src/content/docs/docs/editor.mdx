@@ -1,0 +1,194 @@
+---
+title: "Editor"
+---
+
+`InkwellEditor` is a WYSIWYG Markdown editor. The content you see is
+visually formatted, but the underlying data is always a plain Markdown
+string.
+
+## Usage
+
+The editor is a controlled React component. You own the state.
+
+```tsx
+import { InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
+
+function App() {
+  const [content, setContent] = useState("# Hello **world**");
+  return <InkwellEditor content={content} onChange={setContent} />;
+}
+```
+
+`content` accepts any Markdown string. `onChange` fires on every edit with
+the updated Markdown.
+
+## Formatting
+
+Type Markdown syntax and the editor renders it visually as you go. Type
+`## ` at the start of a line and it becomes a heading. Wrap text in `**`
+and it turns bold. The Markdown characters stay in the document — they're
+styled to show you what the output will look like.
+
+All formatting is enabled by default.
+
+### Block formatting
+
+Type these at the beginning of a line:
+
+| Pattern | Result |
+|---------|--------|
+| `# ` through `###### ` | Headings (h1–h6) |
+| `- `, `* `, or `+ ` | List items |
+| `> ` | Blockquotes |
+| ` ``` ` | Fenced code blocks |
+
+### Inline formatting
+
+Wrap text with these markers anywhere in a line:
+
+| Syntax | Result |
+|--------|--------|
+| `**text**` | **Bold** |
+| `_text_` | _Italic_ |
+| `~~text~~` | ~~Strikethrough~~ |
+| `` `text` `` | `Inline code` |
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `⌘B` / `Ctrl+B` | Toggle bold |
+| `⌘I` / `Ctrl+I` | Toggle italic |
+| `⌘D` / `Ctrl+D` | Toggle strikethrough |
+
+These shortcuts come from the built-in
+[bubble menu plugin](/docs/editor-plugins#bubble-menu). You can customize
+or disable them.
+
+## Disabling formatting
+
+Use the `decorations` prop to turn off specific block-level formatting.
+All decorations are enabled by default — you only need this prop to
+disable something.
+
+```tsx
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  decorations={{ codeBlocks: false, heading4: false, heading5: false, heading6: false }}
+/>
+```
+
+| Decoration | Default | Controls |
+|------------|---------|----------|
+| `heading1` – `heading6` | `true` | Individual heading levels |
+| `lists` | `true` | Unordered list items (`-`, `*`, `+`) |
+| `blockquotes` | `true` | Blockquotes (`>`) |
+| `codeBlocks` | `true` | Fenced code blocks (` ``` `) |
+
+When a decoration is disabled, its syntax is treated as plain text with
+no visual formatting.
+
+## Syntax highlighting
+
+Fenced code blocks are highlighted with
+[highlight.js](https://highlightjs.org/) by default. Import a highlight.js
+CSS theme for colors to appear:
+
+```tsx
+import "highlight.js/styles/github-dark.css";
+```
+
+To use a different highlighter, pass it through the `rehypePlugins` prop:
+
+```tsx
+import { InkwellEditor } from "@railway/inkwell";
+import rehypeShiki from "@shikijs/rehype";
+
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  rehypePlugins={[[rehypeShiki, { theme: "github-dark" }]]}
+/>
+```
+
+The same `rehypePlugins` prop is available on
+[`InkwellRenderer`](/docs/renderer).
+
+## Bubble menu
+
+The editor includes a floating formatting toolbar by default. Select text
+and the toolbar appears with bold, italic, and strikethrough buttons.
+
+To disable it:
+
+```tsx
+<InkwellEditor content={content} onChange={setContent} bubbleMenu={false} />
+```
+
+To customize the toolbar items, see the
+[Plugins](/docs/editor-plugins#bubble-menu) guide.
+
+## Props reference
+
+### `content`
+
+**Type:** `string`
+
+The Markdown string to display and edit. When
+[collaboration](/docs/collaboration) is enabled, this only seeds an empty
+document — the Yjs shared type becomes the source of truth after that.
+
+### `onChange`
+
+**Type:** `(markdown: string) => void`
+
+Called on every document change with the updated Markdown string.
+
+### `placeholder`
+
+**Type:** `string`
+
+Text shown when the editor is empty.
+
+### `className`
+
+**Type:** `string`
+
+CSS class applied to the outer wrapper element.
+
+### `decorations`
+
+**Type:** `InkwellDecorations`
+
+Controls which block-level formatting the editor recognizes. All enabled
+by default. See [Disabling formatting](#disabling-formatting).
+
+### `plugins`
+
+**Type:** `InkwellPlugin[]`
+
+Additional plugins to load. See [Plugins](/docs/editor-plugins).
+
+### `bubbleMenu`
+
+**Type:** `boolean` — default: `true`
+
+Whether to include the built-in floating toolbar. Pass `false` to disable
+it entirely, or use a custom bubble menu via `plugins` instead.
+
+### `collaboration`
+
+**Type:** `CollaborationConfig`
+
+Enable real-time collaborative editing. See
+[Collaboration](/docs/collaboration).
+
+### `rehypePlugins`
+
+**Type:** `RehypePluginConfig[]`
+
+Custom rehype plugins for code block highlighting. Accepts a plugin
+function or a `[plugin, options]` tuple. See
+[Syntax highlighting](#syntax-highlighting).

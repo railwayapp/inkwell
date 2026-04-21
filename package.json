@@ -1,0 +1,17 @@
+{
+  "name": "inkwell",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "dev": "pnpm --filter @railway/inkwell-docs dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "lint:fix": "turbo lint:fix"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.10",
+    "turbo": "^2.9.3"
+  }
+}

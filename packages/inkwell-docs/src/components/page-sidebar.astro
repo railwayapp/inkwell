@@ -1,0 +1,143 @@
+---
+import fs from "node:fs";
+import path from "node:path";
+// @ts-ignore
+import MobileTableOfContents from "virtual:starlight/components/MobileTableOfContents";
+// @ts-ignore
+import TableOfContents from "virtual:starlight/components/TableOfContents";
+
+const slug = Astro.url.pathname.replace(/^\//, "").replace(/\/$/, "");
+const contentDir = path.join(process.cwd(), "src", "content", "docs");
+
+let raw = "";
+for (const ext of [".mdx", ".md"]) {
+  try {
+    raw = fs.readFileSync(path.join(contentDir, `${slug}${ext}`), "utf-8");
+    break;
+  } catch {}
+}
+
+const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+const frontmatter = match?.[1] ?? "";
+const body = match?.[2]?.trim() ?? raw;
+const title = frontmatter.match(/title:\s*["']?(.+?)["']?\s*$/m)?.[1] ?? "";
+const cleanBody = body.replace(/^import\s+.*$/gm, "").trimStart();
+const markdown = title ? `# ${title}\n\n${cleanBody}` : cleanBody;
+const hasContent = markdown.length > 0;
+---
+
+{hasContent && (
+  <div class="right-sidebar-panel sl-hidden lg:sl-block">
+    <div class="sl-container">
+      <button class="inkwell-copy-md" aria-label="Copy page as Markdown">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        <span data-copy-label>Copy as Markdown</span>
+      </button>
+    </div>
+  </div>
+)}
+
+<div id="inkwell-md-source" hidden set:text={markdown}></div>
+
+{(Astro.locals as any).starlightRoute.toc && (
+  <>
+    <div class="lg:sl-hidden">
+      <MobileTableOfContents />
+    </div>
+    <div class="right-sidebar-panel sl-hidden lg:sl-block">
+      <div class="sl-container">
+        <TableOfContents />
+      </div>
+    </div>
+  </>
+)}
+
+<script is:inline>
+  (function() {
+    function setup() {
+      var btn = document.querySelector('.inkwell-copy-md');
+      var src = document.getElementById('inkwell-md-source');
+      if (!btn || !src || btn.dataset.ready) return;
+      btn.dataset.ready = 'true';
+
+      btn.addEventListener('click', function() {
+        navigator.clipboard.writeText(src.textContent || '').catch(function(){});
+        var label = btn.querySelector('[data-copy-label]');
+        if (label) {
+          label.textContent = 'Copied!';
+          setTimeout(function() { label.textContent = 'Copy as Markdown'; }, 2000);
+        }
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', setup);
+    } else {
+      setup();
+    }
+    document.addEventListener('astro:page-load', setup);
+  })();
+</script>
+
+<style>
+  @layer starlight.core {
+    .right-sidebar-panel {
+      padding: 1rem var(--sl-sidebar-pad-x);
+    }
+    .sl-container {
+      width: calc(var(--sl-sidebar-width) - 2 * var(--sl-sidebar-pad-x));
+    }
+    .right-sidebar-panel :global(h2) {
+      color: var(--sl-color-white);
+      font-size: var(--sl-text-h5);
+      font-weight: 600;
+      line-height: var(--sl-line-height-headings);
+      margin-bottom: 0.5rem;
+    }
+    .right-sidebar-panel :global(:where(a)) {
+      display: block;
+      font-size: var(--sl-text-xs);
+      text-decoration: none;
+      color: var(--sl-color-gray-3);
+      overflow-wrap: anywhere;
+    }
+    .right-sidebar-panel :global(:where(a):hover) {
+      color: var(--sl-color-white);
+    }
+    @media (min-width: 72rem) {
+      .sl-container {
+        max-width: calc(
+          (
+            (
+                100vw - var(--sl-sidebar-width) - 2 * var(--sl-content-pad-x) - 2 *
+                  var(--sl-sidebar-pad-x)
+              ) * 0.25
+          )
+        );
+      }
+    }
+
+    .inkwell-copy-md {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.65rem;
+      font-size: var(--sl-text-xs);
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      border-radius: 6px;
+      border: 1px solid var(--sl-color-gray-5);
+      background: transparent;
+      color: var(--sl-color-gray-3);
+      transition: all 0.15s ease;
+      width: 100%;
+      justify-content: center;
+    }
+    .inkwell-copy-md:hover {
+      border-color: var(--sl-color-gray-4);
+      color: var(--sl-color-white);
+      background: var(--sl-color-gray-6);
+    }
+  }
+</style>

@@ -1,0 +1,339 @@
+---
+title: "Styling"
+---
+
+Inkwell applies CSS classes to every element but ships no default styles.
+You have full control over the look and feel of both the editor and the
+rendered output.
+
+## Editor
+
+### Container
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-editor-wrapper` | Outer wrapper (contains editor and plugin UI) |
+| `.inkwell-editor` | The contenteditable editing area |
+
+### Block elements
+
+Each block-level element renders with a CSS class:
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-editor-heading` | All headings (always combined with a level class below) |
+| `.inkwell-editor-heading-1` through `-heading-6` | Specific heading level |
+| `.inkwell-editor-blockquote` | Blockquotes |
+| `.inkwell-editor-list-item` | List items |
+| `.inkwell-editor-code-fence` | Code fence delimiter lines |
+| `.inkwell-editor-code-line` | Lines inside a fenced code block |
+
+### Inline formatting
+
+Standard HTML elements are used for inline marks:
+
+| Element | Formatting |
+|---------|------------|
+| `strong` | Bold text |
+| `em` | Italic text |
+| `del` | Strikethrough text |
+| `code` | Inline code |
+
+Target these within the editor: `.inkwell-editor strong`,
+`.inkwell-editor code`, etc.
+
+### Syntax markers
+
+The raw Markdown characters (`**`, `_`, `` ` ``, `~~`) are wrapped in
+spans you can style separately — useful for dimming or hiding them:
+
+| Selector | Characters |
+|----------|------------|
+| `.inkwell-editor-marker` | General syntax markers |
+| `.inkwell-editor-backtick` | Backtick characters |
+
+### Remote cursors
+
+Used when [collaboration](/docs/collaboration) is enabled:
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-editor-remote-cursor` | Selection highlight from another user |
+| `.inkwell-editor-remote-caret` | Cursor position indicator |
+
+The cursor color is applied inline from `user.color`, so your CSS only
+needs to handle positioning and opacity.
+
+## Renderer
+
+The renderer wraps output in `<div class="inkwell-renderer">`. Inside,
+standard HTML elements are used: `h1`–`h6`, `p`, `blockquote`, `ul`,
+`ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `table`,
+`img`.
+
+Target them with descendant selectors:
+
+```css
+.inkwell-renderer h1 { }
+.inkwell-renderer blockquote { }
+.inkwell-renderer pre code { }
+```
+
+### Code block copy button
+
+When `copyButton` is enabled (the default), code blocks are wrapped with
+a container and a copy button:
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-renderer-code-block` | Wrapper around each `<pre>` |
+| `.inkwell-renderer-copy-btn` | The copy button (appears on hover) |
+
+## Plugins
+
+### Bubble menu
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-plugin-bubble-menu-container` | Positioned container |
+| `.inkwell-plugin-bubble-menu-inner` | Inner flex wrapper |
+| `.inkwell-plugin-bubble-menu-btn` | Button |
+| `.inkwell-plugin-bubble-menu-item-bold` | Bold button label |
+| `.inkwell-plugin-bubble-menu-item-italic` | Italic button label |
+| `.inkwell-plugin-bubble-menu-item-strike` | Strikethrough button label |
+
+### Snippets
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-plugin-snippets-popup` | Positioned container |
+| `.inkwell-plugin-snippets-picker` | Picker wrapper |
+| `.inkwell-plugin-snippets-search` | Search input |
+| `.inkwell-plugin-snippets-item` | Snippet row |
+| `.inkwell-plugin-snippets-item-active` | Highlighted row |
+| `.inkwell-plugin-snippets-title` | Snippet title |
+| `.inkwell-plugin-snippets-preview` | Snippet preview text |
+| `.inkwell-plugin-snippets-empty` | Empty state message |
+
+## Code highlighting
+
+Syntax highlighting in code blocks uses highlight.js by default. Import
+a highlight.js theme for colors to appear:
+
+```tsx
+import "highlight.js/styles/github-dark.css";
+```
+
+If you use a different highlighter via `rehypePlugins`, import that
+highlighter's CSS instead.
+
+## Example stylesheet
+
+A complete stylesheet to get started with. Adjust the values to match
+your design system.
+
+```css
+/* ── Editor ── */
+
+.inkwell-editor {
+  min-height: 200px;
+  padding: 1.5rem;
+  outline: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #1a1a1a;
+  font-size: 1rem;
+  line-height: 1.7;
+  transition: border-color 0.15s ease;
+}
+
+.inkwell-editor:focus-within {
+  border-color: #6366f1;
+}
+
+/* Inline formatting */
+.inkwell-editor strong { font-weight: 700; }
+.inkwell-editor em { font-style: italic; }
+.inkwell-editor del { text-decoration: line-through; color: #9ca3af; }
+.inkwell-editor code {
+  background: #f3f4f6;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+/* Block elements */
+.inkwell-editor-heading { font-weight: 700; line-height: 1.3; }
+.inkwell-editor-heading-1 { font-size: 2em; }
+.inkwell-editor-heading-2 { font-size: 1.5em; }
+.inkwell-editor-heading-3 { font-size: 1.25em; }
+
+.inkwell-editor-blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 1em;
+  color: #6b7280;
+}
+
+.inkwell-editor-list-item {
+  padding-left: 1em;
+}
+
+.inkwell-editor-code-fence { color: #9ca3af; }
+.inkwell-editor-code-line {
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+/* Dim Markdown syntax characters */
+.inkwell-editor-marker,
+.inkwell-editor-backtick {
+  color: #d1d5db;
+}
+
+/* ── Renderer ── */
+
+.inkwell-renderer { font-size: 1rem; line-height: 1.7; }
+.inkwell-renderer :first-child { margin-top: 0; }
+
+.inkwell-renderer h1 { font-size: 2em; font-weight: 700; margin: 0.67em 0; }
+.inkwell-renderer h2 { font-size: 1.5em; font-weight: 600; margin: 0.75em 0; }
+.inkwell-renderer h3 { font-size: 1.25em; font-weight: 600; margin: 0.8em 0; }
+.inkwell-renderer p { margin: 0.5em 0; }
+
+.inkwell-renderer blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #6b7280;
+}
+
+.inkwell-renderer ul,
+.inkwell-renderer ol { padding-left: 1.5em; margin: 1em 0; }
+.inkwell-renderer ul { list-style: disc; }
+.inkwell-renderer ol { list-style: decimal; }
+.inkwell-renderer li { margin: 0.25em 0; }
+
+.inkwell-renderer code {
+  background: #f3f4f6;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.inkwell-renderer pre {
+  margin: 1em 0;
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.inkwell-renderer pre code {
+  display: block;
+  padding: 1em;
+  background: #1a1a2e;
+  color: #e2e8f0;
+  font-size: 14px;
+}
+
+.inkwell-renderer a { color: #6366f1; text-decoration: underline; }
+.inkwell-renderer strong { font-weight: 700; }
+.inkwell-renderer em { font-style: italic; }
+.inkwell-renderer del { text-decoration: line-through; }
+
+/* ── Renderer copy button ── */
+
+.inkwell-renderer-code-block {
+  position: relative;
+}
+
+.inkwell-renderer-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #a1a1aa;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.inkwell-renderer-code-block:hover .inkwell-renderer-copy-btn {
+  opacity: 1;
+}
+
+.inkwell-renderer-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #f4f4f5;
+}
+
+/* ── Bubble menu plugin ── */
+
+.inkwell-plugin-bubble-menu-inner {
+  display: flex;
+  gap: 2px;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.inkwell-plugin-bubble-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #a1a1aa;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.inkwell-plugin-bubble-menu-btn:hover {
+  background: #27272a;
+  color: #f4f4f5;
+}
+
+/* ── Snippets plugin ── */
+
+.inkwell-plugin-snippets-picker {
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  overflow: hidden;
+  min-width: 260px;
+  max-width: 320px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.inkwell-plugin-snippets-search {
+  width: 100%;
+  padding: 8px 12px;
+  background: #09090b;
+  border: none;
+  border-bottom: 1px solid #27272a;
+  color: #e4e4e7;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.inkwell-plugin-snippets-item {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.inkwell-plugin-snippets-item:hover,
+.inkwell-plugin-snippets-item-active {
+  background: #27272a;
+}
+```

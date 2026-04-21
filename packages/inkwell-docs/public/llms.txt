@@ -1,0 +1,458 @@
+# Inkwell
+
+> Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration support.
+
+Inkwell gives you a visual editing experience where the underlying data is always a plain Markdown string. Markdown in, Markdown out. It includes an extensible plugin system and optional real-time collaboration via Yjs.
+
+- Package: `@railway/inkwell`
+- Peer dependency: React 19+
+
+## Docs
+
+- [Getting Started](/docs/quickstart): Installation and basic usage
+- [Editor](/docs/editor): Editor component, formatting, and props reference
+- [Renderer](/docs/renderer): Rendering Markdown as React elements
+- [Plugins](/docs/editor-plugins): Built-in and custom editor plugins
+- [Collaboration](/docs/collaboration): Real-time multi-user editing via Yjs
+- [Styling](/docs/styling): CSS classes and example stylesheet
+
+---
+
+## Installation
+
+```bash
+npm install @railway/inkwell
+```
+
+## Editor
+
+`InkwellEditor` is a controlled React component. Pass it a Markdown string and an `onChange` handler.
+
+```tsx
+import { InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
+
+function App() {
+  const [content, setContent] = useState("# Hello **world**");
+  return <InkwellEditor content={content} onChange={setContent} />;
+}
+```
+
+### Editor Props
+
+- `content: string` — Markdown string. Drives the editor unless collaboration is enabled.
+- `onChange?: (markdown: string) => void` — Called on every document change with the updated Markdown.
+- `placeholder?: string` — Text shown when the editor is empty.
+- `className?: string` — CSS class applied to the outer wrapper element.
+- `decorations?: InkwellDecorations` — Controls which block-level formatting the editor recognizes. All enabled by default.
+- `plugins?: InkwellPlugin[]` — Additional plugins to load.
+- `bubbleMenu?: boolean` (default: `true`) — Whether to include the built-in floating toolbar.
+- `collaboration?: CollaborationConfig` — Enable real-time collaborative editing via Yjs.
+- `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for code block highlighting.
+
+### Formatting
+
+The editor renders Markdown visually as you type. All formatting is enabled by default.
+
+Block formatting (type at the start of a line):
+- `# ` through `###### ` → Headings (h1–h6)
+- `- `, `* `, or `+ ` → List items
+- `> ` → Blockquotes
+- ` ``` ` → Fenced code blocks
+
+Inline formatting (wrap text):
+- `**text**` → Bold
+- `_text_` → Italic
+- `~~text~~` → Strikethrough
+- `` `text` `` → Inline code
+
+Keyboard shortcuts:
+- `⌘B` / `Ctrl+B` → Toggle bold
+- `⌘I` / `Ctrl+I` → Toggle italic
+- `⌘D` / `Ctrl+D` → Toggle strikethrough
+
+### Decorations
+
+Use the `decorations` prop to disable specific block-level formatting:
+
+```tsx
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  decorations={{ codeBlocks: false, heading4: false, heading5: false, heading6: false }}
+/>
+```
+
+```tsx
+interface InkwellDecorations {
+  heading1?: boolean;    // default: true
+  heading2?: boolean;    // default: true
+  heading3?: boolean;    // default: true
+  heading4?: boolean;    // default: true
+  heading5?: boolean;    // default: true
+  heading6?: boolean;    // default: true
+  lists?: boolean;       // default: true
+  blockquotes?: boolean; // default: true
+  codeBlocks?: boolean;  // default: true
+}
+```
+
+### Syntax Highlighting
+
+Fenced code blocks use highlight.js by default. Import a theme CSS file:
+
+```tsx
+import "highlight.js/styles/github-dark.css";
+```
+
+Swap the highlighter via `rehypePlugins`:
+
+```tsx
+import rehypeShiki from "@shikijs/rehype";
+
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  rehypePlugins={[[rehypeShiki, { theme: "github-dark" }]]}
+/>
+```
+
+## Renderer
+
+`InkwellRenderer` converts Markdown to React elements. Produces semantic HTML, no browser dependencies, works with SSR.
+
+```tsx
+import { InkwellRenderer } from "@railway/inkwell";
+
+<InkwellRenderer content="# Hello **world**" />
+```
+
+### Renderer Props
+
+- `content: string` — The Markdown string to render.
+- `components?: InkwellComponents` — Override how specific HTML elements render.
+- `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for the rendering pipeline.
+- `copyButton?: boolean` (default: `true`) — Show a copy button on fenced code blocks.
+- `className?: string` — CSS class applied to the wrapper div.
+
+### Custom Components
+
+Override HTML element rendering:
+
+```tsx
+<InkwellRenderer
+  content={content}
+  components={{
+    a: ({ children, ...props }) => (
+      <a {...props} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    ),
+    pre: ({ children, ...props }) => (
+      <pre {...props} className="my-code-block">
+        {children}
+      </pre>
+    ),
+  }}
+/>
+```
+
+You can override any HTML element: `h1`–`h6`, `p`, `a`, `img`, `blockquote`, `pre`, `code`, `ul`, `ol`, `li`, `table`, `strong`, `em`, `del`, and more.
+
+## Plugins
+
+Plugins extend the editor with custom UI and behavior.
+
+### Plugin Interface
+
+```tsx
+interface InkwellPlugin {
+  name: string;
+  trigger?: { key: string };
+  render: (props: PluginRenderProps) => ReactNode;
+  onKeyDown?: (
+    event: React.KeyboardEvent,
+    ctx: { wrapSelection: (before: string, after: string) => void },
+  ) => void;
+}
+```
+
+### Render Props
+
+```tsx
+interface PluginRenderProps {
+  active: boolean;
+  query: string;
+  onSelect: (text: string) => void;
+  onDismiss: () => void;
+  position: { top: number; left: number };
+  editorRef: RefObject<HTMLDivElement | null>;
+  wrapSelection: (before: string, after: string) => void;
+}
+```
+
+### Triggers
+
+- **Modifier combos** (`"Control+/"`, `"Meta+k"`): Prevents default browser action. Good for command palettes.
+- **Single characters** (`"["`, `"@"`, `"/"`): Character typed into editor first, removed on `onSelect`. Good for inline pickers.
+- **No trigger** (omit the field): Plugin always renders with `active: true`. Good for persistent UI.
+
+### Built-in: Bubble Menu
+
+Floating toolbar on text selection. Default items: Bold (⌘B), Italic (⌘I), Strikethrough (⌘D).
+
+Customize items:
+
+```tsx
+import {
+  createBubbleMenuPlugin,
+  defaultBubbleMenuItems,
+} from "@railway/inkwell";
+
+const customBubbleMenu = createBubbleMenuPlugin({
+  items: [
+    ...defaultBubbleMenuItems,
+    {
+      key: "code",
+      shortcut: "e",
+      onShortcut: (wrap) => wrap("`", "`"),
+      render: ({ wrapSelection }) => (
+        <button onClick={() => wrapSelection("`", "`")}>&lt;/&gt;</button>
+      ),
+    },
+  ],
+});
+
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  bubbleMenu={false}
+  plugins={[customBubbleMenu]}
+/>
+```
+
+Bubble menu item shape:
+
+```tsx
+interface BubbleMenuItem {
+  key: string;
+  shortcut?: string;
+  onShortcut?: (wrapSelection: (before: string, after: string) => void) => void;
+  render: (props: { wrapSelection: (before: string, after: string) => void }) => ReactNode;
+}
+```
+
+### Built-in: Snippets
+
+Searchable picker for inserting Markdown templates:
+
+```tsx
+import { createSnippetsPlugin } from "@railway/inkwell";
+
+const snippets = createSnippetsPlugin({
+  snippets: [
+    { title: "Bug Report", content: "## Bug Report\n\n**Steps:**\n1. " },
+    { title: "Meeting Notes", content: "## Notes\n\n### Agenda\n\n1. " },
+  ],
+  key: "[", // trigger key (default)
+});
+
+<InkwellEditor content={content} onChange={setContent} plugins={[snippets]} />
+```
+
+Snippet shape:
+
+```tsx
+interface Snippet {
+  title: string;
+  content: string;
+}
+```
+
+### Custom Plugin Example
+
+```tsx
+import type { InkwellPlugin } from "@railway/inkwell";
+
+const commandPalette: InkwellPlugin = {
+  name: "command-palette",
+  trigger: { key: "Control+k" },
+  render: ({ active, query, onSelect, onDismiss, position }) => {
+    if (!active) return null;
+
+    const commands = [
+      { label: "Heading", md: "## " },
+      { label: "Bullet list", md: "- " },
+      { label: "Code block", md: "```\n\n```" },
+    ].filter((c) => c.label.toLowerCase().includes(query.toLowerCase()));
+
+    return (
+      <div style={{ position: "absolute", top: position.top + 24, left: position.left }}>
+        {commands.map((cmd) => (
+          <button key={cmd.label} onClick={() => onSelect(cmd.md)}>
+            {cmd.label}
+          </button>
+        ))}
+        <button onClick={onDismiss}>Cancel</button>
+      </div>
+    );
+  },
+};
+```
+
+### Keyboard Shortcuts via Plugins
+
+```tsx
+const highlightShortcut: InkwellPlugin = {
+  name: "highlight-shortcut",
+  render: () => null,
+  onKeyDown: (event, { wrapSelection }) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "h") {
+      event.preventDefault();
+      wrapSelection("==", "==");
+    }
+  },
+};
+```
+
+## Collaboration
+
+Real-time collaborative editing via Yjs. Multiple users edit simultaneously with automatic conflict resolution.
+
+Features:
+- Live sync across all connected users
+- Remote cursors with per-user colors
+- Scoped undo (⌘Z only undoes your own changes)
+- Works with any Yjs provider
+
+### Setup
+
+```tsx
+import * as Y from "yjs";
+import { InkwellEditor } from "@railway/inkwell";
+import { WebsocketProvider } from "y-websocket";
+
+const doc = new Y.Doc();
+const sharedType = doc.get("content", Y.XmlText);
+const provider = new WebsocketProvider("wss://your-server.com", "room-id", doc);
+
+function CollabEditor() {
+  return (
+    <InkwellEditor
+      content=""
+      collaboration={{
+        sharedType,
+        awareness: provider.awareness,
+        user: { name: "Alice", color: "#e06c75" },
+      }}
+      onChange={(md) => saveToDatabase(md)}
+    />
+  );
+}
+```
+
+### Collaboration Config
+
+```tsx
+interface CollaborationConfig {
+  sharedType: Y.XmlText;
+  awareness: Awareness;
+  user: { name: string; color: string };
+}
+```
+
+When `collaboration` is provided, the Yjs document becomes the source of truth. The `content` prop only seeds an empty document.
+
+### Providers
+
+- y-websocket — WebSocket sync (self-hosted)
+- y-webrtc — Peer-to-peer (no server)
+- Liveblocks — Managed infrastructure
+
+## Styling
+
+Inkwell applies CSS classes to every element but ships no default styles.
+
+### Editor CSS Classes
+
+Container:
+- `.inkwell-editor-wrapper` — Outer wrapper
+- `.inkwell-editor` — Contenteditable area
+
+Block elements:
+- `.inkwell-editor-heading` + `.inkwell-editor-heading-1` through `-heading-6`
+- `.inkwell-editor-blockquote`
+- `.inkwell-editor-list-item`
+- `.inkwell-editor-code-fence`
+- `.inkwell-editor-code-line`
+
+Syntax markers:
+- `.inkwell-editor-marker`
+- `.inkwell-editor-backtick`
+
+Remote cursors:
+- `.inkwell-editor-remote-cursor` — Selection highlight
+- `.inkwell-editor-remote-caret` — Cursor position
+
+### Renderer CSS Classes
+
+- `.inkwell-renderer` — Wrapper div
+- `.inkwell-renderer-code-block` — Wrapper around each `<pre>` (when `copyButton` enabled)
+- `.inkwell-renderer-copy-btn` — Copy button on code blocks (appears on hover)
+- Standard HTML elements inside: `h1`–`h6`, `p`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `table`, `img`
+
+### Plugin CSS Classes
+
+Bubble menu:
+- `.inkwell-plugin-bubble-menu-container`
+- `.inkwell-plugin-bubble-menu-inner`
+- `.inkwell-plugin-bubble-menu-btn`
+- `.inkwell-plugin-bubble-menu-item-bold`
+- `.inkwell-plugin-bubble-menu-item-italic`
+- `.inkwell-plugin-bubble-menu-item-strike`
+
+Snippets:
+- `.inkwell-plugin-snippets-popup`
+- `.inkwell-plugin-snippets-picker`
+- `.inkwell-plugin-snippets-search`
+- `.inkwell-plugin-snippets-item`
+- `.inkwell-plugin-snippets-item-active`
+- `.inkwell-plugin-snippets-title`
+- `.inkwell-plugin-snippets-preview`
+- `.inkwell-plugin-snippets-empty`
+
+## Exports
+
+All public exports from `@railway/inkwell`:
+
+Components:
+- `InkwellEditor`
+- `InkwellRenderer`
+
+Plugin creators:
+- `createBubbleMenuPlugin`
+- `createSnippetsPlugin`
+
+Plugin utilities:
+- `defaultBubbleMenuItems`
+- `pluginClass`
+
+Serialization:
+- `serializeToMarkdown(html: string): string`
+- `parseMarkdown(markdown: string, components?, rehypePlugins?): ReactNode`
+- `deserialize(markdown: string, decorations?): InkwellElement[]`
+
+Types:
+- `InkwellEditorProps`
+- `InkwellRendererProps`
+- `InkwellPlugin`
+- `InkwellDecorations`
+- `InkwellComponents`
+- `BubbleMenuItem`
+- `BubbleMenuItemProps`
+- `CollaborationConfig`
+- `PluginKeyDownContext`
+- `PluginRenderProps`
+- `PluginTrigger`
+- `RehypePluginConfig`
+- `Snippet`

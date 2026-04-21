@@ -19,6 +19,7 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
       - run: cp README.md packages/inkwell/README.md
       - run: pnpm --filter @railway/inkwell build

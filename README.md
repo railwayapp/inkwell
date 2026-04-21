@@ -47,6 +47,22 @@ more details.
 pnpm dev
 ```
 
+## Releases
+
+Releases are published to npm via GitHub Actions.
+
+```bash
+cd packages/inkwell
+npm version patch --no-git-tag-version  # or minor / major
+cd ../..
+git add packages/inkwell/package.json
+git commit -m "release: v$(node -p "require('./packages/inkwell/package.json').version")"
+git tag "v$(node -p "require('./packages/inkwell/package.json').version")"
+git push && git push --tags
+```
+
+Pushing a `v*` tag triggers the publish workflow.
+
 ## License
 
 [MIT © 2026 Railway Corporation](LICENSE)

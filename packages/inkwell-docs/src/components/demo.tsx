@@ -396,7 +396,7 @@ function greet(name: string) {
 
 This document resets every 5 minutes.`;
 
-const COLLAB_SERVER = "wss://function-bun-production-3d74.up.railway.app";
+const COLLAB_SERVER = "wss://demo-collab-server.inkwell.build";
 
 const COLORS = [
   "#e06c75",

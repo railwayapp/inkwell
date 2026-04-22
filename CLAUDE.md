@@ -91,6 +91,22 @@ inkwell-dev/
 - `pnpm build` — Build all packages via turbo
 - `pnpm typecheck` — TypeScript type checking via turbo
 - `pnpm lint` / `pnpm lint:fix` — Biome
+- `pnpm changeset` — Add a changelog entry (commit the generated file with your PR)
+- `pnpm changeset version` — Apply pending changesets: bump `@railway/inkwell` version and write `packages/inkwell/CHANGELOG.md`
+
+## Releasing
+
+Changesets drives versioning and `CHANGELOG.md`. Publish is still tag-triggered via `.github/workflows/publish.yml` (fires on `v*` tags).
+
+Per-PR: run `pnpm changeset`, pick the bump type, write a user-facing summary, commit the generated `.changeset/*.md` alongside your code.
+
+To cut a release from `main`:
+
+1. `pnpm changeset version` — bumps `packages/inkwell/package.json` and updates `packages/inkwell/CHANGELOG.md`, consuming the pending changesets.
+2. Commit the result (`release: vX.Y.Z`).
+3. `git tag vX.Y.Z && git push --follow-tags` — the publish workflow picks it up.
+
+Only `@railway/inkwell` is published; `inkwell-docs` and `inkwell-demo-collab-server` are `private: true` so changesets ignores them. `CHANGELOG.md` is auto-included in the published tarball by npm (not in the `files` allowlist, but npm always includes it).
 
 ## Architecture
 

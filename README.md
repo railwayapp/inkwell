@@ -49,19 +49,26 @@ pnpm dev
 
 ## Releases
 
-Releases are published to npm via GitHub Actions.
+Versioning and `CHANGELOG.md` are managed by [Changesets](https://github.com/changesets/changesets). Publishing to npm runs via GitHub Actions on a `v*` tag push.
+
+When you open a PR that should show up in the changelog:
 
 ```bash
-cd packages/inkwell
-npm version patch --no-git-tag-version  # or minor / major
-cd ../..
-git add packages/inkwell/package.json
-git commit -m "🚀 release: v$(node -p "require('./packages/inkwell/package.json').version")"
-git tag "v$(node -p "require('./packages/inkwell/package.json').version")"
-git push && git push --tags
+pnpm changeset   # pick bump type, write a user-facing summary
 ```
 
-Pushing a `v*` tag triggers the publish workflow.
+Commit the generated `.changeset/*.md` file alongside your code.
+
+To cut a release from `main`:
+
+```bash
+pnpm changeset version   # bumps packages/inkwell/package.json + writes CHANGELOG.md
+git commit -am "🚀 release: v$(node -p "require('./packages/inkwell/package.json').version")"
+git tag "v$(node -p "require('./packages/inkwell/package.json').version")"
+git push --follow-tags
+```
+
+Pushing the `v*` tag triggers the publish workflow.
 
 ## License
 

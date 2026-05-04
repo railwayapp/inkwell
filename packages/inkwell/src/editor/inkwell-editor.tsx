@@ -40,6 +40,7 @@ import { RenderElement } from "./slate/render-element";
 import { RenderLeaf } from "./slate/render-leaf";
 import { serialize } from "./slate/serialize";
 import type { InkwellElement, InkwellText } from "./slate/types";
+import { withCharacterLimit } from "./slate/with-character-limit";
 import { withMarkdown } from "./slate/with-markdown";
 import { generateId, withNodeId } from "./slate/with-node-id";
 
@@ -55,6 +56,7 @@ const DEFAULT_DECORATIONS: Required<InkwellDecorations> = {
   lists: true,
   blockquotes: true,
   codeBlocks: true,
+  images: true,
 };
 
 export function InkwellEditor({
@@ -67,6 +69,9 @@ export function InkwellEditor({
   decorations,
   collaboration,
   bubbleMenu = true,
+  characterLimit,
+  enforceCharacterLimit = false,
+  onCharacterCount,
 }: InkwellEditorProps): ReactNode {
   const resolvedDecorations = useMemo(
     () => ({ ...DEFAULT_DECORATIONS, ...decorations }),
@@ -80,6 +85,15 @@ export function InkwellEditor({
     return [...builtIn, ...userPlugins];
   }, [userPlugins, bubbleMenu]);
 
+  const characterLimitRef = useRef({
+    limit: characterLimit,
+    enforce: enforceCharacterLimit,
+  });
+  characterLimitRef.current = {
+    limit: characterLimit,
+    enforce: enforceCharacterLimit,
+  };
+
   const editor = useMemo(() => {
     if (IS_SERVER) return null;
 
@@ -92,13 +106,31 @@ export function InkwellEditor({
         data: user,
       });
       const historyEditor = withYHistory(cursorEditor);
-      return withMarkdown(historyEditor, decorationsRef);
+      return withCharacterLimit(
+        withMarkdown(historyEditor, decorationsRef),
+        characterLimitRef,
+      );
     }
 
-    return withMarkdown(withHistory(base), decorationsRef);
+    return withCharacterLimit(
+      withMarkdown(withHistory(base), decorationsRef),
+      characterLimitRef,
+    );
   }, []);
 
   if (!editor) return null;
+
+  useEffect(() => {
+    const cleanups: Array<() => void> = [];
+    for (const plugin of plugins) {
+      if (!plugin.setup) continue;
+      const cleanup = plugin.setup(editor);
+      if (typeof cleanup === "function") cleanups.push(cleanup);
+    }
+    return () => {
+      for (const c of cleanups) c();
+    };
+  }, [editor, plugins]);
 
   useEffect(() => {
     if (!collaboration || !YjsEditor.isYjsEditor(editor)) return;
@@ -203,6 +235,10 @@ export function InkwellEditor({
     lastContent.current = content;
   }, [content, editor, collaboration]);
 
+  const [characterCount, setCharacterCount] = useState(() =>
+    initialValue.reduce((sum, n) => sum + Node.string(n).length, 0),
+  );
+
   const handleChange = useCallback(
     (value: Descendant[]) => {
       // Only serialize when the document actually changed
@@ -210,6 +246,11 @@ export function InkwellEditor({
         op => op.type !== "set_selection",
       );
       if (!isAstChange) return;
+
+      const length = Node.string(editor).length;
+      setCharacterCount(length);
+      onCharacterCount?.(length, characterLimit);
+
       if (!onChange) return;
 
       const md = serialize(value as InkwellElement[]);
@@ -225,8 +266,11 @@ export function InkwellEditor({
         }
       }
     },
-    [editor, onChange, collaboration],
+    [editor, onChange, collaboration, onCharacterCount, characterLimit],
   );
+
+  const overLimit =
+    characterLimit !== undefined && characterCount > characterLimit;
 
   const decorate = useCallback(
     (entry: NodeEntry) => {
@@ -476,7 +520,7 @@ export function InkwellEditor({
   return (
     <div
       ref={wrapperRef}
-      className={`inkwell-editor-wrapper ${className ?? ""}`}
+      className={`inkwell-editor-wrapper${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}`}
     >
       {activePlugin && (
         <div

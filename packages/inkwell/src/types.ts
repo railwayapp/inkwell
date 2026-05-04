@@ -56,6 +56,22 @@ export interface InkwellEditorProps {
    * disable the built-in toolbar; consumers can still add their own via `plugins`.
    */
   bubbleMenu?: boolean;
+  /**
+   * Maximum number of characters the editor should track. When set, the
+   * wrapper receives `.inkwell-editor-over-limit` whenever the document
+   * length exceeds the limit.
+   */
+  characterLimit?: number;
+  /**
+   * When true and a `characterLimit` is set, the editor blocks text input
+   * past the limit (default: false — the library only reports counts).
+   */
+  enforceCharacterLimit?: boolean;
+  /**
+   * Called on every document change with the current character count and
+   * the configured limit (if any).
+   */
+  onCharacterCount?: (count: number, limit?: number) => void;
 }
 
 /**
@@ -82,6 +98,21 @@ export interface InkwellRendererProps {
    * Show a copy button on fenced code blocks (default: true)
    */
   copyButton?: boolean;
+  /**
+   * Mention patterns to expand in rendered text. Each entry splits text nodes
+   * on the pattern and replaces each match with the result of `resolve`.
+   */
+  mentions?: MentionRenderer[];
+}
+
+/**
+ * Text-level mention replacement used by InkwellRenderer.
+ */
+export interface MentionRenderer {
+  /** Regular expression applied to text-node content. */
+  pattern: RegExp;
+  /** Map a match to a React node (rendered in place of the match text). */
+  resolve: (match: RegExpExecArray) => ReactNode;
 }
 
 /**
@@ -177,6 +208,14 @@ export interface InkwellPlugin {
    * `event.preventDefault()` to stop further dispatch for this event.
    */
   onKeyDown?: (event: ReactKeyboardEvent, ctx: PluginKeyDownContext) => void;
+  /**
+   * Optional one-time editor setup. Runs once after the editor is created
+   * so plugins can override editor methods (e.g. `insertData`) or register
+   * DOM listeners. The returned function, if any, runs when the editor
+   * unmounts or the plugin list changes.
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
+  setup?: (editor: any) => void | (() => void);
 }
 
 /**
@@ -266,6 +305,10 @@ export interface InkwellDecorations {
    * Recognize ``` fences as code blocks (default: true)
    */
   codeBlocks?: boolean;
+  /**
+   * Recognize `![alt](url)` on its own line as a block image (default: true)
+   */
+  images?: boolean;
 }
 
 /**

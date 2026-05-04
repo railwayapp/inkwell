@@ -86,6 +86,16 @@ describe("serialize", () => {
     expect(serialize(nodes)).toBe("- a\n- b\n- c");
   });
 
+  it("round-trips ordered list markers", () => {
+    const nodes = [el("list-item", "1. a"), el("list-item", "2. b")];
+    expect(serialize(nodes)).toBe("1. a\n2. b");
+  });
+
+  it("preserves nested-list indentation", () => {
+    const nodes = [el("list-item", "- a"), el("list-item", "  - b")];
+    expect(serialize(nodes)).toBe("- a\n  - b");
+  });
+
   it("joins different types with double newline", () => {
     const nodes = [el("paragraph", "text"), el("blockquote", "quote")];
     expect(serialize(nodes)).toBe("text\n\n> quote");
@@ -99,6 +109,16 @@ describe("serialize", () => {
     ];
     const result = serialize(nodes);
     expect(result).toBe("first\n\nsecond");
+  });
+
+  it("serializes image element as markdown syntax", () => {
+    const nodes = [el("image", "", { url: "https://x.png", alt: "caption" })];
+    expect(serialize(nodes)).toBe("![caption](https://x.png)");
+  });
+
+  it("serializes image with empty alt", () => {
+    const nodes = [el("image", "", { url: "x.png" })];
+    expect(serialize(nodes)).toBe("![](x.png)");
   });
 
   it("handles empty document", () => {

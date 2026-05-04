@@ -1,0 +1,131 @@
+"use client";
+
+import { Node, Transforms } from "slate";
+import type { InkwellElement } from "../../editor/slate/types";
+import { generateId } from "../../editor/slate/with-node-id";
+import type { InkwellPlugin } from "../../types";
+
+export interface AttachmentsPluginOptions {
+  /**
+   * Upload a single file and resolve to the public URL the renderer should
+   * point at. Rejection triggers `onError`.
+   */
+  onUpload: (file: File) => Promise<string>;
+  /**
+   * MIME-type filter. Supports exact matches (`image/png`) and wildcards
+   * (`image/*`). Files that don't match pass through untouched.
+   */
+  accept?: string;
+  /**
+   * Placeholder alt text shown on the inserted image element while the
+   * upload is in flight. Receives the file so callers can customize per
+   * upload. Defaults to `"Uploading…"`.
+   */
+  uploadingPlaceholder?: (file: File) => string;
+  /**
+   * Called when `onUpload` rejects. The plugin removes the placeholder
+   * element before calling this.
+   */
+  onError?: (error: unknown, file: File) => void;
+}
+
+/**
+ * Handle a MIME pattern like `image/*` or `image/png`.
+ */
+function mimeMatches(mime: string, accept: string): boolean {
+  if (!mime) return false;
+  const patterns = accept
+    .split(",")
+    .map(p => p.trim())
+    .filter(Boolean);
+  return patterns.some(pattern => {
+    if (pattern.endsWith("/*")) {
+      const prefix = pattern.slice(0, -1);
+      return mime.startsWith(prefix);
+    }
+    return mime === pattern;
+  });
+}
+
+function extractFiles(data: DataTransfer): File[] {
+  if (data.files && data.files.length > 0) return Array.from(data.files);
+  if (!data.items) return [];
+  const files: File[] = [];
+  for (const item of Array.from(data.items)) {
+    if (item.kind !== "file") continue;
+    const file = item.getAsFile();
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+/**
+ * Intercepts file paste/drop, uploads via `onUpload`, and inserts an image
+ * element. The image is inserted immediately with placeholder alt text and
+ * its URL is patched in once the upload resolves.
+ */
+export function createAttachmentsPlugin(
+  options: AttachmentsPluginOptions,
+): InkwellPlugin {
+  const { onUpload, accept, onError, uploadingPlaceholder } = options;
+
+  return {
+    name: "attachments",
+    render: () => null,
+    setup(editor) {
+      const { insertData } = editor;
+      editor.insertData = (data: DataTransfer) => {
+        const files = extractFiles(data);
+        const matching = accept
+          ? files.filter(f => mimeMatches(f.type, accept))
+          : files;
+        if (matching.length === 0) return insertData(data);
+
+        for (const file of matching) {
+          const id = generateId();
+          const placeholder = uploadingPlaceholder?.(file) ?? "Uploading…";
+          const imageEl: InkwellElement = {
+            type: "image",
+            id,
+            url: "",
+            alt: placeholder,
+            children: [{ text: "" }],
+          };
+          Transforms.insertNodes(editor, imageEl);
+
+          Promise.resolve()
+            .then(() => onUpload(file))
+            .then(url => {
+              for (const [node, path] of Node.nodes(editor)) {
+                const el = node as InkwellElement;
+                if (el.id === id && el.type === "image") {
+                  Transforms.setNodes(
+                    editor,
+                    { url, alt: file.name } as Partial<InkwellElement>,
+                    {
+                      at: path,
+                      match: n => (n as InkwellElement).id === id,
+                    },
+                  );
+                  break;
+                }
+              }
+            })
+            .catch(err => {
+              for (const [node, path] of Node.nodes(editor)) {
+                const el = node as InkwellElement;
+                if (el.id === id && el.type === "image") {
+                  Transforms.removeNodes(editor, { at: path });
+                  break;
+                }
+              }
+              onError?.(err, file);
+            });
+        }
+      };
+      return () => {
+        editor.insertData = insertData;
+      };
+    },
+  };
+}

@@ -1,10 +1,14 @@
 import {
   type CollaborationConfig,
+  createAttachmentsPlugin,
+  createMentionsPlugin,
   createSnippetsPlugin,
   deserialize,
   InkwellEditor,
   type InkwellPlugin,
   InkwellRenderer,
+  type MentionItem,
+  type MentionRenderer,
 } from "@railway/inkwell";
 import { slateNodesToInsertDelta } from "@slate-yjs/core";
 import {
@@ -18,6 +22,44 @@ import {
 } from "react";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
+
+const CHARACTER_LIMIT = 2000;
+
+const DEMO_USERS: MentionItem[] = [
+  { id: "alice", title: "Alice Anderson" },
+  { id: "bob", title: "Bob Brown" },
+  { id: "carol", title: "Carol Chen" },
+  { id: "dave", title: "Dave Davies" },
+  { id: "eve", title: "Eve Edwards" },
+];
+
+const MENTION_RENDERERS: MentionRenderer[] = [
+  {
+    pattern: /@user\[([a-z]+)\]/g,
+    resolve: match => {
+      const id = match[1];
+      const user = DEMO_USERS.find(u => u.id === id);
+      return (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "0 0.45rem",
+            background: "hsla(270, 60%, 52%, 0.18)",
+            color: "hsl(270, 70%, 92%)",
+            border: "1px solid hsla(270, 60%, 52%, 0.4)",
+            borderRadius: "9999px",
+            fontWeight: 500,
+            fontSize: "0.92em",
+            lineHeight: 1.6,
+          }}
+        >
+          @{user?.title ?? id}
+        </span>
+      );
+    },
+  },
+];
 
 const DEMO_SNIPPETS = [
   {
@@ -75,6 +117,60 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
       </>
     ),
     create: () => createSnippetsPlugin({ snippets: DEMO_SNIPPETS }),
+  },
+  {
+    id: "mentions",
+    label: "Mentions",
+    summary:
+      "Searchable user picker. Inserts a `@user[<id>]` marker that renders as a chip in the rendered output.",
+    usage: (
+      <>
+        Press <Kbd>@</Kbd> to open the picker. Type to filter, <Kbd>↑</Kbd>/
+        <Kbd>↓</Kbd> to navigate, <Kbd>Enter</Kbd> to insert. Switch to{" "}
+        <strong>Render</strong> to see the marker hydrate into a styled chip.
+      </>
+    ),
+    create: () =>
+      createMentionsPlugin<MentionItem>({
+        name: "mentions",
+        trigger: "@",
+        marker: "user",
+        search: query =>
+          DEMO_USERS.filter(u =>
+            u.title.toLowerCase().includes(query.toLowerCase()),
+          ),
+        renderItem: (item, active) => (
+          <div
+            style={{
+              padding: "0.4rem 0.6rem",
+              fontSize: "0.78rem",
+              color: active ? "hsl(270, 70%, 95%)" : "hsl(270, 50%, 75%)",
+            }}
+          >
+            <strong>{item.title}</strong>{" "}
+            <span style={{ color: "hsl(270, 30%, 60%)" }}>@{item.id}</span>
+          </div>
+        ),
+        emptyMessage: "No matching users",
+      }),
+  },
+  {
+    id: "attachments",
+    label: "Attachments",
+    summary:
+      "Paste or drop image files into the editor. The plugin uploads each file via your `onUpload` and inserts a block image.",
+    usage: (
+      <>
+        Drop or paste an image. The demo uses a temporary blob URL — wire up{" "}
+        <code>onUpload</code> to your storage in production.
+      </>
+    ),
+    create: () =>
+      createAttachmentsPlugin({
+        accept: "image/*",
+        onUpload: async file => URL.createObjectURL(file),
+        onError: (err, file) => {},
+      }),
   },
 ];
 
@@ -356,8 +452,19 @@ Inkwell is a Markdown editor and renderer for React with an extensible plugin sy
 ## Features
 
 - Standard configurable _WYSIWYG_ features
+  - **Bold**, _italic_, ~~strike~~, \`code\`, links
 - Extensible **plugin system** with batteries included
 - **Real-time** collaboration via [Yjs](https://yjs.dev/)
+- Block images, ordered + nested lists, mentions, attachments
+
+## Try it out
+
+1. Type \`-\` or \`1.\` followed by space to start a list
+2. Indent with two leading spaces for nested items
+3. Press \`[\` for snippets, \`@\` to mention @user[alice]
+4. Drop or paste an image — the Attachments plugin will insert it
+
+![A keyboard at golden hour](https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&h=300&fit=crop)
 
 ## Example
 
@@ -603,6 +710,13 @@ export function Demo() {
     bubbleMenuEnabled,
   } = usePluginSelector();
 
+  const [characterCount, setCharacterCount] = useState(
+    () => INITIAL_MARKDOWN.length,
+  );
+  const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
+  const overLimit = characterCount > CHARACTER_LIMIT;
+  const [bottomTab, setBottomTab] = useState<"plugins" | "settings">("plugins");
+
   return (
     <ErrorBoundary>
       <div>
@@ -653,11 +767,18 @@ export function Demo() {
               placeholder="Start writing Markdown..."
               plugins={selectedPlugins}
               bubbleMenu={bubbleMenuEnabled}
+              characterLimit={CHARACTER_LIMIT}
+              enforceCharacterLimit={enforceCharacterLimit}
+              onCharacterCount={setCharacterCount}
             />
           )}
           {activeTab === "preview" && (
             <div style={{ padding: "1.5rem" }}>
-              <InkwellRenderer content={editorContent} copyButton />
+              <InkwellRenderer
+                content={editorContent}
+                copyButton
+                mentions={MENTION_RENDERERS}
+              />
             </div>
           )}
           {activeTab === "collab" && (
@@ -673,35 +794,217 @@ export function Demo() {
           )}
         </div>
 
-        <div
-          style={{
-            marginTop: "0.75rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            flexWrap: "wrap",
-          }}
-        >
-          <span
+        <div style={{ marginTop: "0.85rem" }}>
+          <div
+            role="tablist"
+            aria-label="Editor configuration"
             style={{
-              fontSize: "0.7rem",
-              color: "hsl(270, 30%, 50%)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontWeight: 500,
-              marginRight: "0.25rem",
+              display: "flex",
+              borderBottom: "1px solid hsl(270, 45%, 22%)",
+              marginBottom: "0.7rem",
             }}
           >
-            Plugins
-          </span>
-          {AVAILABLE_PLUGINS.map(plugin => (
-            <PluginChip
-              key={plugin.id}
-              plugin={plugin}
-              isOn={enabledPluginIds.has(plugin.id)}
-              onToggle={() => togglePlugin(plugin.id)}
-            />
-          ))}
+            {(
+              [
+                { id: "plugins", label: "Plugins" },
+                { id: "settings", label: "Settings" },
+              ] as const
+            ).map(({ id, label }) => {
+              const selected = bottomTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls={`bottom-tab-${id}`}
+                  onClick={() => setBottomTab(id)}
+                  style={{
+                    padding: "0.4rem 0",
+                    marginRight: "1.25rem",
+                    marginBottom: "-1px",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: "0.65rem",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    color: selected
+                      ? "hsl(270, 70%, 92%)"
+                      : "hsl(270, 28%, 48%)",
+                    borderBottom: selected
+                      ? "2px solid hsl(270, 60%, 52%)"
+                      : "2px solid transparent",
+                    transition: "color 0.15s ease",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {bottomTab === "plugins" && (
+            <div
+              id="bottom-tab-plugins"
+              role="tabpanel"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                flexWrap: "wrap",
+              }}
+            >
+              {AVAILABLE_PLUGINS.map(plugin => (
+                <PluginChip
+                  key={plugin.id}
+                  plugin={plugin}
+                  isOn={enabledPluginIds.has(plugin.id)}
+                  onToggle={() => togglePlugin(plugin.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {bottomTab === "settings" && (
+            <div id="bottom-tab-settings" role="tabpanel">
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  marginBottom: "0.65rem",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      color: "hsl(270, 70%, 92%)",
+                      fontWeight: 500,
+                      marginBottom: "0.2rem",
+                    }}
+                  >
+                    Character limit
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "0.7rem",
+                      lineHeight: 1.5,
+                      color: "hsl(270, 30%, 60%)",
+                      maxWidth: 480,
+                    }}
+                  >
+                    Tracks document length and reports it via{" "}
+                    <code
+                      style={{
+                        fontFamily:
+                          '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+                        fontSize: "0.78em",
+                        background: "hsla(270, 50%, 32%, 0.4)",
+                        padding: "0 0.3rem",
+                        borderRadius: 3,
+                        color: "hsl(270, 70%, 88%)",
+                      }}
+                    >
+                      onCharacterCount
+                    </code>
+                    . Toggle <strong>Enforce</strong> to clamp typing and pasted
+                    input at the limit.
+                  </div>
+                </div>
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.45rem",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={enforceCharacterLimit}
+                    onChange={e => setEnforceCharacterLimit(e.target.checked)}
+                    style={{
+                      accentColor: "hsl(270, 60%, 52%)",
+                      width: 14,
+                      height: 14,
+                      cursor: "pointer",
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: "0.65rem",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      color: enforceCharacterLimit
+                        ? "hsl(270, 70%, 88%)"
+                        : "hsl(270, 30%, 55%)",
+                    }}
+                  >
+                    Enforce
+                  </span>
+                </label>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.7rem",
+                }}
+              >
+                <div
+                  style={{
+                    flex: 1,
+                    position: "relative",
+                    height: 4,
+                    borderRadius: 9999,
+                    background: "hsl(270, 38%, 18%)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      bottom: 0,
+                      width: `${Math.min(
+                        100,
+                        (characterCount / CHARACTER_LIMIT) * 100,
+                      )}%`,
+                      background: overLimit
+                        ? "hsl(0, 75%, 60%)"
+                        : "linear-gradient(90deg, hsl(270, 60%, 52%), hsl(270, 70%, 70%))",
+                      transition: "width 0.18s ease, background 0.2s ease",
+                    }}
+                  />
+                </div>
+                <span
+                  aria-live="polite"
+                  style={{
+                    fontFamily:
+                      '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+                    fontSize: "0.72rem",
+                    fontVariantNumeric: "tabular-nums",
+                    color: overLimit
+                      ? "hsl(0, 75%, 72%)"
+                      : "hsl(270, 40%, 65%)",
+                    minWidth: "6.5rem",
+                    textAlign: "right",
+                  }}
+                >
+                  {characterCount} / {CHARACTER_LIMIT}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </ErrorBoundary>

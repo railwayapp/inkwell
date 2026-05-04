@@ -172,6 +172,43 @@ describe("deserialize", () => {
     expect(result.every(e => e.type === "list-item")).toBe(true);
   });
 
+  it("deserializes ordered list items", () => {
+    const result = deserialize("1. a\n2. b");
+    expect(result).toHaveLength(2);
+    expect(result.every(e => e.type === "list-item")).toBe(true);
+    expect(result[0].children[0].text).toBe("1. a");
+    expect(result[1].children[0].text).toBe("2. b");
+  });
+
+  it("deserializes nested bullet list items", () => {
+    const result = deserialize("- a\n  - b");
+    expect(result).toHaveLength(2);
+    expect(result.every(e => e.type === "list-item")).toBe(true);
+    expect(result[0].children[0].text).toBe("- a");
+    expect(result[1].children[0].text).toBe("  - b");
+  });
+
+  it("deserializes block images on their own line", () => {
+    const result = deserialize("![a cat](https://img/cat.png)");
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("image");
+    expect(result[0].alt).toBe("a cat");
+    expect(result[0].url).toBe("https://img/cat.png");
+    expect(result[0].children[0].text).toBe("");
+  });
+
+  it("leaves inline-mid-paragraph image syntax as paragraph text", () => {
+    const result = deserialize("see ![cat](x.png) here");
+    expect(result[0].type).toBe("paragraph");
+    expect(result[0].children[0].text).toBe("see ![cat](x.png) here");
+  });
+
+  it("treats image syntax as paragraph when images disabled", () => {
+    const result = deserialize("![a](b.png)", { images: false });
+    expect(result[0].type).toBe("paragraph");
+    expect(result[0].children[0].text).toBe("![a](b.png)");
+  });
+
   it("handles whitespace-only input", () => {
     const result = deserialize("   ");
     expect(result.length).toBeGreaterThan(0);

@@ -15,6 +15,14 @@ export function serialize(nodes: InkwellElement[]): string {
     const text = Node.string(node);
     const type = node.type;
 
+    // Images: reconstruct `![alt](url)` from node props.
+    if (type === "image") {
+      const url = node.url ?? "";
+      const alt = node.alt ?? "";
+      entries.push({ text: `![${alt}](${url})`, type });
+      continue;
+    }
+
     // Headings: re-add "#" prefix (stripped during deserialize).
     if (type === "heading") {
       const level = (node as InkwellElement & { level?: number }).level ?? 1;
@@ -51,7 +59,7 @@ export function serialize(nodes: InkwellElement[]): string {
   }
 
   // Join: consecutive code/blockquote/list elements use \n,
-  // everything else uses \n\n
+  // everything else uses \n\n.
   const codeTypes = new Set(["code-fence", "code-line"]);
   let result = "";
   for (let i = 0; i < entries.length; i++) {

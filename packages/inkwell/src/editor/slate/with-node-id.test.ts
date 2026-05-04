@@ -21,6 +21,7 @@ function createTestEditor(decorations?: InkwellDecorations) {
       lists: decorations?.lists ?? true,
       blockquotes: decorations?.blockquotes ?? true,
       codeBlocks: decorations?.codeBlocks ?? true,
+      images: decorations?.images ?? true,
     },
   };
   return withMarkdown(

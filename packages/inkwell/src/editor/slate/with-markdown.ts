@@ -5,6 +5,17 @@ import type { InkwellEditor, InkwellElement } from "./types";
 import { generateId } from "./with-node-id";
 
 const HEADING_RE = /^#{1,6}$/;
+/**
+ * Matches a line that has been typed up to — but not including — the trailing
+ * space that completes a list marker. E.g. `-`, `*`, `+`, `1.`, `  2.`
+ */
+const LIST_TRIGGER_RE = /^(\s*)(\d+\.|[-*+])$/;
+/**
+ * Matches the leading marker of a list-item element's text. Captures leading
+ * whitespace (indent), the marker itself, and includes the trailing space.
+ * E.g. `"  1. foo"` → match[1] = `"  "`, match[2] = `"1."`.
+ */
+const LIST_MARKER_RE = /^(\s*)(\d+\.|[-*+]) /;
 
 /**
  * Slate plugin that adds markdown-specific editor behaviors:
@@ -25,7 +36,12 @@ export function withMarkdown(
   editor: InkwellEditor,
   decorationsRef: { current: Required<InkwellDecorations> },
 ): InkwellEditor {
-  const { insertBreak, insertData, insertText } = editor;
+  const { insertBreak, insertData, insertText, isVoid } = editor;
+
+  editor.isVoid = (element: InkwellElement) => {
+    if (element.type === "image") return true;
+    return isVoid(element);
+  };
 
   editor.insertBreak = () => {
     const { selection } = editor;
@@ -147,18 +163,40 @@ export function withMarkdown(
       return;
     }
 
+    // Enter on image → insert paragraph after the image (void elements
+    // can't hold a cursor internally)
+    if (element.type === "image") {
+      const newParagraph: InkwellElement = {
+        type: "paragraph",
+        id: generateId(),
+        children: [{ text: "" }],
+      };
+      Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
+      Transforms.select(editor, Editor.start(editor, Path.next(path)));
+      return;
+    }
+
     // Enter on list-item
     if (element.type === "list-item") {
-      const text = Node.string(node);
-      // Empty list item (just the marker) → convert to paragraph
-      if (
-        text.trim() === "-" ||
-        text.trim() === "*" ||
-        text.trim() === "+" ||
-        text === "- " ||
-        text === "* " ||
-        text === "+ "
-      ) {
+      const markerMatch = LIST_MARKER_RE.exec(text);
+      const indent = markerMatch?.[1] ?? "";
+      const rawMarker = markerMatch?.[2] ?? "-";
+      const body = markerMatch ? text.slice(markerMatch[0].length) : "";
+
+      // Empty body → outdent by two spaces, or revert to paragraph at indent 0
+      if (!body.trim()) {
+        if (indent.length >= 2) {
+          const outdent = indent.slice(2);
+          const nextMarker = /^\d+\.$/.test(rawMarker) ? "1." : rawMarker;
+          Transforms.delete(editor, {
+            at: {
+              anchor: Editor.start(editor, path),
+              focus: Editor.end(editor, path),
+            },
+          });
+          editor.insertText(`${outdent}${nextMarker} `);
+          return;
+        }
         Transforms.delete(editor, {
           at: {
             anchor: Editor.start(editor, path),
@@ -170,12 +208,18 @@ export function withMarkdown(
         } as Partial<InkwellElement>);
         return;
       }
-      // Non-empty list item → insert new list item with same marker
-      const marker = text.match(/^([-*+] )/)?.[1] || "- ";
+
+      // Non-empty → insert new list item with the same marker.
+      // Ordered markers auto-increment (e.g. `1.` → `2.`).
+      let nextMarker = rawMarker;
+      const orderedMatch = /^(\d+)\.$/.exec(rawMarker);
+      if (orderedMatch) {
+        nextMarker = `${parseInt(orderedMatch[1], 10) + 1}.`;
+      }
       const newItem: InkwellElement = {
         type: "list-item",
         id: generateId(),
-        children: [{ text: marker }],
+        children: [{ text: `${indent}${nextMarker} ` }],
       };
       Transforms.insertNodes(editor, newItem, { at: Path.next(path) });
       Transforms.select(editor, Editor.end(editor, Path.next(path)));
@@ -303,14 +347,15 @@ export function withMarkdown(
       return;
     }
 
-    // Detect "- ", "* ", "+ " typed at start of paragraph → convert to list-item
+    // Detect list marker typed at start of paragraph (e.g. `-`, `*`, `+`,
+    // `1.`, or indented variants) followed by space → convert to list-item
     if (
       deco.lists &&
       element.type === "paragraph" &&
       text === " " &&
-      (currentText === "-" || currentText === "*" || currentText === "+")
+      LIST_TRIGGER_RE.test(currentText)
     ) {
-      // Insert the space first so the text becomes "- " / "* " / "+ "
+      // Insert the space first so the text becomes `<marker> `
       insertText(text);
       Transforms.setNodes(editor, {
         type: "list-item",

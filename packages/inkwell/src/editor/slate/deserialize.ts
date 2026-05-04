@@ -3,6 +3,8 @@ import type { InkwellElement } from "./types";
 import { generateId } from "./with-node-id";
 
 const HEADING_RE = /^(#{1,6}) /;
+const LIST_RE = /^(\s*)(\d+\.|[-*+]) /;
+const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
 
 /**
  * Deserialize a markdown string into Slate decorations.
@@ -34,6 +36,7 @@ export function deserialize(
     lists: decorations?.lists ?? true,
     blockquotes: decorations?.blockquotes ?? true,
     codeBlocks: decorations?.codeBlocks ?? true,
+    images: decorations?.images ?? true,
   };
 
   const lines = markdown.split("\n");
@@ -56,13 +59,22 @@ export function deserialize(
         continue;
       }
 
-      if (cfg.blockquotes && /^> /.test(line)) {
+      const imageMatch = cfg.images ? IMAGE_RE.exec(line) : null;
+      if (imageMatch) {
+        result.push({
+          type: "image",
+          id: generateId(),
+          alt: imageMatch[1],
+          url: imageMatch[2],
+          children: [{ text: "" }],
+        });
+      } else if (cfg.blockquotes && /^> /.test(line)) {
         result.push({
           type: "blockquote",
           id: generateId(),
           children: [{ text: line.slice(2) }],
         });
-      } else if (cfg.lists && /^[-*+] /.test(line)) {
+      } else if (cfg.lists && LIST_RE.test(line)) {
         result.push({
           type: "list-item",
           id: generateId(),

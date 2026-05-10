@@ -185,11 +185,11 @@ function Kbd({ children }: { children: ReactNode }) {
         fontSize: "0.75rem",
         fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
         fontWeight: 500,
-        color: "hsl(270, 80%, 96%)",
-        background: "hsla(270, 50%, 38%, 0.55)",
-        border: "1px solid hsl(270, 45%, 42%)",
+        color: "hsl(220, 12%, 94%)",
+        background: "hsl(220, 10%, 22%)",
+        border: "1px solid hsl(220, 10%, 32%)",
         borderRadius: "4px",
-        boxShadow: "inset 0 -1px 0 hsla(0, 0%, 0%, 0.3)",
+        boxShadow: "inset 0 -1px 0 hsla(0, 0%, 0%, 0.35)",
         lineHeight: 1.3,
       }}
     >
@@ -206,19 +206,20 @@ const DEFAULT_ENABLED = new Set(AVAILABLE_PLUGINS.map(p => p.id));
 /* configuration card reads as a single coherent system.               */
 /* ------------------------------------------------------------------ */
 
+// Neutral dark/gray palette for the configuration modal. Kept separate
+// from the editor's purple theme so the modal reads as a calm
+// system-style surface rather than competing with the page.
 const SURFACE = {
-  border: "hsl(270, 35%, 26%)",
-  borderStrong: "hsl(270, 60%, 58%)",
-  bg: "hsl(270, 38%, 10%)",
-  bgSoft: "hsla(270, 40%, 16%, 0.7)",
-  bgHint: "hsla(270, 40%, 18%, 0.45)",
-  // Higher contrast palette for readability against the dark purple
-  // surface. Body text now hits >7:1 contrast; hints stay around 5:1.
-  textHi: "hsl(270, 80%, 97%)",
-  text: "hsl(270, 30%, 90%)",
-  textDim: "hsl(270, 20%, 75%)",
-  textVeryDim: "hsl(270, 18%, 62%)",
-  accentSoft: "hsla(270, 60%, 52%, 0.22)",
+  border: "hsl(220, 8%, 22%)",
+  borderStrong: "hsl(220, 8%, 36%)",
+  bg: "hsl(220, 10%, 10%)",
+  bgSoft: "hsla(220, 10%, 16%, 0.7)",
+  bgHint: "hsla(220, 10%, 18%, 0.6)",
+  textHi: "hsl(220, 12%, 96%)",
+  text: "hsl(220, 10%, 88%)",
+  textDim: "hsl(220, 8%, 72%)",
+  textVeryDim: "hsl(220, 6%, 56%)",
+  accentSoft: "hsla(220, 10%, 26%, 0.6)",
 };
 
 function Switch({
@@ -244,7 +245,7 @@ function Switch({
         flexShrink: 0,
         borderRadius: 9999,
         border: `1px solid ${on ? SURFACE.borderStrong : SURFACE.border}`,
-        background: on ? "hsla(270, 60%, 52%, 0.35)" : SURFACE.bgSoft,
+        background: on ? "hsl(220, 10%, 38%)" : SURFACE.bgSoft,
         cursor: "pointer",
         padding: 0,
         transition: "background 0.18s ease, border-color 0.18s ease",
@@ -259,8 +260,8 @@ function Switch({
           width: 13,
           height: 13,
           borderRadius: "50%",
-          background: on ? "hsl(270, 70%, 88%)" : "hsl(270, 30%, 55%)",
-          boxShadow: on ? "0 0 6px hsla(270, 70%, 75%, 0.7)" : "none",
+          background: on ? "hsl(220, 12%, 96%)" : "hsl(220, 8%, 50%)",
+          boxShadow: "none",
           transition: "left 0.18s ease, background 0.18s ease",
         }}
       />
@@ -310,7 +311,7 @@ function Segmented<T extends string>({
               color: selected ? SURFACE.textHi : SURFACE.textDim,
               background: selected ? SURFACE.accentSoft : "transparent",
               boxShadow: selected
-                ? "inset 0 0 0 1px hsla(270, 60%, 52%, 0.45)"
+                ? `inset 0 0 0 1px ${SURFACE.borderStrong}`
                 : "none",
               transition: "all 0.15s ease",
             }}
@@ -428,7 +429,7 @@ function Modal({
         position: "fixed",
         inset: 0,
         zIndex: 1000,
-        background: "hsla(270, 35%, 6%, 0.72)",
+        background: "hsla(220, 12%, 5%, 0.72)",
         backdropFilter: "blur(4px)",
         display: "flex",
         alignItems: "center",
@@ -451,7 +452,7 @@ function Modal({
           border: `1px solid ${SURFACE.border}`,
           background: SURFACE.bg,
           boxShadow:
-            "0 24px 60px -12px hsla(0, 0%, 0%, 0.6), 0 0 0 1px hsla(270, 60%, 52%, 0.08)",
+            "0 24px 60px -12px hsla(0, 0%, 0%, 0.6), 0 0 0 1px hsla(220, 10%, 60%, 0.05)",
         }}
       >
         <div
@@ -1159,7 +1160,7 @@ export function Demo() {
                     fontFamily:
                       '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
                     fontSize: "0.78em",
-                    background: "hsla(270, 50%, 32%, 0.4)",
+                    background: "hsl(220, 10%, 22%)",
                     padding: "0 0.3rem",
                     borderRadius: 3,
                     color: SURFACE.textHi,
@@ -1193,7 +1194,7 @@ export function Demo() {
                     fontFamily:
                       '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
                     fontSize: "0.78em",
-                    background: "hsla(270, 50%, 32%, 0.4)",
+                    background: "hsl(220, 10%, 22%)",
                     padding: "0 0.3rem",
                     borderRadius: 3,
                     color: SURFACE.textHi,
@@ -1246,7 +1247,7 @@ export function Demo() {
                 position: "relative",
                 height: 4,
                 borderRadius: 9999,
-                background: "hsl(270, 38%, 18%)",
+                background: "hsl(220, 10%, 22%)",
                 overflow: "hidden",
               }}
             >
@@ -1261,7 +1262,7 @@ export function Demo() {
                   )}%`,
                   background: overLimit
                     ? "hsl(0, 75%, 60%)"
-                    : "linear-gradient(90deg, hsl(270, 60%, 52%), hsl(270, 70%, 70%))",
+                    : "linear-gradient(90deg, hsl(220, 10%, 55%), hsl(220, 12%, 75%))",
                   transition: "width 0.18s ease, background 0.2s ease",
                 }}
               />

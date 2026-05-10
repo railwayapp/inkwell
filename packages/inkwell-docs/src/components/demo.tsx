@@ -181,13 +181,13 @@ function Kbd({ children }: { children: ReactNode }) {
     <kbd
       style={{
         display: "inline-block",
-        padding: "0.05rem 0.35rem",
-        fontSize: "0.68rem",
+        padding: "0.1rem 0.4rem",
+        fontSize: "0.75rem",
         fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
         fontWeight: 500,
-        color: "hsl(270, 70%, 92%)",
-        background: "hsla(270, 50%, 32%, 0.6)",
-        border: "1px solid hsl(270, 45%, 32%)",
+        color: "hsl(270, 80%, 96%)",
+        background: "hsla(270, 50%, 38%, 0.55)",
+        border: "1px solid hsl(270, 45%, 42%)",
         borderRadius: "4px",
         boxShadow: "inset 0 -1px 0 hsla(0, 0%, 0%, 0.3)",
         lineHeight: 1.3,
@@ -207,15 +207,18 @@ const DEFAULT_ENABLED = new Set(AVAILABLE_PLUGINS.map(p => p.id));
 /* ------------------------------------------------------------------ */
 
 const SURFACE = {
-  border: "hsl(270, 45%, 22%)",
-  borderStrong: "hsl(270, 60%, 52%)",
+  border: "hsl(270, 35%, 26%)",
+  borderStrong: "hsl(270, 60%, 58%)",
   bg: "hsl(270, 38%, 10%)",
-  bgSoft: "hsla(270, 40%, 14%, 0.6)",
-  textHi: "hsl(270, 70%, 95%)",
-  text: "hsl(270, 60%, 82%)",
-  textDim: "hsl(270, 30%, 58%)",
-  textVeryDim: "hsl(270, 28%, 45%)",
-  accentSoft: "hsla(270, 60%, 52%, 0.18)",
+  bgSoft: "hsla(270, 40%, 16%, 0.7)",
+  bgHint: "hsla(270, 40%, 18%, 0.45)",
+  // Higher contrast palette for readability against the dark purple
+  // surface. Body text now hits >7:1 contrast; hints stay around 5:1.
+  textHi: "hsl(270, 80%, 97%)",
+  text: "hsl(270, 30%, 90%)",
+  textDim: "hsl(270, 20%, 75%)",
+  textVeryDim: "hsl(270, 18%, 62%)",
+  accentSoft: "hsla(270, 60%, 52%, 0.22)",
 };
 
 function Switch({
@@ -441,8 +444,8 @@ function Modal({
         onClick={e => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: 560,
-          maxHeight: "min(720px, 90vh)",
+          maxWidth: 600,
+          maxHeight: "min(760px, 90vh)",
           overflowY: "auto",
           borderRadius: 12,
           border: `1px solid ${SURFACE.border}`,
@@ -456,15 +459,16 @@ function Modal({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "0.9rem 1rem",
+            padding: "1rem 1.25rem",
             borderBottom: `1px solid ${SURFACE.border}`,
           }}
         >
           <div
             style={{
-              fontSize: "0.85rem",
+              fontSize: "1rem",
               fontWeight: 600,
               color: SURFACE.textHi,
+              letterSpacing: "-0.005em",
             }}
           >
             {title}
@@ -499,12 +503,12 @@ function SectionHeader({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
-        fontSize: "0.62rem",
+        fontSize: "0.72rem",
         fontWeight: 700,
         textTransform: "uppercase",
-        letterSpacing: "0.12em",
-        color: SURFACE.textVeryDim,
-        padding: "0.85rem 1rem 0.45rem",
+        letterSpacing: "0.14em",
+        color: SURFACE.textDim,
+        padding: "1.1rem 1.25rem 0.5rem",
       }}
     >
       {children}
@@ -515,10 +519,13 @@ function SectionHeader({ children }: { children: ReactNode }) {
 function Row({
   title,
   description,
+  hint,
   control,
 }: {
   title: ReactNode;
   description?: ReactNode;
+  /** Optional extra usage hint shown indented under the description. */
+  hint?: ReactNode | null;
   control: ReactNode;
 }) {
   return (
@@ -526,19 +533,20 @@ function Row({
       style={{
         display: "grid",
         gridTemplateColumns: "1fr auto",
-        gap: "1rem",
-        alignItems: "center",
-        padding: "0.7rem 1rem",
+        gap: "1.25rem",
+        alignItems: "start",
+        padding: "0.95rem 1.25rem",
         borderTop: `1px solid ${SURFACE.border}`,
       }}
     >
       <div style={{ minWidth: 0 }}>
         <div
           style={{
-            fontSize: "0.82rem",
-            fontWeight: 500,
+            fontSize: "0.95rem",
+            fontWeight: 600,
             color: SURFACE.textHi,
-            marginBottom: description ? "0.18rem" : 0,
+            marginBottom: description ? "0.3rem" : 0,
+            lineHeight: 1.4,
           }}
         >
           {title}
@@ -546,16 +554,32 @@ function Row({
         {description && (
           <div
             style={{
-              fontSize: "0.72rem",
-              lineHeight: 1.5,
-              color: SURFACE.textDim,
+              fontSize: "0.85rem",
+              lineHeight: 1.6,
+              color: SURFACE.text,
             }}
           >
             {description}
           </div>
         )}
+        {hint && (
+          <div
+            style={{
+              marginTop: "0.55rem",
+              padding: "0.5rem 0.7rem",
+              fontSize: "0.8rem",
+              lineHeight: 1.6,
+              color: SURFACE.textDim,
+              background: SURFACE.bgHint,
+              borderRadius: 6,
+              borderLeft: `2px solid ${SURFACE.border}`,
+            }}
+          >
+            {hint}
+          </div>
+        )}
       </div>
-      <div style={{ flexShrink: 0 }}>{control}</div>
+      <div style={{ flexShrink: 0, paddingTop: "0.15rem" }}>{control}</div>
     </div>
   );
 }
@@ -1107,20 +1131,10 @@ export function Demo() {
               <Row
                 key={plugin.id}
                 title={plugin.label}
-                description={
-                  <>
-                    <span>{plugin.summary}</span>
-                    <span
-                      style={{
-                        display: "block",
-                        marginTop: "0.3rem",
-                        color: SURFACE.textVeryDim,
-                      }}
-                    >
-                      {plugin.usage}
-                    </span>
-                  </>
-                }
+                description={plugin.summary}
+                // Only show the verbose usage hint when the plugin is on,
+                // so the modal stays scannable when scrolling through it.
+                hint={isOn ? plugin.usage : null}
                 control={
                   <Switch
                     on={isOn}

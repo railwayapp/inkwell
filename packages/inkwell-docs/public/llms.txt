@@ -10,7 +10,7 @@ Inkwell gives you a visual editing experience where the underlying data is alway
 ## Docs
 
 - [Getting Started](/docs/quickstart): Installation and basic usage
-- [Editor](/docs/editor): Editor component, formatting, and props reference
+- [Editor](/docs/editor): Hook API, formatting, and options reference
 - [Renderer](/docs/renderer): Rendering Markdown as React elements
 - [Plugins](/docs/editor-plugins): Built-in and custom editor plugins
 - [Collaboration](/docs/collaboration): Real-time multi-user editing via Yjs
@@ -26,29 +26,56 @@ npm install @railway/inkwell
 
 ## Editor
 
-`InkwellEditor` is a controlled React component. Pass it a Markdown string and an `onChange` handler.
+`useInkwell` is the recommended editor API. Give it a Markdown string and an `onChange` handler, render the returned `EditorInstance`, and use the grouped `editor` controller for imperative actions.
 
 ```tsx
-import { InkwellEditor } from "@railway/inkwell";
+import { useInkwell } from "@railway/inkwell";
 import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello **world**");
-  return <InkwellEditor content={content} onChange={setContent} />;
+  const { state, EditorInstance, editor } = useInkwell({ content, onChange: setContent });
+
+  return (
+    <>
+      <EditorInstance />
+      <button onClick={() => editor.focus({ at: "end" })}>Focus</button>
+      <p>{state.characterCount} characters</p>
+    </>
+  );
 }
 ```
 
-### Editor Props
+Most applications should use `useInkwell`. The lower-level `InkwellEditor` component is exported for custom abstractions and integrations that need to own component rendering directly. Prefer the hook unless you have a specific reason not to use it.
+
+### Editor Options
 
 - `content: string` — Markdown string. Drives the editor unless collaboration is enabled.
 - `onChange?: (markdown: string) => void` — Called on every document change with the updated Markdown.
+- `onStateChange?: (state: InkwellEditorState) => void` — Called with `{ markdown, text, isEmpty, isFocused, isEditable, characterCount, characterLimit, overLimit }` when editor state changes.
 - `placeholder?: string` — Text shown when the editor is empty.
 - `className?: string` — CSS class applied to the outer wrapper element.
+- `editable?: boolean` (default: `true`) — Whether users can edit the document.
 - `decorations?: InkwellDecorations` — Controls which block-level formatting the editor recognizes. All enabled by default.
 - `plugins?: InkwellPlugin[]` — Additional plugins to load.
 - `bubbleMenu?: boolean` (default: `true`) — Whether to include the built-in floating toolbar.
 - `collaboration?: CollaborationConfig` — Enable real-time collaborative editing via Yjs.
 - `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for code block highlighting.
+- `characterLimit?: number` — Tracks character count and adds `inkwell-editor-over-limit` when exceeded.
+- `enforceCharacterLimit?: boolean` (default: `false`) — Blocks text input past `characterLimit`.
+- `onCharacterCount?: (count: number, limit?: number) => void` — Called when character count changes.
+
+### Editor Controller
+
+`useInkwell` returns `editor`. If you are building a custom abstraction around the low-level `InkwellEditor` component, its `ref={useRef<InkwellEditorHandle>(null)}` exposes the same methods:
+
+- `getMarkdown(): string`
+- `getText(): string`
+- `getState(): InkwellEditorState`
+- `focus(options?: { at?: "start" | "end" }): void`
+- `clear(options?: { emitChange?: boolean; select?: "start" | "end" | "preserve" }): void`
+- `setMarkdown(markdown: string, options?: { emitChange?: boolean; select?: "start" | "end" | "preserve" }): void`
+- `insertMarkdown(markdown: string): void`
 
 ### Formatting
 
@@ -76,11 +103,13 @@ Keyboard shortcuts:
 Use the `decorations` prop to disable specific block-level formatting:
 
 ```tsx
-<InkwellEditor
-  content={content}
-  onChange={setContent}
-  decorations={{ codeBlocks: false, heading4: false, heading5: false, heading6: false }}
-/>
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  decorations: { codeBlocks: false, heading4: false, heading5: false, heading6: false },
+});
+
+return <EditorInstance />;
 ```
 
 ```tsx
@@ -110,11 +139,13 @@ Swap the highlighter via `rehypePlugins`:
 ```tsx
 import rehypeShiki from "@shikijs/rehype";
 
-<InkwellEditor
-  content={content}
-  onChange={setContent}
-  rehypePlugins={[[rehypeShiki, { theme: "github-dark" }]]}
-/>
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  rehypePlugins: [[rehypeShiki, { theme: "github-dark" }]],
+});
+
+return <EditorInstance />;
 ```
 
 ## Renderer
@@ -207,6 +238,7 @@ Customize items:
 import {
   createBubbleMenuPlugin,
   defaultBubbleMenuItems,
+  useInkwell,
 } from "@railway/inkwell";
 
 const customBubbleMenu = createBubbleMenuPlugin({
@@ -223,12 +255,14 @@ const customBubbleMenu = createBubbleMenuPlugin({
   ],
 });
 
-<InkwellEditor
-  content={content}
-  onChange={setContent}
-  bubbleMenu={false}
-  plugins={[customBubbleMenu]}
-/>
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  bubbleMenu: false,
+  plugins: [customBubbleMenu],
+});
+
+return <EditorInstance />;
 ```
 
 Bubble menu item shape:
@@ -247,7 +281,7 @@ interface BubbleMenuItem {
 Searchable picker for inserting Markdown templates:
 
 ```tsx
-import { createSnippetsPlugin } from "@railway/inkwell";
+import { createSnippetsPlugin, useInkwell } from "@railway/inkwell";
 
 const snippets = createSnippetsPlugin({
   snippets: [
@@ -257,7 +291,13 @@ const snippets = createSnippetsPlugin({
   key: "[", // trigger key (default)
 });
 
-<InkwellEditor content={content} onChange={setContent} plugins={[snippets]} />
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  plugins: [snippets],
+});
+
+return <EditorInstance />;
 ```
 
 Snippet shape:
@@ -329,7 +369,7 @@ Features:
 
 ```tsx
 import * as Y from "yjs";
-import { InkwellEditor } from "@railway/inkwell";
+import { useInkwell } from "@railway/inkwell";
 import { WebsocketProvider } from "y-websocket";
 
 const doc = new Y.Doc();
@@ -337,17 +377,17 @@ const sharedType = doc.get("content", Y.XmlText);
 const provider = new WebsocketProvider("wss://your-server.com", "room-id", doc);
 
 function CollabEditor() {
-  return (
-    <InkwellEditor
-      content=""
-      collaboration={{
-        sharedType,
-        awareness: provider.awareness,
-        user: { name: "Alice", color: "#e06c75" },
-      }}
-      onChange={(md) => saveToDatabase(md)}
-    />
-  );
+  const { EditorInstance } = useInkwell({
+    content: "",
+    collaboration: {
+      sharedType,
+      awareness: provider.awareness,
+      user: { name: "Alice", color: "#e06c75" },
+    },
+    onChange: (md) => saveToDatabase(md),
+  });
+
+  return <EditorInstance />;
 }
 ```
 
@@ -425,12 +465,17 @@ Snippets:
 
 All public exports from `@railway/inkwell`:
 
+Hooks:
+- `useInkwell`
+
 Components:
 - `InkwellEditor`
 - `InkwellRenderer`
 
 Plugin creators:
+- `createAttachmentsPlugin`
 - `createBubbleMenuPlugin`
+- `createMentionsPlugin`
 - `createSnippetsPlugin`
 
 Plugin utilities:
@@ -443,7 +488,14 @@ Serialization:
 - `deserialize(markdown: string, decorations?): InkwellElement[]`
 
 Types:
+- `UseInkwellOptions`
+- `UseInkwellResult`
+- `InkwellEditorController`
+- `InkwellEditorFocusOptions`
+- `InkwellEditorHandle`
 - `InkwellEditorProps`
+- `InkwellEditorState`
+- `InkwellSetMarkdownOptions`
 - `InkwellRendererProps`
 - `InkwellPlugin`
 - `InkwellDecorations`

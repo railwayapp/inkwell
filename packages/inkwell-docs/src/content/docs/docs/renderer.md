@@ -11,7 +11,7 @@ React environment including server-side rendering.
 ```tsx
 import { InkwellRenderer } from "@railway/inkwell";
 
-<InkwellRenderer content="# Hello **world**" />
+<InkwellRenderer content="# Hello **world**" />;
 ```
 
 The renderer supports the full CommonMark spec plus GitHub Flavored
@@ -68,11 +68,11 @@ import rehypeShiki from "@shikijs/rehype";
 <InkwellRenderer
   content={content}
   rehypePlugins={[[rehypeShiki, { theme: "github-dark" }]]}
-/>
+/>;
 ```
 
-The same `rehypePlugins` prop is available on
-[`InkwellEditor`](/docs/editor#syntax-highlighting).
+The same `rehypePlugins` option is available in
+[`useInkwell`](/docs/editor#syntax-highlighting).
 
 ## Props reference
 

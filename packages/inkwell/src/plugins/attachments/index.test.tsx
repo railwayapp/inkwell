@@ -41,6 +41,14 @@ function mockDataTransfer(files: File[]): DataTransfer {
   } as unknown as DataTransfer;
 }
 
+function mockHtmlDataTransfer(html: string): DataTransfer {
+  return {
+    files: [] as unknown as FileList,
+    items: [] as unknown as DataTransferItemList,
+    getData: (type: string) => (type === "text/html" ? html : ""),
+  } as unknown as DataTransfer;
+}
+
 describe("createAttachmentsPlugin", () => {
   it("returns a plugin with a setup hook", () => {
     const plugin = createAttachmentsPlugin({
@@ -152,6 +160,34 @@ describe("createAttachmentsPlugin", () => {
     ).toBe(true);
     for (let i = 0; i < 5; i++) await Promise.resolve();
     expect(onUpload).toHaveBeenCalledTimes(1);
+  });
+
+
+  it("inserts copied HTML images by URL", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onUpload = vi.fn(async () => "https://cdn/unused.png");
+    const plugin = createAttachmentsPlugin({
+      onUpload,
+      accept: "image/*",
+    });
+    plugin.setup?.(editor);
+
+    editor.insertData(
+      mockHtmlDataTransfer(
+        '<div><img src="https://example.com/cat.png" alt="cat"></div>',
+      ),
+    );
+
+    const images = (editor.children as InkwellElement[]).filter(
+      el => el.type === "image",
+    );
+    expect(images).toHaveLength(1);
+    expect(images[0].url).toBe("https://example.com/cat.png");
+    expect(images[0].alt).toBe("cat");
+    expect(onUpload).not.toHaveBeenCalled();
   });
 
   it("setup returns a cleanup that restores insertData", () => {

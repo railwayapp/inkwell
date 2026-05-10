@@ -16,7 +16,8 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
-    }
+    },
+    "./styles.css": "./src/styles.css"
   },
   "repository": {
     "type": "git",
@@ -24,7 +25,8 @@
     "directory": "packages/inkwell"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/styles.css"
   ],
   "scripts": {
     "build": "tsup",

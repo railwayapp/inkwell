@@ -2,26 +2,83 @@
 title: "Editor"
 ---
 
-`InkwellEditor` is a WYSIWYG Markdown editor. The content you see is
+Inkwell is a WYSIWYG Markdown editor for React. The content you see is
 visually formatted, but the underlying data is always a plain Markdown
 string.
 
 ## Usage
 
-The editor is a controlled React component. You own the state.
+The recommended API is `useInkwell`. Give it your Markdown string and an
+`onChange` handler, render the returned `EditorInstance`, and use the
+grouped `editor` controller when you need to inspect or manipulate the
+document.
 
 ```tsx
-import { InkwellEditor } from "@railway/inkwell";
+import { useInkwell } from "@railway/inkwell";
 import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello **world**");
-  return <InkwellEditor content={content} onChange={setContent} />;
+  const { state, EditorInstance, editor } = useInkwell({
+    content,
+    onChange: setContent,
+    placeholder: "Write something...",
+  });
+
+  return (
+    <>
+      <EditorInstance />
+      <p>{state.characterCount} characters</p>
+      <button onClick={() => editor.focus({ at: "end" })}>Focus editor</button>
+      <button onClick={() => editor.clear()}>Clear</button>
+    </>
+  );
 }
 ```
 
 `content` accepts any Markdown string. `onChange` fires on every edit with
 the updated Markdown.
+
+## Low-level component
+
+Most applications should use `useInkwell`. The lower-level `InkwellEditor`
+component is exported for custom abstractions and integrations that need to
+own component rendering directly. Prefer the hook unless you have a specific
+reason not to use it.
+
+```tsx
+import { InkwellEditor } from "@railway/inkwell";
+
+<InkwellEditor content={content} onChange={setContent} />;
+```
+
+## Editor controller
+
+The `editor` object returned by `useInkwell` exposes `getMarkdown()`,
+`getText()`, `getState()`, `focus()`, `clear()`, `setMarkdown()`, and
+`insertMarkdown()`.
+
+```tsx
+editor.getMarkdown();
+editor.getText();
+editor.getState();
+editor.focus({ at: "end" });
+editor.setMarkdown("Replacement", { emitChange: false });
+editor.insertMarkdown(" **more**");
+```
+
+If you are building a custom abstraction around the low-level component,
+the same methods are available through
+`ref={useRef<InkwellEditorHandle>(null)}` on `InkwellEditor`.
+
+## Hook return value
+
+`useInkwell(options)` returns:
+
+- `state` — the latest `InkwellEditorState` snapshot.
+- `EditorInstance` — a stable React component that renders the configured
+  editor. Render it once per hook call.
+- `editor` — the grouped controller for reading and manipulating content.
 
 ## Formatting
 
@@ -36,30 +93,30 @@ All formatting is enabled by default.
 
 Type these at the beginning of a line:
 
-| Pattern | Result |
-|---------|--------|
-| `# ` through `###### ` | Headings (h1–h6) |
-| `- `, `* `, or `+ ` | List items |
-| `> ` | Blockquotes |
-| ` ``` ` | Fenced code blocks |
+| Pattern                | Result             |
+| ---------------------- | ------------------ |
+| `# ` through `###### ` | Headings (h1–h6)   |
+| `- `, `* `, or `+ `    | List items         |
+| `> `                   | Blockquotes        |
+| ` ``` `                | Fenced code blocks |
 
 ### Inline formatting
 
 Wrap text with these markers anywhere in a line:
 
-| Syntax | Result |
-|--------|--------|
-| `**text**` | **Bold** |
-| `_text_` | _Italic_ |
-| `~~text~~` | ~~Strikethrough~~ |
-| `` `text` `` | `Inline code` |
+| Syntax       | Result            |
+| ------------ | ----------------- |
+| `**text**`   | **Bold**          |
+| `_text_`     | _Italic_          |
+| `~~text~~`   | ~~Strikethrough~~ |
+| `` `text` `` | `Inline code`     |
 
 ### Keyboard shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `⌘B` / `Ctrl+B` | Toggle bold |
-| `⌘I` / `Ctrl+I` | Toggle italic |
+| Shortcut        | Action               |
+| --------------- | -------------------- |
+| `⌘B` / `Ctrl+B` | Toggle bold          |
+| `⌘I` / `Ctrl+I` | Toggle italic        |
 | `⌘D` / `Ctrl+D` | Toggle strikethrough |
 
 These shortcuts come from the built-in
@@ -68,24 +125,31 @@ or disable them.
 
 ## Disabling formatting
 
-Use the `decorations` prop to turn off specific block-level formatting.
+Use the `decorations` option to turn off specific block-level formatting.
 All decorations are enabled by default — you only need this prop to
 disable something.
 
 ```tsx
-<InkwellEditor
-  content={content}
-  onChange={setContent}
-  decorations={{ codeBlocks: false, heading4: false, heading5: false, heading6: false }}
-/>
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  decorations: {
+    codeBlocks: false,
+    heading4: false,
+    heading5: false,
+    heading6: false,
+  },
+});
+
+return <EditorInstance />;
 ```
 
-| Decoration | Default | Controls |
-|------------|---------|----------|
-| `heading1` – `heading6` | `true` | Individual heading levels |
-| `lists` | `true` | Unordered list items (`-`, `*`, `+`) |
-| `blockquotes` | `true` | Blockquotes (`>`) |
-| `codeBlocks` | `true` | Fenced code blocks (` ``` `) |
+| Decoration              | Default | Controls                             |
+| ----------------------- | ------- | ------------------------------------ |
+| `heading1` – `heading6` | `true`  | Individual heading levels            |
+| `lists`                 | `true`  | Unordered list items (`-`, `*`, `+`) |
+| `blockquotes`           | `true`  | Blockquotes (`>`)                    |
+| `codeBlocks`            | `true`  | Fenced code blocks (` ``` `)         |
 
 When a decoration is disabled, its syntax is treated as plain text with
 no visual formatting.
@@ -100,20 +164,22 @@ CSS theme for colors to appear:
 import "highlight.js/styles/github-dark.css";
 ```
 
-To use a different highlighter, pass it through the `rehypePlugins` prop:
+To use a different highlighter, pass it through the `rehypePlugins` option:
 
 ```tsx
-import { InkwellEditor } from "@railway/inkwell";
+import { useInkwell } from "@railway/inkwell";
 import rehypeShiki from "@shikijs/rehype";
 
-<InkwellEditor
-  content={content}
-  onChange={setContent}
-  rehypePlugins={[[rehypeShiki, { theme: "github-dark" }]]}
-/>
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  rehypePlugins: [[rehypeShiki, { theme: "github-dark" }]],
+});
+
+return <EditorInstance />;
 ```
 
-The same `rehypePlugins` prop is available on
+The same `rehypePlugins` option is available on
 [`InkwellRenderer`](/docs/renderer).
 
 ## Bubble menu
@@ -124,13 +190,19 @@ and the toolbar appears with bold, italic, and strikethrough buttons.
 To disable it:
 
 ```tsx
-<InkwellEditor content={content} onChange={setContent} bubbleMenu={false} />
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  bubbleMenu: false,
+});
+
+return <EditorInstance />;
 ```
 
 To customize the toolbar items, see the
 [Plugins](/docs/editor-plugins#bubble-menu) guide.
 
-## Props reference
+## Options reference
 
 ### `content`
 
@@ -146,6 +218,15 @@ document — the Yjs shared type becomes the source of truth after that.
 
 Called on every document change with the updated Markdown string.
 
+### `onStateChange`
+
+**Type:** `(state: InkwellEditorState) => void`
+
+Called with a full state snapshot when content, focus, editability, or
+character count changes. The state includes `markdown`, `text`, `isEmpty`,
+`isFocused`, `isEditable`, `characterCount`, `characterLimit`, and
+`overLimit`.
+
 ### `placeholder`
 
 **Type:** `string`
@@ -157,6 +238,13 @@ Text shown when the editor is empty.
 **Type:** `string`
 
 CSS class applied to the outer wrapper element.
+
+### `editable`
+
+**Type:** `boolean` — default: `true`
+
+Whether users can edit the document. Pass `false` for read-only composer
+states.
 
 ### `decorations`
 
@@ -192,3 +280,22 @@ Enable real-time collaborative editing. See
 Custom rehype plugins for code block highlighting. Accepts a plugin
 function or a `[plugin, options]` tuple. See
 [Syntax highlighting](#syntax-highlighting).
+
+### `characterLimit`
+
+**Type:** `number`
+
+Tracks the current character count and adds `inkwell-editor-over-limit` to
+the wrapper when exceeded.
+
+### `enforceCharacterLimit`
+
+**Type:** `boolean` — default: `false`
+
+When `true`, blocks text input past `characterLimit`.
+
+### `onCharacterCount`
+
+**Type:** `(count: number, limit?: number) => void`
+
+Called whenever the editor recalculates character count.

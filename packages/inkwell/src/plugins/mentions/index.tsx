@@ -83,20 +83,57 @@ function MentionsPicker<T extends MentionItem>({
     [onSelect, options],
   );
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      switch (e.key) {
+  const handlePluginKey = useCallback(
+    (key: string) => {
+      switch (key) {
         case "ArrowDown":
-          e.preventDefault();
           setSelectedIndex(prev => (prev < results.length - 1 ? prev + 1 : 0));
           break;
         case "ArrowUp":
-          e.preventDefault();
           setSelectedIndex(prev => (prev > 0 ? prev - 1 : results.length - 1));
           break;
         case "Enter":
-          e.preventDefault();
           if (results[selectedIndex]) commit(results[selectedIndex]);
+          break;
+        case "Backspace":
+          setQuery(prev => prev.slice(0, -1));
+          break;
+        default:
+          if (key.length === 1) setQuery(prev => `${prev}${key}`);
+          break;
+      }
+    },
+    [results, selectedIndex, commit],
+  );
+
+  useEffect(() => {
+    const handleForwardedKey = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key: string }>;
+      handlePluginKey(customEvent.detail.key);
+    };
+
+    window.addEventListener(
+      `inkwell-plugin-keydown:${options.name}`,
+      handleForwardedKey,
+    );
+    return () => {
+      window.removeEventListener(
+        `inkwell-plugin-keydown:${options.name}`,
+        handleForwardedKey,
+      );
+    };
+  }, [handlePluginKey, options.name]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      e.stopPropagation();
+      switch (e.key) {
+        case "ArrowDown":
+        case "ArrowUp":
+        case "Enter":
+        case "Backspace":
+          e.preventDefault();
+          handlePluginKey(e.key);
           break;
         case "Escape":
           e.preventDefault();
@@ -104,7 +141,7 @@ function MentionsPicker<T extends MentionItem>({
           break;
       }
     },
-    [results, selectedIndex, commit, onDismiss],
+    [handlePluginKey, onDismiss],
   );
 
   return (
@@ -130,6 +167,7 @@ function MentionsPicker<T extends MentionItem>({
               className={`${cls("item")} ${
                 i === selectedIndex ? cls("item-active") : ""
               }`}
+              onMouseDown={e => e.preventDefault()}
               onMouseEnter={() => setSelectedIndex(i)}
               onClick={() => commit(item)}
             >
@@ -159,9 +197,8 @@ export function createMentionsPlugin<T extends MentionItem = MentionItem>(
           position: "absolute",
           top: props.position.top,
           left: props.position.left,
-          zIndex: 1001,
+          zIndex: 2147483647,
         }}
-        onMouseDown={e => e.preventDefault()}
       >
         <MentionsPicker options={options} {...props} />
       </div>

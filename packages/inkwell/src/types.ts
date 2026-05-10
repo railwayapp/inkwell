@@ -1,4 +1,5 @@
 import type {
+  ComponentType,
   JSX,
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
@@ -18,6 +19,56 @@ export type RehypePluginConfig =
 /**
  * Props for the InkwellEditor component.
  */
+export interface InkwellEditorState {
+  /** Current serialized markdown content. */
+  markdown: string;
+  /** Current Slate plain text content. */
+  text: string;
+  /** True when the editor has no non-whitespace text content. */
+  isEmpty: boolean;
+  /** True when the Slate editable is focused. */
+  isFocused: boolean;
+  /** True when user edits are enabled. */
+  isEditable: boolean;
+  /** Current plain text character count. */
+  characterCount: number;
+  /** Configured character limit, if any. */
+  characterLimit?: number;
+  /** True when characterCount exceeds characterLimit. */
+  overLimit: boolean;
+}
+
+export interface InkwellEditorFocusOptions {
+  /** Where to place the caret after focusing. Defaults to preserving selection. */
+  at?: "start" | "end";
+}
+
+export interface InkwellSetMarkdownOptions {
+  /** Whether to call `onChange` after replacing content. Defaults to true. */
+  emitChange?: boolean;
+  /** Where to place the caret after replacing content. Defaults to "start". */
+  select?: "start" | "end" | "preserve";
+}
+
+export interface InkwellEditorHandle {
+  /** Return the current serialized markdown content. */
+  getMarkdown: () => string;
+  /** Return the current Slate plain text content. */
+  getText: () => string;
+  /** Return a snapshot of current editor state. */
+  getState: () => InkwellEditorState;
+  /** Focus the editor and optionally move the caret. */
+  focus: (options?: InkwellEditorFocusOptions) => void;
+  /** Replace the document with an empty markdown document. */
+  clear: (options?: InkwellSetMarkdownOptions) => void;
+  /** Replace the current document from markdown. */
+  setMarkdown: (markdown: string, options?: InkwellSetMarkdownOptions) => void;
+  /** Insert markdown at the current selection. */
+  insertMarkdown: (markdown: string) => void;
+}
+
+export type InkwellEditorController = InkwellEditorHandle;
+
 export interface InkwellEditorProps {
   /**
    * Markdown content string
@@ -28,6 +79,10 @@ export interface InkwellEditorProps {
    */
   onChange?: (content: string) => void;
   /**
+   * Called with a full editor state snapshot whenever content, focus, or editability changes.
+   */
+  onStateChange?: (state: InkwellEditorState) => void;
+  /**
    * Additional CSS class for the wrapper element
    */
   className?: string;
@@ -35,6 +90,10 @@ export interface InkwellEditorProps {
    * Placeholder text shown when editor is empty
    */
   placeholder?: string;
+  /**
+   * Whether users can edit the document. Defaults to true.
+   */
+  editable?: boolean;
   /**
    * Editor plugins (bubble toolbar, snippets, custom)
    */
@@ -72,6 +131,17 @@ export interface InkwellEditorProps {
    * the configured limit (if any).
    */
   onCharacterCount?: (count: number, limit?: number) => void;
+}
+
+export type UseInkwellOptions = InkwellEditorProps;
+
+export interface UseInkwellResult {
+  /** Current editor state snapshot. */
+  state: InkwellEditorState;
+  /** Grouped editor controller for focus, content replacement, insertion, and inspection. */
+  editor: InkwellEditorController;
+  /** Stable component that renders the configured editor. Render once per hook call. */
+  EditorInstance: ComponentType;
 }
 
 /**

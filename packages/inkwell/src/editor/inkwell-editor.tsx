@@ -10,9 +10,10 @@ import {
 } from "@slate-yjs/core";
 import {
   Fragment,
-  type ReactNode,
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -31,8 +32,12 @@ import { Editable, ReactEditor, Slate, withReact } from "slate-react";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import type {
   InkwellDecorations,
+  InkwellEditorFocusOptions,
+  InkwellEditorHandle,
   InkwellEditorProps,
+  InkwellEditorState,
   InkwellPlugin,
+  InkwellSetMarkdownOptions,
 } from "../types";
 import { computeDecorations } from "./slate/decorations";
 import { deserialize } from "./slate/deserialize";
@@ -59,20 +64,28 @@ const DEFAULT_DECORATIONS: Required<InkwellDecorations> = {
   images: true,
 };
 
-export function InkwellEditor({
-  content,
-  onChange,
-  className,
-  placeholder,
-  plugins: userPlugins = [],
-  rehypePlugins,
-  decorations,
-  collaboration,
-  bubbleMenu = true,
-  characterLimit,
-  enforceCharacterLimit = false,
-  onCharacterCount,
-}: InkwellEditorProps): ReactNode {
+export const InkwellEditor = forwardRef<
+  InkwellEditorHandle,
+  InkwellEditorProps
+>(function InkwellEditor(
+  {
+    content,
+    onChange,
+    onStateChange,
+    className,
+    placeholder,
+    editable = true,
+    plugins: userPlugins = [],
+    rehypePlugins,
+    decorations,
+    collaboration,
+    bubbleMenu = true,
+    characterLimit,
+    enforceCharacterLimit = false,
+    onCharacterCount,
+  },
+  ref,
+) {
   const resolvedDecorations = useMemo(
     () => ({ ...DEFAULT_DECORATIONS, ...decorations }),
     [decorations],
@@ -216,6 +229,79 @@ export function InkwellEditor({
 
   const lastContent = useRef<string>(content);
   const isInternalChange = useRef(false);
+  const [characterCount, setCharacterCount] = useState(() =>
+    initialValue.reduce((sum, n) => sum + Node.string(n).length, 0),
+  );
+  const [isFocused, setIsFocused] = useState(false);
+  const [stateVersion, setStateVersion] = useState(0);
+
+  const bumpStateVersion = useCallback(() => {
+    setStateVersion(version => version + 1);
+  }, []);
+
+  const updateCharacterCount = useCallback(() => {
+    const length = Node.string(editor).length;
+    setCharacterCount(length);
+    onCharacterCount?.(length, characterLimit);
+    return length;
+  }, [editor, onCharacterCount, characterLimit]);
+
+  const serializeMarkdown = useCallback(
+    () => serialize(editor.children as InkwellElement[]),
+    [editor],
+  );
+
+  const handleChange = useCallback(
+    (value: Descendant[]) => {
+      // Only serialize when the document actually changed
+      const isAstChange = editor.operations.some(
+        op => op.type !== "set_selection",
+      );
+      if (!isAstChange) return;
+
+      updateCharacterCount();
+      bumpStateVersion();
+
+      const md = serialize(value as InkwellElement[]);
+      if (collaboration) {
+        // In collab mode, always fire onChange (no echo prevention needed)
+        onChange?.(md);
+      } else {
+        // In standalone mode, prevent echo loops
+        if (md !== lastContent.current) {
+          lastContent.current = md;
+          isInternalChange.current = true;
+          onChange?.(md);
+        }
+      }
+    },
+    [bumpStateVersion, collaboration, editor, onChange, updateCharacterCount],
+  );
+
+  const overLimit =
+    characterLimit !== undefined && characterCount > characterLimit;
+
+  const getEditorState = useCallback((): InkwellEditorState => {
+    const text = Node.string(editor);
+    return {
+      markdown: serializeMarkdown(),
+      text,
+      isEmpty: text.trim().length === 0,
+      isFocused,
+      isEditable: editable,
+      characterCount,
+      characterLimit,
+      overLimit,
+    };
+  }, [
+    characterCount,
+    characterLimit,
+    editable,
+    editor,
+    isFocused,
+    overLimit,
+    serializeMarkdown,
+  ]);
 
   useEffect(() => {
     if (collaboration) return; // Yjs is source of truth in collab mode
@@ -231,46 +317,22 @@ export function InkwellEditor({
 
     // Reset selection to start to avoid stale selection errors
     Transforms.select(editor, Editor.start(editor, []));
-    editor.onChange();
     lastContent.current = content;
-  }, [content, editor, collaboration]);
+    updateCharacterCount();
+    bumpStateVersion();
+    editor.onChange();
+  }, [
+    bumpStateVersion,
+    collaboration,
+    content,
+    editor,
+    resolvedDecorations,
+    updateCharacterCount,
+  ]);
 
-  const [characterCount, setCharacterCount] = useState(() =>
-    initialValue.reduce((sum, n) => sum + Node.string(n).length, 0),
-  );
-
-  const handleChange = useCallback(
-    (value: Descendant[]) => {
-      // Only serialize when the document actually changed
-      const isAstChange = editor.operations.some(
-        op => op.type !== "set_selection",
-      );
-      if (!isAstChange) return;
-
-      const length = Node.string(editor).length;
-      setCharacterCount(length);
-      onCharacterCount?.(length, characterLimit);
-
-      if (!onChange) return;
-
-      const md = serialize(value as InkwellElement[]);
-      if (collaboration) {
-        // In collab mode, always fire onChange (no echo prevention needed)
-        onChange(md);
-      } else {
-        // In standalone mode, prevent echo loops
-        if (md !== lastContent.current) {
-          lastContent.current = md;
-          isInternalChange.current = true;
-          onChange(md);
-        }
-      }
-    },
-    [editor, onChange, collaboration, onCharacterCount, characterLimit],
-  );
-
-  const overLimit =
-    characterLimit !== undefined && characterCount > characterLimit;
+  useEffect(() => {
+    onStateChange?.(getEditorState());
+  }, [getEditorState, onStateChange, stateVersion]);
 
   const decorate = useCallback(
     (entry: NodeEntry) => {
@@ -311,6 +373,80 @@ export function InkwellEditor({
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const editorElRef = useRef<HTMLDivElement | null>(null);
+
+  const selectEditor = useCallback(
+    (at: InkwellEditorFocusOptions["at"] = "end") => {
+      try {
+        Transforms.select(
+          editor,
+          at === "start" ? Editor.start(editor, []) : Editor.end(editor, []),
+        );
+      } catch {
+        // Empty/transient Slate trees can fail selection math during setup.
+      }
+    },
+    [editor],
+  );
+
+  const focusEditor = useCallback(
+    (options?: InkwellEditorFocusOptions) => {
+      ReactEditor.focus(editor);
+      if (options?.at) selectEditor(options.at);
+    },
+    [editor, selectEditor],
+  );
+
+  const replaceMarkdown = useCallback(
+    (markdown: string, options?: InkwellSetMarkdownOptions) => {
+      const emitChange = options?.emitChange ?? true;
+      const select = options?.select ?? "start";
+      const newValue = deserialize(markdown, resolvedDecorations);
+
+      editor.children = newValue;
+      updateCharacterCount();
+      bumpStateVersion();
+
+      if (select !== "preserve") selectEditor(select);
+      const nextMarkdown = serializeMarkdown();
+      lastContent.current = nextMarkdown;
+      editor.onChange();
+      if (emitChange) onChange?.(nextMarkdown);
+    },
+    [
+      bumpStateVersion,
+      editor,
+      onChange,
+      resolvedDecorations,
+      selectEditor,
+      serializeMarkdown,
+      updateCharacterCount,
+    ],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getMarkdown: serializeMarkdown,
+      getText: () => Node.string(editor),
+      getState: getEditorState,
+      focus: focusEditor,
+      clear: options => replaceMarkdown("", options),
+      setMarkdown: replaceMarkdown,
+      insertMarkdown: markdown => {
+        focusEditor();
+        const nodes = deserialize(markdown, resolvedDecorations);
+        Transforms.insertFragment(editor, nodes);
+      },
+    }),
+    [
+      editor,
+      focusEditor,
+      getEditorState,
+      replaceMarkdown,
+      resolvedDecorations,
+      serializeMarkdown,
+    ],
+  );
 
   const getCursorPosition = useCallback(() => {
     try {
@@ -447,11 +583,31 @@ export function InkwellEditor({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      // If a plugin is active, Escape dismisses it
+      // If a plugin is active, keep keyboard interaction inside that plugin.
+      // The plugin picker may not have focus yet (for character triggers, the
+      // editor receives the trigger key first), so forward navigation, submit,
+      // editing, and printable keys through a scoped DOM event.
       if (activePlugin) {
         if (event.key === "Escape") {
           event.preventDefault();
           dismissPlugin();
+          return;
+        }
+
+        const shouldForward =
+          event.key === "ArrowDown" ||
+          event.key === "ArrowUp" ||
+          event.key === "Enter" ||
+          event.key === "Backspace" ||
+          (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.length === 1);
+
+        if (shouldForward) {
+          event.preventDefault();
+          window.dispatchEvent(
+            new CustomEvent(`inkwell-plugin-keydown:${activePlugin.name}`, {
+              detail: { key: event.key },
+            }),
+          );
         }
         return;
       }
@@ -556,9 +712,12 @@ export function InkwellEditor({
           aria-multiline
           aria-placeholder={placeholder}
           data-placeholder={placeholder ?? "Start writing..."}
+          readOnly={!editable}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           onKeyDown={handleKeyDown}
         />
       </Slate>
     </div>
   );
-}
+});

@@ -110,20 +110,23 @@ Only `@railway/inkwell` is published; `inkwell-docs` and `inkwell-demo-collab-se
 
 ## Architecture
 
-### API — Two Components
+### API — Hook and Components
 
-The library exports two components directly (no wrapper/router):
+The recommended editor API is `useInkwell(options)`, which returns `{ state, EditorInstance, editor }`. Render `<EditorInstance />` and use the grouped `editor` controller for focus, clearing, replacing Markdown, insertion, and state inspection.
 
-- `<InkwellEditor />` — WYSIWYG editor (`InkwellEditorProps`)
+The library also exports components directly for lower-level integrations. Most application code should prefer `useInkwell`; use `<InkwellEditor />` only when building a custom abstraction that needs to own component rendering directly.
+
+- `<InkwellEditor />` — low-level WYSIWYG editor component (`InkwellEditorProps`)
 - `<InkwellRenderer />` — Read-only markdown renderer (`InkwellRendererProps`). Has built-in copy button on code blocks (opt-out via `copyButton={false}`).
 
 ### Public Exports (`index.ts`)
 
+- **Hooks**: `useInkwell`
 - **Components**: `InkwellEditor`, `InkwellRenderer`
-- **Plugin creators**: `createBubbleMenuPlugin`, `createSnippetsPlugin`
+- **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createMentionsPlugin`, `createSnippetsPlugin`
 - **Plugin utilities**: `defaultBubbleMenuItems`, `pluginClass`
 - **Serialization**: `serializeToMarkdown`, `parseMarkdown`, `deserialize`
-- **Types**: `InkwellEditorProps`, `InkwellRendererProps`, `InkwellPlugin`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `InkwellComponents`, `InkwellDecorations`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `Snippet`
+- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `InkwellComponents`, `InkwellDecorations`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `Snippet`
 
 ### Editor Rendering Model (Slate.js)
 
@@ -177,7 +180,7 @@ All colors are on the hsl(270) hue. Use these values (and tweaks of them) for al
 - Editor CSS classes prefixed with `inkwell-editor-` via `editorClass()` helper in `lib/class-names.ts`
 - Plugin CSS classes use `inkwell-plugin-{plugin-name}-{component}` format via `pluginClass()` helper in `lib/class-names.ts`
 - Plugin code lives in `packages/inkwell/src/plugins/`, each plugin in its own directory with co-located tests
-- `InkwellEditor` and `InkwellRenderer` are the primary exports (no wrapper component)
+- `useInkwell` is the primary editor API; `InkwellEditor` and `InkwellRenderer` remain primary component exports
 - Exports go through `packages/inkwell/src/index.ts`
 - Package scope: `@railway/inkwell`
 - Every implementation file must have a corresponding `.test.ts`/`.test.tsx` file. Every new function, behavior, or code path must have corresponding tests.

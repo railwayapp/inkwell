@@ -4,11 +4,11 @@ import {
   createMentionsPlugin,
   createSnippetsPlugin,
   deserialize,
-  InkwellEditor,
   type InkwellPlugin,
   InkwellRenderer,
   type MentionItem,
   type MentionRenderer,
+  useInkwell,
 } from "@railway/inkwell";
 import { slateNodesToInsertDelta } from "@slate-yjs/core";
 import {
@@ -169,7 +169,7 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
       createAttachmentsPlugin({
         accept: "image/*",
         onUpload: async file => URL.createObjectURL(file),
-        onError: (err, file) => {},
+        onError: (_err, _file) => {},
       }),
   },
 ];
@@ -469,18 +469,17 @@ Inkwell is a Markdown editor and renderer for React with an extensible plugin sy
 ## Example
 
 \`\`\`typescript
-import { InkwellEditor } from "@railway/inkwell";
+import { useInkwell } from "@railway/inkwell";
 import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello");
+  const { EditorInstance } = useInkwell({
+    content,
+    onChange: setContent,
+  });
 
-  return (
-    <InkwellEditor
-      content={content}
-      onChange={setContent}
-    />
-  );
+  return <EditorInstance />;
 }
 \`\`\``;
 
@@ -659,14 +658,29 @@ function CollabEditor({
           </span>
         )}
       </div>
-      <InkwellEditor
-        content={INITIAL_MARKDOWN}
+      <ConnectedCollabEditor
         collaboration={collaboration}
-        placeholder="Start collaborating..."
         bubbleMenu={bubbleMenu}
       />
     </div>
   );
+}
+
+function ConnectedCollabEditor({
+  collaboration,
+  bubbleMenu,
+}: {
+  collaboration: CollaborationConfig;
+  bubbleMenu: boolean;
+}) {
+  const { EditorInstance } = useInkwell({
+    content: INITIAL_MARKDOWN,
+    collaboration,
+    placeholder: "Start collaborating...",
+    bubbleMenu,
+  });
+
+  return <EditorInstance />;
 }
 
 type Tab = "editor" | "preview" | "collab";
@@ -716,6 +730,16 @@ export function Demo() {
   const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
   const overLimit = characterCount > CHARACTER_LIMIT;
   const [bottomTab, setBottomTab] = useState<"plugins" | "settings">("plugins");
+  const { EditorInstance } = useInkwell({
+    content: editorContent,
+    onChange: setEditorContent,
+    placeholder: "Start writing Markdown...",
+    plugins: selectedPlugins,
+    bubbleMenu: bubbleMenuEnabled,
+    characterLimit: CHARACTER_LIMIT,
+    enforceCharacterLimit,
+    onCharacterCount: setCharacterCount,
+  });
 
   return (
     <ErrorBoundary>
@@ -760,18 +784,7 @@ export function Demo() {
             overflowY: "auto",
           }}
         >
-          {activeTab === "editor" && (
-            <InkwellEditor
-              content={editorContent}
-              onChange={setEditorContent}
-              placeholder="Start writing Markdown..."
-              plugins={selectedPlugins}
-              bubbleMenu={bubbleMenuEnabled}
-              characterLimit={CHARACTER_LIMIT}
-              enforceCharacterLimit={enforceCharacterLimit}
-              onCharacterCount={setCharacterCount}
-            />
-          )}
+          {activeTab === "editor" && <EditorInstance />}
           {activeTab === "preview" && (
             <div style={{ padding: "1.5rem" }}>
               <InkwellRenderer

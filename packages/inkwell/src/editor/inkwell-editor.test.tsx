@@ -13,6 +13,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { createRef } from "react";
 import {
   createEditor,
   Editor,
@@ -772,6 +773,113 @@ describe("InkwellEditor — plugin integration", () => {
       fireEvent.mouseDown(backdrop);
     });
     expect(screen.queryByTestId("test-plugin")).not.toBeInTheDocument();
+  });
+});
+
+describe("InkwellEditor — imperative API and state", () => {
+  it("exposes markdown, text, and state through a ref handle", () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    render(<InkwellEditor ref={ref} content="hello" onChange={vi.fn()} />);
+
+    expect(ref.current?.getMarkdown()).toBe("hello");
+    expect(ref.current?.getText()).toBe("hello");
+    expect(ref.current?.getState()).toMatchObject({
+      markdown: "hello",
+      text: "hello",
+      isEmpty: false,
+      isEditable: true,
+      characterCount: 5,
+      overLimit: false,
+    });
+  });
+
+  it("can replace markdown without emitting onChange", () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const onChange = vi.fn();
+    const { container } = render(
+      <InkwellEditor ref={ref} content="hello" onChange={onChange} />,
+    );
+
+    act(() => {
+      ref.current?.setMarkdown("replacement", { emitChange: false });
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(ref.current?.getMarkdown()).toBe("replacement");
+    expect(container.querySelector(".inkwell-editor")?.textContent).toContain(
+      "replacement",
+    );
+  });
+
+  it("clears markdown and emits onChange by default", () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const onChange = vi.fn();
+    render(<InkwellEditor ref={ref} content="hello" onChange={onChange} />);
+
+    act(() => {
+      ref.current?.clear();
+    });
+
+    expect(ref.current?.getMarkdown()).toBe("");
+    expect(onChange).toHaveBeenLastCalledWith("");
+  });
+
+  it("focuses through the ref handle", () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const focusSpy = vi
+      .spyOn(ReactEditor, "focus")
+      .mockImplementation(() => {});
+    render(<InkwellEditor ref={ref} content="hello" onChange={vi.fn()} />);
+
+    act(() => {
+      ref.current?.focus({ at: "end" });
+    });
+
+    expect(focusSpy).toHaveBeenCalled();
+    focusSpy.mockRestore();
+  });
+
+  it("inserts markdown through the ref handle", () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const onChange = vi.fn();
+    render(<InkwellEditor ref={ref} content="hello" onChange={onChange} />);
+
+    act(() => {
+      ref.current?.focus({ at: "end" });
+      ref.current?.insertMarkdown(" world");
+    });
+
+    expect(ref.current?.getMarkdown()).toContain("world");
+  });
+
+  it("reports state changes through onStateChange", () => {
+    const onStateChange = vi.fn();
+    render(
+      <InkwellEditor
+        content="hello"
+        characterLimit={10}
+        onStateChange={onStateChange}
+      />,
+    );
+
+    expect(onStateChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: "hello",
+        text: "hello",
+        isEmpty: false,
+        characterCount: 5,
+        characterLimit: 10,
+        overLimit: false,
+      }),
+    );
+  });
+
+  it("supports read-only mode via editable=false", () => {
+    render(<InkwellEditor content="hello" editable={false} />);
+    expect(screen.getByRole("textbox")).toHaveAttribute(
+      "contenteditable",
+      "false",
+    );
   });
 });
 

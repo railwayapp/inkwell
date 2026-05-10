@@ -1,6 +1,6 @@
 "use client";
 
-import { Node, Transforms } from "slate";
+import { type Editor, Node, Transforms } from "slate";
 import type { InkwellElement } from "../../editor/slate/types";
 import { generateId } from "../../editor/slate/with-node-id";
 import type { InkwellPlugin } from "../../types";
@@ -59,6 +59,37 @@ function extractFiles(data: DataTransfer): File[] {
   return files;
 }
 
+function extractHtmlImages(data: DataTransfer): Array<{ url: string; alt: string }> {
+  const html = data.getData("text/html");
+  if (!html) return [];
+
+  const images: Array<{ url: string; alt: string }> = [];
+  const imgRe = /<img\b[^>]*>/gi;
+  const srcRe = /\bsrc=["']([^"']+)["']/i;
+  const altRe = /\balt=["']([^"']*)["']/i;
+  for (const match of html.matchAll(imgRe)) {
+    const tag = match[0];
+    const url = srcRe.exec(tag)?.[1]?.trim();
+    if (!url) continue;
+    images.push({ url, alt: altRe.exec(tag)?.[1] ?? "" });
+  }
+  return images;
+}
+
+function insertImage(
+  editor: Editor,
+  image: { url: string; alt: string },
+): void {
+  const imageEl: InkwellElement = {
+    type: "image",
+    id: generateId(),
+    url: image.url,
+    alt: image.alt,
+    children: [{ text: "" }],
+  };
+  Transforms.insertNodes(editor, imageEl);
+}
+
 /**
  * Intercepts file paste/drop, uploads via `onUpload`, and inserts an image
  * element. The image is inserted immediately with placeholder alt text and
@@ -79,7 +110,15 @@ export function createAttachmentsPlugin(
         const matching = accept
           ? files.filter(f => mimeMatches(f.type, accept))
           : files;
-        if (matching.length === 0) return insertData(data);
+        if (matching.length === 0) {
+          const htmlImages = extractHtmlImages(data);
+          if (htmlImages.length === 0) return insertData(data);
+
+          for (const image of htmlImages) {
+            insertImage(editor, image);
+          }
+          return;
+        }
 
         for (const file of matching) {
           const id = generateId();

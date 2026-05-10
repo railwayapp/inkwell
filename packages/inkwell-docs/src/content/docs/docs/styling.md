@@ -2,9 +2,13 @@
 title: "Styling"
 ---
 
-Inkwell applies CSS classes to every element but ships no default styles.
-You have full control over the look and feel of both the editor and the
-rendered output.
+Inkwell ships default editor, plugin, and renderer styles. Import them once in your app entry point:
+
+```tsx
+import "@railway/inkwell/styles.css";
+```
+
+The defaults are intentionally easy to override: every element also gets a stable CSS class, so you still have full control over the look and feel of both the editor and the rendered output.
 
 ## Editor
 

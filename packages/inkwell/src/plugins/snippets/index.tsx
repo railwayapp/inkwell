@@ -1,103 +1,53 @@
 "use client";
 
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback } from "react";
 import { pluginClass } from "../../lib/class-names";
 import type { InkwellPlugin, PluginRenderProps, Snippet } from "../../types";
+import { PluginPicker } from "../plugin-picker";
 
 const cls = pluginClass("snippets");
 
 interface SnippetPickerProps extends PluginRenderProps {
   snippets: Snippet[];
+  pluginName: string;
 }
 
 function SnippetPicker({
   snippets,
+  pluginName,
   onSelect,
   onDismiss,
 }: SnippetPickerProps): ReactNode {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [search, setSearch] = useState("");
-
-  const filtered = snippets.filter(s =>
-    s.title.toLowerCase().includes(search.toLowerCase()),
-  );
-
-  const focusRef = useCallback((el: HTMLInputElement | null) => {
-    if (el) requestAnimationFrame(() => el.focus());
+  const renderItem = useCallback((snippet: Snippet) => {
+    return (
+      <>
+        <div className={cls("title")}>{snippet.title}</div>
+        <div className={cls("preview")}>
+          {snippet.content.length > 80
+            ? `${snippet.content.slice(0, 80)}...`
+            : snippet.content}
+        </div>
+      </>
+    );
   }, []);
-
-  const activeItemRef = useCallback((el: HTMLDivElement | null) => {
-    if (el && typeof el.scrollIntoView === "function") {
-      el.scrollIntoView({ block: "nearest" });
-    }
-  }, []);
-
-  const handleSearchKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      switch (e.key) {
-        case "ArrowDown":
-          e.preventDefault();
-          setSelectedIndex(prev => (prev < filtered.length - 1 ? prev + 1 : 0));
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          setSelectedIndex(prev => (prev > 0 ? prev - 1 : filtered.length - 1));
-          break;
-        case "Enter":
-          e.preventDefault();
-          if (filtered[selectedIndex]) {
-            onSelect(filtered[selectedIndex].content);
-          }
-          break;
-        case "Escape":
-          e.preventDefault();
-          onDismiss();
-          break;
-      }
-    },
-    [filtered, selectedIndex, onSelect, onDismiss],
-  );
 
   return (
-    <div className={cls("picker")}>
-      <input
-        ref={focusRef}
-        type="text"
-        placeholder="Search snippets..."
-        value={search}
-        onChange={e => {
-          setSearch(e.target.value);
-          setSelectedIndex(0);
-        }}
-        onKeyDown={handleSearchKeyDown}
-        className={cls("search")}
-      />
-      {filtered.length === 0 ? (
-        <div className={cls("empty")}>No snippets found</div>
-      ) : (
-        <div>
-          {filtered.map((snippet, i) => (
-            <div
-              key={snippet.title}
-              ref={i === selectedIndex ? activeItemRef : undefined}
-              data-snippet-item
-              className={`${cls("item")} ${
-                i === selectedIndex ? cls("item-active") : ""
-              }`}
-              onMouseEnter={() => setSelectedIndex(i)}
-              onClick={() => onSelect(snippet.content)}
-            >
-              <div className={cls("title")}>{snippet.title}</div>
-              <div className={cls("preview")}>
-                {snippet.content.length > 80
-                  ? `${snippet.content.slice(0, 80)}...`
-                  : snippet.content}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <PluginPicker
+      pluginName={pluginName}
+      className={cls("picker")}
+      searchClassName={cls("search")}
+      itemClassName={cls("item")}
+      activeItemClassName={cls("item-active")}
+      emptyClassName={cls("empty")}
+      items={snippets}
+      renderItem={renderItem}
+      getKey={snippet => snippet.title}
+      onSelect={snippet => onSelect(snippet.content)}
+      onDismiss={onDismiss}
+      placeholder="Search snippets..."
+      emptyMessage="No snippets found"
+      itemDataAttribute="data-snippet-item"
+    />
   );
 }
 
@@ -106,9 +56,10 @@ export function createSnippetsPlugin(options: {
   key?: string;
 }): InkwellPlugin {
   const { snippets, key = "[" } = options;
+  const name = "snippets";
 
   return {
-    name: "snippets",
+    name,
     trigger: { key },
     render: (props: PluginRenderProps) => (
       <div
@@ -121,7 +72,7 @@ export function createSnippetsPlugin(options: {
         }}
         onMouseDown={e => e.preventDefault()}
       >
-        <SnippetPicker snippets={snippets} {...props} />
+        <SnippetPicker snippets={snippets} pluginName={name} {...props} />
       </div>
     ),
   };

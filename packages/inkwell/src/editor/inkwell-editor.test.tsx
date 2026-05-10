@@ -12,6 +12,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { createRef } from "react";
 import {
@@ -28,6 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
+import { createMentionsPlugin } from "../plugins/mentions";
 import type {
   CollaborationConfig,
   InkwellDecorations,
@@ -678,6 +680,88 @@ describe("InkwellEditor — plugin integration", () => {
       fireEvent.keyDown(editor, { key: "@" });
     });
     expect(screen.getByTestId("test-plugin")).toBeInTheDocument();
+  });
+
+
+  it("forwards keyboard navigation and selection to active character plugins", async () => {
+    const onChange = vi.fn();
+    const mentions = createMentionsPlugin({
+      name: "users",
+      trigger: "@",
+      marker: "user",
+      search: () => [
+        { id: "1", title: "Alice" },
+        { id: "2", title: "Bob" },
+      ],
+      renderItem: item => <span>{item.title}</span>,
+    });
+
+    const { container } = render(
+      <InkwellEditor content="" onChange={onChange} plugins={[mentions]} />,
+    );
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "@" });
+    });
+
+    await screen.findByText("Alice");
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "ArrowDown" });
+      fireEvent.keyDown(editor, { key: "Enter" });
+    });
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith("@user[2]");
+    });
+  });
+
+
+  it("forwards typed query keys to active character plugins", async () => {
+    const onChange = vi.fn();
+    const mentions = createMentionsPlugin({
+      name: "users",
+      trigger: "@",
+      marker: "user",
+      search: (query: string) =>
+        [
+          { id: "1", title: "Alice" },
+          { id: "2", title: "Bob" },
+          { id: "3", title: "Carol" },
+        ].filter(user =>
+          user.title.toLowerCase().includes(query.toLowerCase()),
+        ),
+      renderItem: item => <span>{item.title}</span>,
+    });
+
+    const { container } = render(
+      <InkwellEditor content="" onChange={onChange} plugins={[mentions]} />,
+    );
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "@" });
+    });
+
+    await screen.findByText("Alice");
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "b" });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+      expect(screen.getByText("Bob")).toBeInTheDocument();
+    });
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "Enter" });
+    });
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith("@user[2]");
+    });
   });
 
   it("renders always-on plugins without a trigger", () => {

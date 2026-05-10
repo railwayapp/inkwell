@@ -110,6 +110,64 @@ describe("createMentionsPlugin", () => {
     });
   });
 
+
+  it("selects the navigated item when ArrowDown and Enter happen before rerender", async () => {
+    const onSelect = vi.fn();
+    const plugin = createMentionsPlugin({
+      name: "users",
+      trigger: "@",
+      marker: "user",
+      search: () => USERS,
+      renderItem: (item, active) => (
+        <span data-active={active ? "true" : "false"}>{item.title}</span>
+      ),
+    });
+
+    render(<div>{plugin.render({ ...defaultRenderProps, onSelect })}</div>);
+
+    await waitFor(() => expect(screen.getByText("Alice")).toBeInTheDocument());
+
+    const input = document.querySelector("input");
+    if (!input) throw new Error("search input missing");
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    expect(onSelect).toHaveBeenCalledWith("@user[2]");
+  });
+
+  it("handles forwarded editor keys for navigation and selection", async () => {
+    const onSelect = vi.fn();
+    const plugin = createMentionsPlugin({
+      name: "users",
+      trigger: "@",
+      marker: "user",
+      search: () => USERS,
+      renderItem: item => <span>{item.title}</span>,
+    });
+
+    render(<div>{plugin.render({ ...defaultRenderProps, onSelect })}</div>);
+
+    await waitFor(() => expect(screen.getByText("Alice")).toBeInTheDocument());
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("inkwell-plugin-keydown:users", {
+          detail: { key: "ArrowDown" },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("inkwell-plugin-keydown:users", {
+          detail: { key: "Enter" },
+        }),
+      );
+    });
+
+    expect(onSelect).toHaveBeenCalledWith("@user[2]");
+  });
+
   it("shows the empty message when no results match", async () => {
     const plugin = createMentionsPlugin<MentionItem>({
       name: "users",

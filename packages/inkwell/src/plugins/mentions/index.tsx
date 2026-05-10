@@ -1,8 +1,9 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback } from "react";
 import { pluginClass } from "../../lib/class-names";
 import type { InkwellPlugin, PluginRenderProps } from "../../types";
+import { PluginPicker } from "../plugin-picker";
 
 const cls = pluginClass("mentions");
 
@@ -47,32 +48,6 @@ function MentionsPicker<T extends MentionItem>({
   onSelect,
   onDismiss,
 }: MentionsPickerProps<T>): ReactNode {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<T[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.resolve(options.search(query)).then(items => {
-      if (cancelled) return;
-      setResults(items);
-      setSelectedIndex(0);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [query, options.search]);
-
-  const focusRef = useCallback((el: HTMLInputElement | null) => {
-    if (el) requestAnimationFrame(() => el.focus());
-  }, []);
-
-  const activeItemRef = useCallback((el: HTMLDivElement | null) => {
-    if (el && typeof el.scrollIntoView === "function") {
-      el.scrollIntoView({ block: "nearest" });
-    }
-  }, []);
-
   const commit = useCallback(
     (item: T) => {
       const text = options.onSelect
@@ -83,100 +58,22 @@ function MentionsPicker<T extends MentionItem>({
     [onSelect, options],
   );
 
-  const handlePluginKey = useCallback(
-    (key: string) => {
-      switch (key) {
-        case "ArrowDown":
-          setSelectedIndex(prev => (prev < results.length - 1 ? prev + 1 : 0));
-          break;
-        case "ArrowUp":
-          setSelectedIndex(prev => (prev > 0 ? prev - 1 : results.length - 1));
-          break;
-        case "Enter":
-          if (results[selectedIndex]) commit(results[selectedIndex]);
-          break;
-        case "Backspace":
-          setQuery(prev => prev.slice(0, -1));
-          break;
-        default:
-          if (key.length === 1) setQuery(prev => `${prev}${key}`);
-          break;
-      }
-    },
-    [results, selectedIndex, commit],
-  );
-
-  useEffect(() => {
-    const handleForwardedKey = (event: Event) => {
-      const customEvent = event as CustomEvent<{ key: string }>;
-      handlePluginKey(customEvent.detail.key);
-    };
-
-    window.addEventListener(
-      `inkwell-plugin-keydown:${options.name}`,
-      handleForwardedKey,
-    );
-    return () => {
-      window.removeEventListener(
-        `inkwell-plugin-keydown:${options.name}`,
-        handleForwardedKey,
-      );
-    };
-  }, [handlePluginKey, options.name]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      e.stopPropagation();
-      switch (e.key) {
-        case "ArrowDown":
-        case "ArrowUp":
-        case "Enter":
-        case "Backspace":
-          e.preventDefault();
-          handlePluginKey(e.key);
-          break;
-        case "Escape":
-          e.preventDefault();
-          onDismiss();
-          break;
-      }
-    },
-    [handlePluginKey, onDismiss],
-  );
-
   return (
-    <div className={cls("picker")}>
-      <input
-        ref={focusRef}
-        type="text"
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        onKeyDown={handleKeyDown}
-        className={cls("search")}
-      />
-      {results.length === 0 ? (
-        <div className={cls("empty")}>
-          {options.emptyMessage ?? "No results"}
-        </div>
-      ) : (
-        <div>
-          {results.map((item, i) => (
-            <div
-              key={item.id}
-              ref={i === selectedIndex ? activeItemRef : undefined}
-              className={`${cls("item")} ${
-                i === selectedIndex ? cls("item-active") : ""
-              }`}
-              onMouseDown={e => e.preventDefault()}
-              onMouseEnter={() => setSelectedIndex(i)}
-              onClick={() => commit(item)}
-            >
-              {options.renderItem(item, i === selectedIndex)}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <PluginPicker
+      pluginName={options.name}
+      className={cls("picker")}
+      searchClassName={cls("search")}
+      itemClassName={cls("item")}
+      activeItemClassName={cls("item-active")}
+      emptyClassName={cls("empty")}
+      items={[]}
+      search={options.search}
+      renderItem={options.renderItem}
+      getKey={item => item.id}
+      onSelect={commit}
+      onDismiss={onDismiss}
+      emptyMessage={options.emptyMessage ?? "No results"}
+    />
   );
 }
 

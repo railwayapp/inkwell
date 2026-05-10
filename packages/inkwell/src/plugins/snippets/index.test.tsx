@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { PluginRenderProps, Snippet } from "../../types";
 import { createSnippetsPlugin } from ".";
@@ -239,6 +239,52 @@ describe("createSnippetsPlugin", () => {
     it("handles empty snippets array", () => {
       renderPlugin([]);
       expect(screen.getByText("No snippets found")).toBeInTheDocument();
+    });
+
+    it("selects the navigated snippet when ArrowDown and Enter fire before rerender", () => {
+      const onSelect = vi.fn();
+      const { container } = renderPlugin(SNIPPETS, { onSelect });
+      const input = container.querySelector(
+        ".inkwell-plugin-picker-search",
+      ) as HTMLInputElement;
+
+      // Fire both keys in the same task to exercise the ref-backed
+      // selection path inside PluginMenuPrimitive. Without it, the
+      // selectedIndex state update from ArrowDown would not be visible
+      // to the Enter handler in the same batch.
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(onSelect).toHaveBeenCalledWith(SNIPPETS[1].content);
+    });
+
+    it("handles forwarded editor keydowns via the scoped window event", () => {
+      const onSelect = vi.fn();
+      renderPlugin(SNIPPETS, { onSelect });
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent("inkwell-plugin-keydown:snippets", {
+            detail: { key: "ArrowDown" },
+          }),
+        );
+        window.dispatchEvent(
+          new CustomEvent("inkwell-plugin-keydown:snippets", {
+            detail: { key: "Enter" },
+          }),
+        );
+      });
+
+      expect(onSelect).toHaveBeenCalledWith(SNIPPETS[1].content);
+    });
+
+    it("auto-focuses the search input on mount", async () => {
+      renderPlugin();
+      await waitFor(() => {
+        expect(document.activeElement).toBe(
+          document.querySelector(".inkwell-plugin-picker-search"),
+        );
+      });
     });
   });
 });

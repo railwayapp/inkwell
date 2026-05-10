@@ -168,6 +168,22 @@ describe("createMentionsPlugin", () => {
     expect(onSelect).toHaveBeenCalledWith("@user[2]");
   });
 
+  it("auto-focuses the search input on mount", async () => {
+    const plugin = createMentionsPlugin({
+      name: "users",
+      trigger: "@",
+      marker: "user",
+      search: () => USERS,
+      renderItem: item => <span>{item.title}</span>,
+    });
+    render(<div>{plugin.render(defaultRenderProps)}</div>);
+    await waitFor(() => {
+      expect(document.activeElement).toBe(
+        document.querySelector(".inkwell-plugin-picker-search"),
+      );
+    });
+  });
+
   it("shows the empty message when no results match", async () => {
     const plugin = createMentionsPlugin<MentionItem>({
       name: "users",

@@ -23,7 +23,9 @@ import {
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 
-const CHARACTER_LIMIT = 2000;
+const DEFAULT_CHARACTER_LIMIT = 2000;
+const CHARACTER_LIMIT_MIN = 50;
+const CHARACTER_LIMIT_MAX = 20000;
 
 const DEMO_USERS: MentionItem[] = [
   { id: "alice", title: "Alice Anderson" },
@@ -314,6 +316,181 @@ function Segmented<T extends string>({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function NumberInput({
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  ariaLabel,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+  min: number;
+  max: number;
+  step?: number;
+  ariaLabel: string;
+}) {
+  return (
+    <input
+      type="number"
+      aria-label={ariaLabel}
+      value={value}
+      min={min}
+      max={max}
+      step={step}
+      onChange={e => {
+        const next = Number(e.target.value);
+        if (Number.isFinite(next)) {
+          onChange(Math.min(max, Math.max(min, Math.round(next))));
+        }
+      }}
+      style={{
+        width: 88,
+        padding: "0.3rem 0.5rem",
+        borderRadius: 6,
+        border: `1px solid ${SURFACE.border}`,
+        background: SURFACE.bgSoft,
+        color: SURFACE.textHi,
+        fontSize: "0.78rem",
+        fontFamily:
+          '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+        fontVariantNumeric: "tabular-nums",
+        textAlign: "right",
+        outline: "none",
+      }}
+    />
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.04a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.04a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function Modal({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      role="presentation"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        background: "hsla(270, 35%, 6%, 0.72)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1.5rem",
+        animation: "inkwell-demo-modal-fade 0.16s ease-out",
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 560,
+          maxHeight: "min(720px, 90vh)",
+          overflowY: "auto",
+          borderRadius: 12,
+          border: `1px solid ${SURFACE.border}`,
+          background: SURFACE.bg,
+          boxShadow:
+            "0 24px 60px -12px hsla(0, 0%, 0%, 0.6), 0 0 0 1px hsla(270, 60%, 52%, 0.08)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0.9rem 1rem",
+            borderBottom: `1px solid ${SURFACE.border}`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.85rem",
+              fontWeight: 600,
+              color: SURFACE.textHi,
+            }}
+          >
+            {title}
+          </div>
+          <button
+            type="button"
+            aria-label="Close settings"
+            onClick={onClose}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              border: `1px solid ${SURFACE.border}`,
+              background: "transparent",
+              color: SURFACE.textDim,
+              cursor: "pointer",
+            }}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
@@ -700,26 +877,84 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "collab", label: "Collab" },
 ];
 
+const SETTINGS_HASH = "demo-settings";
+
+/** Parses `window.location.hash` into the active tab and whether the settings
+ *  modal should be open. `#demo-settings` always takes precedence over the
+ *  tab hashes (`#render`, `#collab`) while the modal is open. */
+function parseHash(hash: string): { tab: Tab; settingsOpen: boolean } {
+  const value = hash.replace(/^#/, "");
+  if (value === SETTINGS_HASH) return { tab: "editor", settingsOpen: true };
+  if (value === "render") return { tab: "preview", settingsOpen: false };
+  if (value === "collab") return { tab: "collab", settingsOpen: false };
+  return { tab: "editor", settingsOpen: false };
+}
+
+function hashFor(tab: Tab, settingsOpen: boolean): string {
+  if (settingsOpen) return `#${SETTINGS_HASH}`;
+  if (tab === "preview") return "#render";
+  if (tab === "collab") return "#collab";
+  return "";
+}
+
 export function Demo() {
   const [editorContent, setEditorContent] = useState(INITIAL_MARKDOWN);
-  const [activeTab, setActiveTab] = useState<Tab>(() => {
-    if (typeof window === "undefined") return "editor";
-    const hash = window.location.hash.slice(1);
-    if (hash === "render" || hash === "collab")
-      return hash === "render" ? "preview" : "collab";
-    return "editor";
-  });
+  const initialHash =
+    typeof window === "undefined"
+      ? { tab: "editor" as Tab, settingsOpen: false }
+      : parseHash(window.location.hash);
+  const [activeTab, setActiveTab] = useState<Tab>(initialHash.tab);
+  const [settingsOpen, setSettingsOpen] = useState(initialHash.settingsOpen);
 
-  const switchTab = (tab: Tab) => {
-    setActiveTab(tab);
-    const hash =
-      tab === "editor" ? "" : tab === "preview" ? "#render" : "#collab";
+  const writeHash = (tab: Tab, open: boolean) => {
+    const hash = hashFor(tab, open);
     window.history.replaceState(
       null,
       "",
       hash || window.location.pathname + window.location.search,
     );
   };
+
+  const switchTab = (tab: Tab) => {
+    setActiveTab(tab);
+    // Switching tabs implicitly closes the settings modal so users land on
+    // the editor surface they just selected.
+    setSettingsOpen(false);
+    writeHash(tab, false);
+  };
+
+  const openSettings = () => {
+    setSettingsOpen(true);
+    writeHash(activeTab, true);
+  };
+
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    writeHash(activeTab, false);
+  };
+
+  // Keep the modal + tab in sync with browser back/forward navigation so a
+  // direct visit to `#demo-settings` (or popstate to it) opens the modal.
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = parseHash(window.location.hash);
+      setActiveTab(next.tab);
+      setSettingsOpen(next.settingsOpen);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // Close the modal on Escape, while it is open.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeSettings();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsOpen]);
   const [collabUser] = useState(() => ({
     name: randomName(),
     color: randomColor(),
@@ -737,15 +972,18 @@ export function Demo() {
     () => INITIAL_MARKDOWN.length,
   );
   const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
+  const [characterLimit, setCharacterLimit] = useState(
+    DEFAULT_CHARACTER_LIMIT,
+  );
   const [demoStyle, setDemoStyle] = useState<"custom" | "default">("custom");
-  const overLimit = characterCount > CHARACTER_LIMIT;
+  const overLimit = characterCount > characterLimit;
   const { EditorInstance } = useInkwell({
     content: editorContent,
     onChange: setEditorContent,
     placeholder: "Start writing Markdown...",
     plugins: selectedPlugins,
     bubbleMenu: bubbleMenuEnabled,
-    characterLimit: CHARACTER_LIMIT,
+    characterLimit,
     enforceCharacterLimit,
     onCharacterCount: setCharacterCount,
   });
@@ -753,43 +991,72 @@ export function Demo() {
   return (
     <ErrorBoundary>
       <div>
-        {/* Mode tabs */}
+        {/* Top bar: mode tabs on the left, settings gear on the right.
+            The gear lives outside the editor surface so opening settings
+            never visually interferes with the content area. */}
         <div
-          role="tablist"
-          aria-label="Demo mode"
           style={{
             display: "flex",
-            gap: "0.25rem",
+            alignItems: "center",
+            justifyContent: "space-between",
             marginBottom: "0.75rem",
           }}
         >
-          {TABS.map(({ key, label }) => {
-            const selected = activeTab === key;
-            return (
-              <button
-                key={key}
-                role="tab"
-                aria-selected={selected}
-                onClick={() => switchTab(key)}
-                style={{
-                  padding: "0.4rem 0",
-                  fontSize: "0.8rem",
-                  fontWeight: selected ? 600 : 400,
-                  cursor: "pointer",
-                  border: "none",
-                  borderBottom: selected
-                    ? `2px solid ${SURFACE.borderStrong}`
-                    : "2px solid transparent",
-                  background: "transparent",
-                  color: selected ? SURFACE.textHi : SURFACE.textDim,
-                  marginRight: "1rem",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
+          <div role="tablist" aria-label="Demo mode" style={{ display: "flex" }}>
+            {TABS.map(({ key, label }) => {
+              const selected = activeTab === key;
+              return (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => switchTab(key)}
+                  style={{
+                    padding: "0.4rem 0",
+                    fontSize: "0.8rem",
+                    fontWeight: selected ? 600 : 400,
+                    cursor: "pointer",
+                    border: "none",
+                    borderBottom: selected
+                      ? `2px solid ${SURFACE.borderStrong}`
+                      : "2px solid transparent",
+                    background: "transparent",
+                    color: selected ? SURFACE.textHi : SURFACE.textDim,
+                    marginRight: "1rem",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            aria-label="Open demo settings"
+            aria-haspopup="dialog"
+            aria-expanded={settingsOpen}
+            onClick={openSettings}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              padding: "0.35rem 0.65rem",
+              borderRadius: 6,
+              border: `1px solid ${
+                settingsOpen ? SURFACE.borderStrong : SURFACE.border
+              }`,
+              background: settingsOpen ? SURFACE.accentSoft : "transparent",
+              color: settingsOpen ? SURFACE.textHi : SURFACE.textDim,
+              cursor: "pointer",
+              fontSize: "0.72rem",
+              fontWeight: 500,
+              transition: "all 0.15s ease",
+            }}
+          >
+            <GearIcon />
+            <span>Settings</span>
+          </button>
         </div>
 
         {/* Editor / preview / collab surface */}
@@ -826,17 +1093,12 @@ export function Demo() {
           )}
         </div>
 
-        {/* Configuration card — matches the editor surface so plugins and
-            settings read as part of the same UI system. */}
-        <div
-          aria-label="Editor configuration"
-          style={{
-            marginTop: "0.85rem",
-            borderRadius: 10,
-            border: `1px solid ${SURFACE.border}`,
-            background: SURFACE.bg,
-            overflow: "hidden",
-          }}
+        {/* Settings live behind the gear button + modal. Hash `#demo-settings`
+            opens it; closing restores the active tab's hash. */}
+        <Modal
+          open={settingsOpen}
+          onClose={closeSettings}
+          title="Demo settings"
         >
           <SectionHeader>Plugins</SectionHeader>
           {AVAILABLE_PLUGINS.map(plugin => {
@@ -911,7 +1173,7 @@ export function Demo() {
             title="Character limit"
             description={
               <>
-                Tracks document length via{" "}
+                Maximum document length reported via{" "}
                 <code
                   style={{
                     fontFamily:
@@ -925,10 +1187,24 @@ export function Demo() {
                 >
                   onCharacterCount
                 </code>
-                . When enforced, the editor clamps typing and pasted input at
-                the limit.
+                .
               </>
             }
+            control={
+              <NumberInput
+                ariaLabel="Character limit"
+                value={characterLimit}
+                onChange={setCharacterLimit}
+                min={CHARACTER_LIMIT_MIN}
+                max={CHARACTER_LIMIT_MAX}
+                step={50}
+              />
+            }
+          />
+
+          <Row
+            title="Enforce limit"
+            description="When on, the editor clamps typing and pasted input at the character limit."
             control={
               <Switch
                 on={enforceCharacterLimit}
@@ -967,7 +1243,7 @@ export function Demo() {
                   right: "auto",
                   width: `${Math.min(
                     100,
-                    (characterCount / CHARACTER_LIMIT) * 100,
+                    (characterCount / characterLimit) * 100,
                   )}%`,
                   background: overLimit
                     ? "hsl(0, 75%, 60%)"
@@ -988,10 +1264,10 @@ export function Demo() {
                 textAlign: "right",
               }}
             >
-              {characterCount} / {CHARACTER_LIMIT}
+              {characterCount} / {characterLimit}
             </span>
           </div>
-        </div>
+        </Modal>
       </div>
     </ErrorBoundary>
   );

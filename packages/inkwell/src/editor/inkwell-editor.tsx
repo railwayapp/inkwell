@@ -51,6 +51,51 @@ import { generateId, withNodeId } from "./slate/with-node-id";
 
 const IS_SERVER = typeof window === "undefined";
 
+/**
+ * Built-in toast surfaced at the top-right of the editor when the document
+ * meets or exceeds `characterLimit`. Styled via `.inkwell-editor-limit-toast`
+ * in the package stylesheet. Pointer-events are disabled so the toast
+ * never intercepts typing or selection.
+ */
+function LimitToast({
+  count,
+  limit,
+  enforced,
+}: {
+  count: number;
+  limit: number;
+  enforced: boolean;
+}) {
+  const over = count > limit;
+  return (
+    <div
+      className="inkwell-editor-limit-toast"
+      role="status"
+      aria-live="polite"
+    >
+      <svg
+        className="inkwell-editor-limit-toast-icon"
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4" />
+        <path d="M12 16h.01" />
+      </svg>
+      <span>
+        {over ? `Over limit by ${count - limit}` : "Character limit reached"}
+      </span>
+    </div>
+  );
+}
+
 const DEFAULT_DECORATIONS: Required<InkwellDecorations> = {
   heading1: true,
   heading2: true,
@@ -83,6 +128,7 @@ export const InkwellEditor = forwardRef<
     characterLimit,
     enforceCharacterLimit = false,
     onCharacterCount,
+    limitToast = true,
   },
   ref,
 ) {
@@ -673,11 +719,28 @@ export const InkwellEditor = forwardRef<
     ],
   );
 
+  // The toast is visible whenever the document has hit the limit. With
+  // `enforceCharacterLimit` the count never exceeds the limit, so we also
+  // surface the toast at exactly the limit so the user gets feedback when
+  // their typing is being blocked. Without enforcement we only show it
+  // once the user has actually gone over.
+  const showLimitToast =
+    limitToast !== false &&
+    characterLimit !== undefined &&
+    (overLimit || (enforceCharacterLimit && characterCount >= characterLimit));
+
   return (
     <div
       ref={wrapperRef}
       className={`inkwell-editor-wrapper${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}`}
     >
+      {showLimitToast && characterLimit !== undefined && (
+        <LimitToast
+          count={characterCount}
+          limit={characterLimit}
+          enforced={enforceCharacterLimit}
+        />
+      )}
       {activePlugin && (
         <div
           className="inkwell-plugin-backdrop"

@@ -155,6 +155,51 @@
   box-shadow: inset 0 0 0 1px hsla(0, 70%, 55%, 0.45);
 }
 
+/* Built-in character-limit toast. Lives inside .inkwell-editor-wrapper
+   so it tracks the editor box; pointer-events disabled so it never
+   blocks typing or selection. */
+@keyframes inkwell-limit-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.inkwell-editor-limit-toast {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid hsl(0, 65%, 42%);
+  background: hsla(0, 60%, 14%, 0.92);
+  color: hsl(0, 85%, 94%);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.3;
+  box-shadow: 0 6px 18px hsla(0, 70%, 8%, 0.45);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  animation: inkwell-limit-toast-in 0.16s ease-out;
+}
+.inkwell-editor-limit-toast-icon {
+  flex-shrink: 0;
+  color: hsl(0, 80%, 78%);
+}
+
+@media (prefers-color-scheme: light) {
+  .inkwell-editor-limit-toast {
+    border-color: hsl(0, 75%, 60%);
+    background: hsla(0, 90%, 96%, 0.96);
+    color: hsl(0, 65%, 38%);
+    box-shadow: 0 6px 18px hsla(0, 30%, 60%, 0.18);
+  }
+  .inkwell-editor-limit-toast-icon {
+    color: hsl(0, 70%, 50%);
+  }
+}
+
 .inkwell-editor-backtick,
 .inkwell-editor-marker {
   color: var(--inkwell-text-dim);

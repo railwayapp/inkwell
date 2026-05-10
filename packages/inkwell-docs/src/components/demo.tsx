@@ -462,72 +462,6 @@ function NumberInput({
   );
 }
 
-function LimitToast({
-  visible,
-  count,
-  limit,
-  enforced,
-}: {
-  visible: boolean;
-  count: number;
-  limit: number;
-  enforced: boolean;
-}) {
-  const over = count > limit;
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      // Positioned inside the editor so the toast tracks the editor box,
-      // not the surrounding page. `pointer-events: none` lets the user
-      // keep typing through the toast region.
-      style={{
-        position: "absolute",
-        top: "0.7rem",
-        right: "0.7rem",
-        zIndex: 10,
-        pointerEvents: "none",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.45rem",
-        padding: "0.4rem 0.65rem",
-        borderRadius: 8,
-        border: "1px solid hsl(0, 65%, 42%)",
-        background: "hsla(0, 60%, 14%, 0.92)",
-        color: "hsl(0, 80%, 92%)",
-        fontSize: "0.72rem",
-        fontWeight: 500,
-        boxShadow: "0 6px 18px hsla(0, 70%, 8%, 0.55)",
-        backdropFilter: "blur(6px)",
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(-4px)",
-        transition: "opacity 0.16s ease, transform 0.16s ease",
-      }}
-    >
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 8v4" />
-        <path d="M12 16h.01" />
-      </svg>
-      <span>
-        {enforced && !over
-          ? "Character limit reached"
-          : `Over limit by ${count - limit}`}
-      </span>
-    </div>
-  );
-}
-
 function GearIcon() {
   return (
     <svg
@@ -1253,17 +1187,7 @@ export function Demo() {
             overflowY: "auto",
           }}
         >
-          {activeTab === "editor" && (
-            <div style={{ position: "relative" }}>
-              <EditorInstance />
-              <LimitToast
-                visible={characterCount >= characterLimit}
-                count={characterCount}
-                limit={characterLimit}
-                enforced={enforceCharacterLimit}
-              />
-            </div>
-          )}
+          {activeTab === "editor" && <EditorInstance />}
           {activeTab === "preview" && (
             <div style={{ padding: "1.5rem" }}>
               <InkwellRenderer

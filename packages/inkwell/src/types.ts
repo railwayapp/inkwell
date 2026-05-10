@@ -131,6 +131,15 @@ export interface InkwellEditorProps {
    * the configured limit (if any).
    */
   onCharacterCount?: (count: number, limit?: number) => void;
+  /**
+   * Show the built-in toast at the top-right of the editor when the
+   * character count meets or exceeds `characterLimit`. Has no effect
+   * unless `characterLimit` is set. Default: `true`.
+   *
+   * Set to `false` to render your own indicator instead (e.g. via
+   * `onCharacterCount`). The toast is styled by `.inkwell-editor-limit-toast`.
+   */
+  limitToast?: boolean;
 }
 
 export type UseInkwellOptions = InkwellEditorProps;

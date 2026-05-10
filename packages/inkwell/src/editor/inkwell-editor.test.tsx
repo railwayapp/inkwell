@@ -2760,3 +2760,104 @@ describe("InkwellEditor — character limit", () => {
     // No throw; editor renders with content that exceeds limit
   });
 });
+
+describe("InkwellEditor — limit toast", () => {
+  it("renders the toast at the top-right of the editor when over the limit", () => {
+    const { container } = render(
+      <InkwellEditor
+        content="hello world"
+        onChange={vi.fn()}
+        characterLimit={5}
+      />,
+    );
+    const wrapper = container.querySelector(".inkwell-editor-wrapper");
+    const toast = container.querySelector(".inkwell-editor-limit-toast");
+    expect(toast).toBeInTheDocument();
+    // Toast lives inside the editor wrapper so it tracks the editor box.
+    expect(wrapper?.contains(toast)).toBe(true);
+  });
+
+  it("does not render the toast when content is under the limit", () => {
+    const { container } = render(
+      <InkwellEditor content="hi" onChange={vi.fn()} characterLimit={50} />,
+    );
+    expect(
+      container.querySelector(".inkwell-editor-limit-toast"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render the toast when no characterLimit is configured", () => {
+    const { container } = render(
+      <InkwellEditor content="hello world" onChange={vi.fn()} />,
+    );
+    expect(
+      container.querySelector(".inkwell-editor-limit-toast"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("can be disabled via limitToast={false}", () => {
+    const { container } = render(
+      <InkwellEditor
+        content="hello world"
+        onChange={vi.fn()}
+        characterLimit={5}
+        limitToast={false}
+      />,
+    );
+    expect(
+      container.querySelector(".inkwell-editor-limit-toast"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reads 'Over limit by N' when content exceeds the limit", () => {
+    const { container } = render(
+      <InkwellEditor
+        content="hello world"
+        onChange={vi.fn()}
+        characterLimit={5}
+      />,
+    );
+    const toast = container.querySelector(".inkwell-editor-limit-toast");
+    expect(toast).toHaveTextContent("Over limit by 6");
+  });
+
+  it("shows 'Character limit reached' when enforce is on and at the limit", () => {
+    const { container } = render(
+      <InkwellEditor
+        content="hello"
+        onChange={vi.fn()}
+        characterLimit={5}
+        enforceCharacterLimit
+      />,
+    );
+    const toast = container.querySelector(".inkwell-editor-limit-toast");
+    expect(toast).toBeInTheDocument();
+    expect(toast).toHaveTextContent("Character limit reached");
+  });
+
+  it("is not shown at exactly the limit when not enforced", () => {
+    const { container } = render(
+      <InkwellEditor
+        content="hello"
+        onChange={vi.fn()}
+        characterLimit={5}
+      />,
+    );
+    expect(
+      container.querySelector(".inkwell-editor-limit-toast"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("has aria-live='polite' so screen readers announce the limit", () => {
+    const { container } = render(
+      <InkwellEditor
+        content="hello world"
+        onChange={vi.fn()}
+        characterLimit={5}
+      />,
+    );
+    const toast = container.querySelector(".inkwell-editor-limit-toast");
+    expect(toast).toHaveAttribute("role", "status");
+    expect(toast).toHaveAttribute("aria-live", "polite");
+  });
+});

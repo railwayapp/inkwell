@@ -330,6 +330,7 @@ function NumberInput({
   min,
   max,
   step = 1,
+  suffix,
   ariaLabel,
 }: {
   value: number;
@@ -337,37 +338,193 @@ function NumberInput({
   min: number;
   max: number;
   step?: number;
+  suffix?: string;
   ariaLabel: string;
 }) {
+  const [focused, setFocused] = useState(false);
+  const clamp = (n: number) =>
+    Math.min(max, Math.max(min, Math.round(n)));
+  const setBy = (delta: number) => onChange(clamp(value + delta));
+
+  const stepBtn: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 26,
+    height: 30,
+    border: "none",
+    background: "transparent",
+    color: SURFACE.textDim,
+    fontSize: "0.95rem",
+    fontWeight: 500,
+    cursor: "pointer",
+    userSelect: "none",
+    transition: "color 0.12s ease, background 0.12s ease",
+  };
+
   return (
-    <input
-      type="number"
-      aria-label={ariaLabel}
-      value={value}
-      min={min}
-      max={max}
-      step={step}
-      onChange={e => {
-        const next = Number(e.target.value);
-        if (Number.isFinite(next)) {
-          onChange(Math.min(max, Math.max(min, Math.round(next))));
-        }
-      }}
+    <div
       style={{
-        width: 88,
-        padding: "0.3rem 0.5rem",
-        borderRadius: 6,
-        border: `1px solid ${SURFACE.border}`,
+        display: "inline-flex",
+        alignItems: "stretch",
+        height: 30,
+        borderRadius: 8,
+        border: `1px solid ${focused ? SURFACE.borderStrong : SURFACE.border}`,
         background: SURFACE.bgSoft,
-        color: SURFACE.textHi,
-        fontSize: "0.78rem",
-        fontFamily:
-          '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-        fontVariantNumeric: "tabular-nums",
-        textAlign: "right",
-        outline: "none",
+        overflow: "hidden",
+        boxShadow: focused
+          ? `0 0 0 3px ${SURFACE.accentSoft}`
+          : "none",
+        transition: "border-color 0.15s ease, box-shadow 0.15s ease",
       }}
-    />
+      onMouseDownCapture={() => {
+        // Prevent the dialog from registering an unintended close when
+        // the user mousedowns on the spacing inside the control.
+      }}
+    >
+      <button
+        type="button"
+        aria-label={`Decrease ${ariaLabel.toLowerCase()}`}
+        onClick={() => setBy(-step)}
+        disabled={value <= min}
+        style={{
+          ...stepBtn,
+          borderRight: `1px solid ${SURFACE.border}`,
+          opacity: value <= min ? 0.35 : 1,
+          cursor: value <= min ? "not-allowed" : "pointer",
+        }}
+      >
+        −
+      </button>
+      <input
+        type="number"
+        aria-label={ariaLabel}
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onChange={e => {
+          const next = Number(e.target.value);
+          if (Number.isFinite(next)) onChange(clamp(next));
+        }}
+        className="demo-number-input"
+        style={{
+          width: 76,
+          padding: "0 0.4rem",
+          border: "none",
+          background: "transparent",
+          color: SURFACE.textHi,
+          fontSize: "0.82rem",
+          fontFamily:
+            '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 500,
+          textAlign: "right",
+          outline: "none",
+          appearance: "textfield",
+          MozAppearance: "textfield",
+        }}
+      />
+      {suffix && (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            paddingRight: "0.55rem",
+            fontSize: "0.7rem",
+            color: SURFACE.textVeryDim,
+            fontFamily:
+              '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+            letterSpacing: "0.04em",
+            textTransform: "lowercase",
+          }}
+        >
+          {suffix}
+        </span>
+      )}
+      <button
+        type="button"
+        aria-label={`Increase ${ariaLabel.toLowerCase()}`}
+        onClick={() => setBy(step)}
+        disabled={value >= max}
+        style={{
+          ...stepBtn,
+          borderLeft: `1px solid ${SURFACE.border}`,
+          opacity: value >= max ? 0.35 : 1,
+          cursor: value >= max ? "not-allowed" : "pointer",
+        }}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function LimitToast({
+  visible,
+  count,
+  limit,
+  enforced,
+}: {
+  visible: boolean;
+  count: number;
+  limit: number;
+  enforced: boolean;
+}) {
+  const over = count > limit;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      // Positioned inside the editor so the toast tracks the editor box,
+      // not the surrounding page. `pointer-events: none` lets the user
+      // keep typing through the toast region.
+      style={{
+        position: "absolute",
+        top: "0.7rem",
+        right: "0.7rem",
+        zIndex: 10,
+        pointerEvents: "none",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.45rem",
+        padding: "0.4rem 0.65rem",
+        borderRadius: 8,
+        border: "1px solid hsl(0, 65%, 42%)",
+        background: "hsla(0, 60%, 14%, 0.92)",
+        color: "hsl(0, 80%, 92%)",
+        fontSize: "0.72rem",
+        fontWeight: 500,
+        boxShadow: "0 6px 18px hsla(0, 70%, 8%, 0.55)",
+        backdropFilter: "blur(6px)",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(-4px)",
+        transition: "opacity 0.16s ease, transform 0.16s ease",
+      }}
+    >
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4" />
+        <path d="M12 16h.01" />
+      </svg>
+      <span>
+        {enforced && !over
+          ? "Character limit reached"
+          : `Over limit by ${count - limit}`}
+      </span>
+    </div>
   );
 }
 
@@ -442,6 +599,7 @@ function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        className="demo-modal-dialog"
         onClick={e => e.stopPropagation()}
         style={{
           width: "100%",
@@ -1095,7 +1253,17 @@ export function Demo() {
             overflowY: "auto",
           }}
         >
-          {activeTab === "editor" && <EditorInstance />}
+          {activeTab === "editor" && (
+            <div style={{ position: "relative" }}>
+              <EditorInstance />
+              <LimitToast
+                visible={characterCount >= characterLimit}
+                count={characterCount}
+                limit={characterLimit}
+                enforced={enforceCharacterLimit}
+              />
+            </div>
+          )}
           {activeTab === "preview" && (
             <div style={{ padding: "1.5rem" }}>
               <InkwellRenderer
@@ -1213,12 +1381,13 @@ export function Demo() {
                 min={CHARACTER_LIMIT_MIN}
                 max={CHARACTER_LIMIT_MAX}
                 step={50}
+                suffix="chars"
               />
             }
           />
 
           <Row
-            title="Enforce limit"
+            title="Enforce character limit"
             description="When on, the editor clamps typing and pasted input at the character limit."
             control={
               <Switch

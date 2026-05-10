@@ -106,18 +106,22 @@ a container and a copy button:
 | `.inkwell-plugin-bubble-menu-item-italic` | Italic button label |
 | `.inkwell-plugin-bubble-menu-item-strike` | Strikethrough button label |
 
-### Snippets
+### Plugin picker (snippets, mentions, etc.)
+
+All picker-based plugins share a single set of classes so the menu UI
+is consistent regardless of which plugin opened it.
 
 | Selector | Element |
 |----------|---------|
-| `.inkwell-plugin-snippets-popup` | Positioned container |
-| `.inkwell-plugin-snippets-picker` | Picker wrapper |
-| `.inkwell-plugin-snippets-search` | Search input |
-| `.inkwell-plugin-snippets-item` | Snippet row |
-| `.inkwell-plugin-snippets-item-active` | Highlighted row |
-| `.inkwell-plugin-snippets-title` | Snippet title |
-| `.inkwell-plugin-snippets-preview` | Snippet preview text |
-| `.inkwell-plugin-snippets-empty` | Empty state message |
+| `.inkwell-plugin-picker-popup` | Positioned container |
+| `.inkwell-plugin-picker` | Picker wrapper |
+| `.inkwell-plugin-picker-search` | Search input |
+| `.inkwell-plugin-picker-item` | Item row |
+| `.inkwell-plugin-picker-item-active` | Highlighted row |
+| `.inkwell-plugin-picker-title` | Item title |
+| `.inkwell-plugin-picker-subtitle` | Item subtitle |
+| `.inkwell-plugin-picker-preview` | Item preview text |
+| `.inkwell-plugin-picker-empty` | Empty state message |
 
 ## Code highlighting
 
@@ -310,7 +314,7 @@ your design system.
 
 /* ── Snippets plugin ── */
 
-.inkwell-plugin-snippets-picker {
+.inkwell-plugin-picker {
   background: #18181b;
   border: 1px solid #3f3f46;
   border-radius: 8px;
@@ -320,7 +324,7 @@ your design system.
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
-.inkwell-plugin-snippets-search {
+.inkwell-plugin-picker-search {
   width: 100%;
   padding: 8px 12px;
   background: #09090b;
@@ -331,13 +335,13 @@ your design system.
   outline: none;
 }
 
-.inkwell-plugin-snippets-item {
+.inkwell-plugin-picker-item {
   padding: 8px 12px;
   cursor: pointer;
 }
 
-.inkwell-plugin-snippets-item:hover,
-.inkwell-plugin-snippets-item-active {
+.inkwell-plugin-picker-item:hover,
+.inkwell-plugin-picker-item-active {
   background: #27272a;
 }
 ```

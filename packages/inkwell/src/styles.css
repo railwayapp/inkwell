@@ -204,12 +204,12 @@
   font-size: 15px;
 }
 
-/* Snippets plugin */
-.inkwell-plugin-snippets-popup {
+/* Shared plugin picker (snippets, mentions, etc.) */
+.inkwell-plugin-picker-popup {
   position: absolute;
   z-index: 1001;
 }
-.inkwell-plugin-snippets-picker {
+.inkwell-plugin-picker {
   background: #18181b;
   border: 1px solid #3f3f46;
   border-radius: 8px;
@@ -218,7 +218,7 @@
   max-width: 320px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
-.inkwell-plugin-snippets-search {
+.inkwell-plugin-picker-search {
   width: 100%;
   padding: 8px 12px;
   background: #09090b;
@@ -228,24 +228,29 @@
   font-size: 0.85rem;
   outline: none;
 }
-.inkwell-plugin-snippets-search::placeholder {
+.inkwell-plugin-picker-search::placeholder {
   color: #52525b;
 }
-.inkwell-plugin-snippets-item {
+.inkwell-plugin-picker-item {
   padding: 8px 12px;
   cursor: pointer;
   transition: background 0.1s ease;
 }
-.inkwell-plugin-snippets-item:hover,
-.inkwell-plugin-snippets-item-active {
+.inkwell-plugin-picker-item:hover,
+.inkwell-plugin-picker-item-active {
   background: #27272a;
 }
-.inkwell-plugin-snippets-title {
+.inkwell-plugin-picker-title {
   font-size: 0.85rem;
   font-weight: 500;
   color: #e4e4e7;
 }
-.inkwell-plugin-snippets-preview {
+.inkwell-plugin-picker-subtitle {
+  font-size: 0.75rem;
+  color: #71717a;
+  margin-top: 2px;
+}
+.inkwell-plugin-picker-preview {
   font-size: 0.75rem;
   color: #71717a;
   margin-top: 2px;
@@ -253,52 +258,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.inkwell-plugin-snippets-empty {
-  padding: 12px;
-  text-align: center;
-  color: #52525b;
-  font-size: 0.85rem;
-}
-
-/* Mentions plugin */
-.inkwell-plugin-mentions-popup {
-  position: absolute;
-  z-index: 1001;
-}
-.inkwell-plugin-mentions-picker {
-  width: 220px;
-  background: #18181b;
-  border: 1px solid #3f3f46;
-  border-radius: 8px;
-  padding: 4px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
-  animation: inkwell-fade-in 0.12s ease-out;
-}
-.inkwell-plugin-mentions-search {
-  width: 100%;
-  padding: 8px 10px;
-  background: #0f0f12;
-  border: 1px solid #3f3f46;
-  border-radius: 6px;
-  color: #e4e4e7;
-  font-size: 0.85rem;
-  outline: none;
-  margin-bottom: 4px;
-}
-.inkwell-plugin-mentions-search::placeholder {
-  color: #52525b;
-}
-.inkwell-plugin-mentions-item {
-  padding: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.1s ease;
-}
-.inkwell-plugin-mentions-item:hover,
-.inkwell-plugin-mentions-item-active {
-  background: #27272a;
-}
-.inkwell-plugin-mentions-empty {
+.inkwell-plugin-picker-empty {
   padding: 12px;
   text-align: center;
   color: #52525b;

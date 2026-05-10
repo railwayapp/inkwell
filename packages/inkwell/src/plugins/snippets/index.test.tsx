@@ -63,7 +63,7 @@ describe("createSnippetsPlugin", () => {
     it("filters snippets by query", () => {
       const { container } = renderPlugin();
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
       fireEvent.change(searchInput, { target: { value: "bug" } });
       expect(screen.getByText("Bug Report")).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("createSnippetsPlugin", () => {
     it("is case-insensitive when filtering", () => {
       const { container } = renderPlugin();
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
       fireEvent.change(searchInput, { target: { value: "BUG" } });
       expect(screen.getByText("Bug Report")).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe("createSnippetsPlugin", () => {
     it("shows empty state when no snippets match", () => {
       const { container } = renderPlugin();
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
       fireEvent.change(searchInput, { target: { value: "nonexistent" } });
       expect(screen.getByText("No snippets found")).toBeInTheDocument();
@@ -114,40 +114,40 @@ describe("createSnippetsPlugin", () => {
 
     it("highlights the first item by default", () => {
       const { container } = renderPlugin();
-      const items = container.querySelectorAll("[data-snippet-item]");
-      expect(items[0]).toHaveClass("inkwell-plugin-snippets-item-active");
+      const items = container.querySelectorAll(".inkwell-plugin-picker-item");
+      expect(items[0]).toHaveClass("inkwell-plugin-picker-item-active");
     });
 
     it("navigates down with ArrowDown", () => {
       const { container } = renderPlugin();
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
       fireEvent.keyDown(searchInput, { key: "ArrowDown" });
 
-      const items = container.querySelectorAll("[data-snippet-item]");
-      expect(items[1]).toHaveClass("inkwell-plugin-snippets-item-active");
+      const items = container.querySelectorAll(".inkwell-plugin-picker-item");
+      expect(items[1]).toHaveClass("inkwell-plugin-picker-item-active");
     });
 
     it("navigates up with ArrowUp", () => {
       const { container } = renderPlugin();
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
       // Go down first, then up
       fireEvent.keyDown(searchInput, { key: "ArrowDown" });
       fireEvent.keyDown(searchInput, { key: "ArrowUp" });
 
-      const items = container.querySelectorAll("[data-snippet-item]");
-      expect(items[0]).toHaveClass("inkwell-plugin-snippets-item-active");
+      const items = container.querySelectorAll(".inkwell-plugin-picker-item");
+      expect(items[0]).toHaveClass("inkwell-plugin-picker-item-active");
     });
 
     it("wraps around from last to first on ArrowDown", () => {
       const { container } = renderPlugin();
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
       // Navigate past the last item
@@ -155,21 +155,21 @@ describe("createSnippetsPlugin", () => {
         fireEvent.keyDown(searchInput, { key: "ArrowDown" });
       }
 
-      const items = container.querySelectorAll("[data-snippet-item]");
-      expect(items[0]).toHaveClass("inkwell-plugin-snippets-item-active");
+      const items = container.querySelectorAll(".inkwell-plugin-picker-item");
+      expect(items[0]).toHaveClass("inkwell-plugin-picker-item-active");
     });
 
     it("wraps around from first to last on ArrowUp", () => {
       const { container } = renderPlugin();
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
       fireEvent.keyDown(searchInput, { key: "ArrowUp" });
 
-      const items = container.querySelectorAll("[data-snippet-item]");
+      const items = container.querySelectorAll(".inkwell-plugin-picker-item");
       expect(items[SNIPPETS.length - 1]).toHaveClass(
-        "inkwell-plugin-snippets-item-active",
+        "inkwell-plugin-picker-item-active",
       );
     });
 
@@ -177,7 +177,7 @@ describe("createSnippetsPlugin", () => {
       const onSelect = vi.fn();
       const { container } = renderPlugin(SNIPPETS, { onSelect });
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
       fireEvent.keyDown(searchInput, { key: "Enter" });
@@ -188,7 +188,7 @@ describe("createSnippetsPlugin", () => {
       const onSelect = vi.fn();
       const { container } = renderPlugin(SNIPPETS, { onSelect });
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
       fireEvent.keyDown(searchInput, { key: "ArrowDown" });
@@ -201,7 +201,7 @@ describe("createSnippetsPlugin", () => {
       const onDismiss = vi.fn();
       const { container } = renderPlugin(SNIPPETS, { onDismiss });
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
       fireEvent.keyDown(searchInput, { key: "Escape" });
@@ -211,16 +211,16 @@ describe("createSnippetsPlugin", () => {
     it("highlights item on mouse enter", () => {
       const { container } = renderPlugin();
 
-      const items = container.querySelectorAll("[data-snippet-item]");
+      const items = container.querySelectorAll(".inkwell-plugin-picker-item");
       fireEvent.mouseEnter(items[2]);
 
-      expect(items[2]).toHaveClass("inkwell-plugin-snippets-item-active");
+      expect(items[2]).toHaveClass("inkwell-plugin-picker-item-active");
     });
 
     it("resets selection when query changes", () => {
       const { container } = renderPlugin();
       const searchInput = container.querySelector(
-        ".inkwell-plugin-snippets-search",
+        ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
       // Navigate down
@@ -230,9 +230,9 @@ describe("createSnippetsPlugin", () => {
       // Change query — selection should reset to 0
       fireEvent.change(searchInput, { target: { value: "b" } });
 
-      const items = container.querySelectorAll("[data-snippet-item]");
+      const items = container.querySelectorAll(".inkwell-plugin-picker-item");
       if (items.length > 0) {
-        expect(items[0]).toHaveClass("inkwell-plugin-snippets-item-active");
+        expect(items[0]).toHaveClass("inkwell-plugin-picker-item-active");
       }
     });
 

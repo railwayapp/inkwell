@@ -1,11 +1,8 @@
 "use client";
 
-import { type ReactNode, useCallback } from "react";
-import { pluginClass } from "../../lib/class-names";
+import type { ReactNode } from "react";
 import type { InkwellPlugin, PluginRenderProps } from "../../types";
-import { PluginPicker } from "../plugin-picker";
-
-const cls = pluginClass("mentions");
+import { PluginMenuPrimitive } from "../plugin-picker";
 
 /**
  * Item shape a mentions plugin operates on. `id` is required so the default
@@ -39,44 +36,6 @@ export interface MentionsPluginOptions<T extends MentionItem = MentionItem> {
   emptyMessage?: string;
 }
 
-interface MentionsPickerProps<T extends MentionItem> extends PluginRenderProps {
-  options: MentionsPluginOptions<T>;
-}
-
-function MentionsPicker<T extends MentionItem>({
-  options,
-  onSelect,
-  onDismiss,
-}: MentionsPickerProps<T>): ReactNode {
-  const commit = useCallback(
-    (item: T) => {
-      const text = options.onSelect
-        ? options.onSelect(item)
-        : `@${options.marker}[${item.id}]`;
-      onSelect(text);
-    },
-    [onSelect, options],
-  );
-
-  return (
-    <PluginPicker
-      pluginName={options.name}
-      className={cls("picker")}
-      searchClassName={cls("search")}
-      itemClassName={cls("item")}
-      activeItemClassName={cls("item-active")}
-      emptyClassName={cls("empty")}
-      items={[]}
-      search={options.search}
-      renderItem={options.renderItem}
-      getKey={item => item.id}
-      onSelect={commit}
-      onDismiss={onDismiss}
-      emptyMessage={options.emptyMessage ?? "No results"}
-    />
-  );
-}
-
 /**
  * Generic mentions plugin. Pick items from an async source and insert either
  * the expanded content (via `onSelect`) or a persisted marker `@<marker>[<id>]`.
@@ -84,21 +43,25 @@ function MentionsPicker<T extends MentionItem>({
 export function createMentionsPlugin<T extends MentionItem = MentionItem>(
   options: MentionsPluginOptions<T>,
 ): InkwellPlugin {
+  const itemToText = (item: T): string =>
+    options.onSelect
+      ? options.onSelect(item)
+      : `@${options.marker}[${item.id}]`;
+
   return {
     name: options.name,
     trigger: { key: options.trigger },
     render: (props: PluginRenderProps) => (
-      <div
-        className={cls("popup")}
-        style={{
-          position: "absolute",
-          top: props.position.top,
-          left: props.position.left,
-          zIndex: 2147483647,
-        }}
-      >
-        <MentionsPicker options={options} {...props} />
-      </div>
+      <PluginMenuPrimitive<T>
+        pluginName={options.name}
+        placeholder="Search..."
+        search={options.search}
+        getKey={item => item.id}
+        renderItem={options.renderItem}
+        itemToText={itemToText}
+        emptyMessage={options.emptyMessage ?? "No results"}
+        {...props}
+      />
     ),
   };
 }

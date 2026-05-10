@@ -8,47 +8,64 @@ import {
   useRef,
   useState,
 } from "react";
+import type { PluginRenderProps } from "../types";
 
-interface PluginPickerProps<T> {
+const BASE = "inkwell-plugin-picker";
+
+export const pluginPickerClass = {
+  popup: `${BASE}-popup`,
+  picker: `${BASE}`,
+  search: `${BASE}-search`,
+  item: `${BASE}-item`,
+  itemActive: `${BASE}-item-active`,
+  empty: `${BASE}-empty`,
+  title: `${BASE}-title`,
+  subtitle: `${BASE}-subtitle`,
+  preview: `${BASE}-preview`,
+};
+
+interface PluginMenuPrimitiveProps<T> extends PluginRenderProps {
+  /** Plugin name (used for the forwarded keyboard event channel). */
   pluginName: string;
-  className: string;
-  searchClassName: string;
-  itemClassName: string;
-  activeItemClassName: string;
-  emptyClassName: string;
-  items: T[];
+  /** Sync item list. Used when `search` is not provided. */
+  items?: T[];
+  /** Async/sync search callback. When provided, replaces sync filtering. */
   search?: (query: string) => Promise<T[]> | T[];
-  renderItem: (item: T, active: boolean) => ReactNode;
+  /** Stable key for an item. Also used by the default sync filter. */
   getKey: (item: T) => string;
-  onSelect: (item: T) => void;
-  onDismiss: () => void;
+  /** Render a single item row inside the picker. */
+  renderItem: (item: T, active: boolean) => ReactNode;
+  /** Map a selected item to the string inserted into the document. */
+  itemToText: (item: T) => string;
+  /** Optional search input placeholder. */
   placeholder?: string;
-  emptyMessage: string;
-  itemDataAttribute?: string;
+  /** Fallback message when there are no results. */
+  emptyMessage?: string;
 }
 
-export function PluginPicker<T>({
+/**
+ * Shared picker primitive used by plugins like snippets and mentions. Renders
+ * the popup wrapper, search input, and item list, and handles focus, keyboard
+ * navigation (locally and via forwarded editor keys), and selection.
+ */
+export function PluginMenuPrimitive<T>({
   pluginName,
-  className,
-  searchClassName,
-  itemClassName,
-  activeItemClassName,
-  emptyClassName,
   items,
   search,
-  renderItem,
   getKey,
+  renderItem,
+  itemToText,
+  placeholder,
+  emptyMessage = "No results",
   onSelect,
   onDismiss,
-  placeholder,
-  emptyMessage,
-  itemDataAttribute,
-}: PluginPickerProps<T>): ReactNode {
+  position,
+}: PluginMenuPrimitiveProps<T>): ReactNode {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [query, setQuery] = useState("");
   const [asyncResults, setAsyncResults] = useState<T[]>([]);
   const selectedIndexRef = useRef(0);
-  const resultsRef = useRef<T[]>(items);
+  const resultsRef = useRef<T[]>(items ?? []);
 
   const updateSelectedIndex = useCallback((next: number) => {
     selectedIndexRef.current = next;
@@ -57,7 +74,8 @@ export function PluginPicker<T>({
 
   const syncResults = useMemo(() => {
     if (search) return null;
-    return items.filter(item =>
+    const all = items ?? [];
+    return all.filter(item =>
       getKey(item).toLowerCase().includes(query.toLowerCase()),
     );
   }, [getKey, items, query, search]);
@@ -88,10 +106,15 @@ export function PluginPicker<T>({
     };
   }, [query, search, updateSelectedIndex]);
 
+  const commitItem = useCallback(
+    (item: T) => onSelect(itemToText(item)),
+    [itemToText, onSelect],
+  );
+
   const commitSelected = useCallback(() => {
     const item = resultsRef.current[selectedIndexRef.current];
-    if (item) onSelect(item);
-  }, [onSelect]);
+    if (item) commitItem(item);
+  }, [commitItem]);
 
   const handlePluginKey = useCallback(
     (key: string) => {
@@ -186,23 +209,21 @@ export function PluginPicker<T>({
           <div
             key={getKey(item)}
             ref={active ? activeItemRef : undefined}
-            {...(itemDataAttribute ? { [itemDataAttribute]: "" } : {})}
-            className={`${itemClassName} ${active ? activeItemClassName : ""}`}
+            className={`${pluginPickerClass.item} ${
+              active ? pluginPickerClass.itemActive : ""
+            }`}
             onMouseDown={event => event.preventDefault()}
             onMouseEnter={() => updateSelectedIndex(index)}
-            onClick={() => onSelect(item)}
+            onClick={() => commitItem(item)}
           >
             {renderItem(item, active)}
           </div>
         );
       }),
     [
-      activeItemClassName,
       activeItemRef,
+      commitItem,
       getKey,
-      itemClassName,
-      itemDataAttribute,
-      onSelect,
       renderItem,
       results,
       selectedIndex,
@@ -211,21 +232,32 @@ export function PluginPicker<T>({
   );
 
   return (
-    <div className={className}>
-      <input
-        ref={focusRef}
-        type="text"
-        placeholder={placeholder}
-        value={query}
-        onChange={event => setQuery(event.target.value)}
-        onKeyDown={handleKeyDown}
-        className={searchClassName}
-      />
-      {results.length === 0 ? (
-        <div className={emptyClassName}>{emptyMessage}</div>
-      ) : (
-        <div>{renderedResults}</div>
-      )}
+    <div
+      className={pluginPickerClass.popup}
+      style={{
+        position: "absolute",
+        top: position.top,
+        left: position.left,
+        zIndex: 1001,
+      }}
+      onMouseDown={event => event.preventDefault()}
+    >
+      <div className={pluginPickerClass.picker}>
+        <input
+          ref={focusRef}
+          type="text"
+          placeholder={placeholder}
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          onKeyDown={handleKeyDown}
+          className={pluginPickerClass.search}
+        />
+        {results.length === 0 ? (
+          <div className={pluginPickerClass.empty}>{emptyMessage}</div>
+        ) : (
+          <div>{renderedResults}</div>
+        )}
+      </div>
     </div>
   );
 }

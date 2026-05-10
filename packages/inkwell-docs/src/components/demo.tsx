@@ -196,180 +196,189 @@ function Kbd({ children }: { children: ReactNode }) {
   );
 }
 
-const DEFAULT_ENABLED = new Set([BUBBLE_MENU_ID]);
+/** Enable every plugin by default so the demo shows full functionality. */
+const DEFAULT_ENABLED = new Set(AVAILABLE_PLUGINS.map(p => p.id));
 
-function PluginChip({
-  plugin,
-  isOn,
-  onToggle,
+/* ------------------------------------------------------------------ */
+/* Shared UI primitives — used by both Plugins and Settings so the     */
+/* configuration card reads as a single coherent system.               */
+/* ------------------------------------------------------------------ */
+
+const SURFACE = {
+  border: "hsl(270, 45%, 22%)",
+  borderStrong: "hsl(270, 60%, 52%)",
+  bg: "hsl(270, 38%, 10%)",
+  bgSoft: "hsla(270, 40%, 14%, 0.6)",
+  textHi: "hsl(270, 70%, 95%)",
+  text: "hsl(270, 60%, 82%)",
+  textDim: "hsl(270, 30%, 58%)",
+  textVeryDim: "hsl(270, 28%, 45%)",
+  accentSoft: "hsla(270, 60%, 52%, 0.18)",
+};
+
+function Switch({
+  on,
+  onChange,
+  label,
 }: {
-  plugin: PluginDef;
-  isOn: boolean;
-  onToggle: () => void;
+  on: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   return (
-    <div
-      style={{ position: "relative", display: "inline-block" }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      style={{
+        position: "relative",
+        width: 30,
+        height: 17,
+        flexShrink: 0,
+        borderRadius: 9999,
+        border: `1px solid ${on ? SURFACE.borderStrong : SURFACE.border}`,
+        background: on ? "hsla(270, 60%, 52%, 0.35)" : SURFACE.bgSoft,
+        cursor: "pointer",
+        padding: 0,
+        transition: "background 0.18s ease, border-color 0.18s ease",
+      }}
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        onFocus={() => setHovered(true)}
-        onBlur={() => setHovered(false)}
-        aria-pressed={isOn}
-        aria-describedby={`plugin-${plugin.id}-tooltip`}
-        style={{
-          padding: "0.3rem 0.7rem",
-          fontSize: "0.72rem",
-          fontWeight: 500,
-          cursor: "pointer",
-          borderRadius: "9999px",
-          border: `1px solid ${
-            isOn ? "hsl(270, 60%, 52%)" : "hsl(270, 45%, 24%)"
-          }`,
-          background: isOn
-            ? "hsla(270, 60%, 52%, 0.22)"
-            : "hsla(270, 40%, 16%, 0.5)",
-          color: isOn ? "hsl(270, 70%, 95%)" : "hsl(270, 40%, 65%)",
-          boxShadow: isOn ? "0 0 14px hsla(270, 60%, 52%, 0.4)" : "none",
-          transition: "all 0.2s ease",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "0.4rem",
-          backdropFilter: "blur(8px)",
-        }}
-      >
-        <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: isOn ? "hsl(270, 70%, 80%)" : "hsl(270, 45%, 32%)",
-            boxShadow: isOn ? "0 0 6px hsl(270, 70%, 75%)" : "none",
-            transition: "all 0.2s ease",
-          }}
-        />
-        {plugin.label}
-      </button>
-      <div
-        id={`plugin-${plugin.id}-tooltip`}
-        role="tooltip"
+      <span
+        aria-hidden="true"
         style={{
           position: "absolute",
-          bottom: "calc(100% + 10px)",
-          left: "50%",
-          width: 260,
-          padding: "0.7rem 0.85rem",
-          fontSize: "0.72rem",
-          lineHeight: 1.55,
-          color: "hsl(270, 70%, 92%)",
-          background: "hsla(270, 40%, 10%, 0.95)",
-          border: "1px solid hsl(270, 45%, 28%)",
-          borderRadius: 10,
-          backdropFilter: "blur(14px)",
-          boxShadow:
-            "0 12px 32px -6px rgba(0, 0, 0, 0.55), 0 0 0 1px hsla(270, 60%, 52%, 0.12)",
-          pointerEvents: hovered ? "auto" : "none",
-          opacity: hovered ? 1 : 0,
-          transform: `translateX(-50%) translateY(${hovered ? 0 : 4}px)`,
-          transition: "opacity 0.18s ease-out, transform 0.18s ease-out",
-          zIndex: 20,
+          top: 1,
+          left: on ? 14 : 1,
+          width: 13,
+          height: 13,
+          borderRadius: "50%",
+          background: on ? "hsl(270, 70%, 88%)" : "hsl(270, 30%, 55%)",
+          boxShadow: on ? "0 0 6px hsla(270, 70%, 75%, 0.7)" : "none",
+          transition: "left 0.18s ease, background 0.18s ease",
         }}
-      >
-        <div
-          style={{
-            fontSize: "0.8rem",
-            fontWeight: 600,
-            color: "hsl(270, 80%, 96%)",
-            marginBottom: "0.35rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-          }}
-        >
-          <span
+      />
+    </button>
+  );
+}
+
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+}: {
+  value: T;
+  onChange: (next: T) => void;
+  options: { value: T; label: string }[];
+  ariaLabel: string;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      style={{
+        display: "inline-flex",
+        padding: 2,
+        borderRadius: 8,
+        border: `1px solid ${SURFACE.border}`,
+        background: SURFACE.bgSoft,
+      }}
+    >
+      {options.map(opt => {
+        const selected = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(opt.value)}
             style={{
-              width: 5,
-              height: 5,
-              borderRadius: "50%",
-              background: isOn ? "hsl(270, 70%, 80%)" : "hsl(270, 45%, 40%)",
-              boxShadow: isOn ? "0 0 6px hsl(270, 70%, 75%)" : "none",
-            }}
-          />
-          {plugin.label}
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: "0.62rem",
-              fontWeight: 500,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: isOn ? "hsl(270, 70%, 85%)" : "hsl(270, 35%, 55%)",
+              padding: "0.25rem 0.7rem",
+              border: "none",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontSize: "0.7rem",
+              fontWeight: 600,
+              color: selected ? SURFACE.textHi : SURFACE.textDim,
+              background: selected ? SURFACE.accentSoft : "transparent",
+              boxShadow: selected
+                ? "inset 0 0 0 1px hsla(270, 60%, 52%, 0.45)"
+                : "none",
+              transition: "all 0.15s ease",
             }}
           >
-            {isOn ? "On" : "Off"}
-          </span>
-        </div>
-        <div style={{ marginBottom: "0.55rem", color: "hsl(270, 65%, 88%)" }}>
-          {plugin.summary}
-        </div>
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SectionHeader({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: "0.62rem",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.12em",
+        color: SURFACE.textVeryDim,
+        padding: "0.85rem 1rem 0.45rem",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Row({
+  title,
+  description,
+  control,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  control: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: "1rem",
+        alignItems: "center",
+        padding: "0.7rem 1rem",
+        borderTop: `1px solid ${SURFACE.border}`,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
         <div
           style={{
-            fontSize: "0.62rem",
-            color: "hsl(270, 40%, 62%)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 600,
-            marginBottom: "0.3rem",
+            fontSize: "0.82rem",
+            fontWeight: 500,
+            color: SURFACE.textHi,
+            marginBottom: description ? "0.18rem" : 0,
           }}
         >
-          How to use
+          {title}
         </div>
-        <div style={{ color: "hsl(270, 60%, 86%)" }}>{plugin.usage}</div>
-        {/* Invisible bridge covering the gap between tooltip and button */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            height: 16,
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 0,
-            height: 0,
-            borderLeft: "6px solid transparent",
-            borderRight: "6px solid transparent",
-            borderTop: "6px solid hsl(270, 45%, 28%)",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: "calc(100% - 1px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 0,
-            height: 0,
-            borderLeft: "5px solid transparent",
-            borderRight: "5px solid transparent",
-            borderTop: "5px solid hsla(270, 40%, 10%, 0.95)",
-          }}
-        />
+        {description && (
+          <div
+            style={{
+              fontSize: "0.72rem",
+              lineHeight: 1.5,
+              color: SURFACE.textDim,
+            }}
+          >
+            {description}
+          </div>
+        )}
       </div>
+      <div style={{ flexShrink: 0 }}>{control}</div>
     </div>
   );
 }
@@ -728,8 +737,8 @@ export function Demo() {
     () => INITIAL_MARKDOWN.length,
   );
   const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
+  const [demoStyle, setDemoStyle] = useState<"custom" | "default">("custom");
   const overLimit = characterCount > CHARACTER_LIMIT;
-  const [bottomTab, setBottomTab] = useState<"plugins" | "settings">("plugins");
   const { EditorInstance } = useInkwell({
     content: editorContent,
     onChange: setEditorContent,
@@ -744,42 +753,52 @@ export function Demo() {
   return (
     <ErrorBoundary>
       <div>
+        {/* Mode tabs */}
         <div
-          style={{ display: "flex", gap: "0.25rem", marginBottom: "0.75rem" }}
+          role="tablist"
+          aria-label="Demo mode"
+          style={{
+            display: "flex",
+            gap: "0.25rem",
+            marginBottom: "0.75rem",
+          }}
         >
-          {TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => switchTab(key)}
-              style={{
-                padding: "0.4rem 0",
-                fontSize: "0.8rem",
-                fontWeight: activeTab === key ? 600 : 400,
-                cursor: "pointer",
-                border: "none",
-                borderBottom:
-                  activeTab === key
-                    ? "2px solid hsl(270, 60%, 52%)"
+          {TABS.map(({ key, label }) => {
+            const selected = activeTab === key;
+            return (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={selected}
+                onClick={() => switchTab(key)}
+                style={{
+                  padding: "0.4rem 0",
+                  fontSize: "0.8rem",
+                  fontWeight: selected ? 600 : 400,
+                  cursor: "pointer",
+                  border: "none",
+                  borderBottom: selected
+                    ? `2px solid ${SURFACE.borderStrong}`
                     : "2px solid transparent",
-                background: "transparent",
-                color:
-                  activeTab === key
-                    ? "hsl(270, 70%, 95%)"
-                    : "hsl(270, 30%, 50%)",
-                marginRight: "1rem",
-                transition: "all 0.2s ease",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+                  background: "transparent",
+                  color: selected ? SURFACE.textHi : SURFACE.textDim,
+                  marginRight: "1rem",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
+        {/* Editor / preview / collab surface */}
         <div
+          data-demo-style={demoStyle}
           className="demo-tab-content"
           style={{
             borderRadius: "10px",
-            background: "hsl(270, 38%, 10%)",
+            background: SURFACE.bg,
             height: "760px",
             overflowY: "auto",
           }}
@@ -807,217 +826,171 @@ export function Demo() {
           )}
         </div>
 
-        <div style={{ marginTop: "0.85rem" }}>
-          <div
-            role="tablist"
-            aria-label="Editor configuration"
-            style={{
-              display: "flex",
-              borderBottom: "1px solid hsl(270, 45%, 22%)",
-              marginBottom: "0.7rem",
-            }}
-          >
-            {(
-              [
-                { id: "plugins", label: "Plugins" },
-                { id: "settings", label: "Settings" },
-              ] as const
-            ).map(({ id, label }) => {
-              const selected = bottomTab === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  aria-controls={`bottom-tab-${id}`}
-                  onClick={() => setBottomTab(id)}
-                  style={{
-                    padding: "0.4rem 0",
-                    marginRight: "1.25rem",
-                    marginBottom: "-1px",
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    fontSize: "0.65rem",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    color: selected
-                      ? "hsl(270, 70%, 92%)"
-                      : "hsl(270, 28%, 48%)",
-                    borderBottom: selected
-                      ? "2px solid hsl(270, 60%, 52%)"
-                      : "2px solid transparent",
-                    transition: "color 0.15s ease",
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          {bottomTab === "plugins" && (
-            <div
-              id="bottom-tab-plugins"
-              role="tabpanel"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                flexWrap: "wrap",
-              }}
-            >
-              {AVAILABLE_PLUGINS.map(plugin => (
-                <PluginChip
-                  key={plugin.id}
-                  plugin={plugin}
-                  isOn={enabledPluginIds.has(plugin.id)}
-                  onToggle={() => togglePlugin(plugin.id)}
-                />
-              ))}
-            </div>
-          )}
-
-          {bottomTab === "settings" && (
-            <div id="bottom-tab-settings" role="tabpanel">
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
-                  gap: "1rem",
-                  marginBottom: "0.65rem",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "hsl(270, 70%, 92%)",
-                      fontWeight: 500,
-                      marginBottom: "0.2rem",
-                    }}
-                  >
-                    Character limit
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.7rem",
-                      lineHeight: 1.5,
-                      color: "hsl(270, 30%, 60%)",
-                      maxWidth: 480,
-                    }}
-                  >
-                    Tracks document length and reports it via{" "}
-                    <code
+        {/* Configuration card — matches the editor surface so plugins and
+            settings read as part of the same UI system. */}
+        <div
+          aria-label="Editor configuration"
+          style={{
+            marginTop: "0.85rem",
+            borderRadius: 10,
+            border: `1px solid ${SURFACE.border}`,
+            background: SURFACE.bg,
+            overflow: "hidden",
+          }}
+        >
+          <SectionHeader>Plugins</SectionHeader>
+          {AVAILABLE_PLUGINS.map(plugin => {
+            const isOn = enabledPluginIds.has(plugin.id);
+            return (
+              <Row
+                key={plugin.id}
+                title={plugin.label}
+                description={
+                  <>
+                    <span>{plugin.summary}</span>
+                    <span
                       style={{
-                        fontFamily:
-                          '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-                        fontSize: "0.78em",
-                        background: "hsla(270, 50%, 32%, 0.4)",
-                        padding: "0 0.3rem",
-                        borderRadius: 3,
-                        color: "hsl(270, 70%, 88%)",
+                        display: "block",
+                        marginTop: "0.3rem",
+                        color: SURFACE.textVeryDim,
                       }}
                     >
-                      onCharacterCount
-                    </code>
-                    . Toggle <strong>Enforce</strong> to clamp typing and pasted
-                    input at the limit.
-                  </div>
-                </div>
-                <label
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.45rem",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={enforceCharacterLimit}
-                    onChange={e => setEnforceCharacterLimit(e.target.checked)}
-                    style={{
-                      accentColor: "hsl(270, 60%, 52%)",
-                      width: 14,
-                      height: 14,
-                      cursor: "pointer",
-                    }}
+                      {plugin.usage}
+                    </span>
+                  </>
+                }
+                control={
+                  <Switch
+                    on={isOn}
+                    onChange={() => togglePlugin(plugin.id)}
+                    label={`${plugin.label} plugin`}
                   />
-                  <span
-                    style={{
-                      fontSize: "0.65rem",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      color: enforceCharacterLimit
-                        ? "hsl(270, 70%, 88%)"
-                        : "hsl(270, 30%, 55%)",
-                    }}
-                  >
-                    Enforce
-                  </span>
-                </label>
-              </div>
+                }
+              />
+            );
+          })}
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.7rem",
-                }}
-              >
-                <div
-                  style={{
-                    flex: 1,
-                    position: "relative",
-                    height: 4,
-                    borderRadius: 9999,
-                    background: "hsl(270, 38%, 18%)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      bottom: 0,
-                      width: `${Math.min(
-                        100,
-                        (characterCount / CHARACTER_LIMIT) * 100,
-                      )}%`,
-                      background: overLimit
-                        ? "hsl(0, 75%, 60%)"
-                        : "linear-gradient(90deg, hsl(270, 60%, 52%), hsl(270, 70%, 70%))",
-                      transition: "width 0.18s ease, background 0.2s ease",
-                    }}
-                  />
-                </div>
-                <span
-                  aria-live="polite"
+          <SectionHeader>Settings</SectionHeader>
+
+          <Row
+            title="Editor styles"
+            description={
+              <>
+                Switch between the demo's purple theme and the unstyled
+                defaults shipped with{" "}
+                <code
                   style={{
                     fontFamily:
                       '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-                    fontSize: "0.72rem",
-                    fontVariantNumeric: "tabular-nums",
-                    color: overLimit
-                      ? "hsl(0, 75%, 72%)"
-                      : "hsl(270, 40%, 65%)",
-                    minWidth: "6.5rem",
-                    textAlign: "right",
+                    fontSize: "0.78em",
+                    background: "hsla(270, 50%, 32%, 0.4)",
+                    padding: "0 0.3rem",
+                    borderRadius: 3,
+                    color: SURFACE.textHi,
                   }}
                 >
-                  {characterCount} / {CHARACTER_LIMIT}
-                </span>
-              </div>
+                  @railway/inkwell/styles.css
+                </code>
+                .
+              </>
+            }
+            control={
+              <Segmented<"custom" | "default">
+                ariaLabel="Editor styles"
+                value={demoStyle}
+                onChange={setDemoStyle}
+                options={[
+                  { value: "custom", label: "Demo" },
+                  { value: "default", label: "Defaults" },
+                ]}
+              />
+            }
+          />
+
+          <Row
+            title="Character limit"
+            description={
+              <>
+                Tracks document length via{" "}
+                <code
+                  style={{
+                    fontFamily:
+                      '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+                    fontSize: "0.78em",
+                    background: "hsla(270, 50%, 32%, 0.4)",
+                    padding: "0 0.3rem",
+                    borderRadius: 3,
+                    color: SURFACE.textHi,
+                  }}
+                >
+                  onCharacterCount
+                </code>
+                . When enforced, the editor clamps typing and pasted input at
+                the limit.
+              </>
+            }
+            control={
+              <Switch
+                on={enforceCharacterLimit}
+                onChange={setEnforceCharacterLimit}
+                label="Enforce character limit"
+              />
+            }
+          />
+
+          {/* Inline progress bar lives flush against the bottom of the card
+              so the count stays visible regardless of which section is open. */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              padding: "0.65rem 1rem",
+              borderTop: `1px solid ${SURFACE.border}`,
+              background: SURFACE.bgSoft,
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                position: "relative",
+                height: 4,
+                borderRadius: 9999,
+                background: "hsl(270, 38%, 18%)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  right: "auto",
+                  width: `${Math.min(
+                    100,
+                    (characterCount / CHARACTER_LIMIT) * 100,
+                  )}%`,
+                  background: overLimit
+                    ? "hsl(0, 75%, 60%)"
+                    : "linear-gradient(90deg, hsl(270, 60%, 52%), hsl(270, 70%, 70%))",
+                  transition: "width 0.18s ease, background 0.2s ease",
+                }}
+              />
             </div>
-          )}
+            <span
+              aria-live="polite"
+              style={{
+                fontFamily:
+                  '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+                fontSize: "0.72rem",
+                fontVariantNumeric: "tabular-nums",
+                color: overLimit ? "hsl(0, 75%, 72%)" : SURFACE.textDim,
+                minWidth: "6.5rem",
+                textAlign: "right",
+              }}
+            >
+              {characterCount} / {CHARACTER_LIMIT}
+            </span>
+          </div>
         </div>
       </div>
     </ErrorBoundary>

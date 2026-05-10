@@ -286,7 +286,8 @@ function or a `[plugin, options]` tuple. See
 **Type:** `number`
 
 Tracks the current character count and adds `inkwell-editor-over-limit` to
-the wrapper when exceeded.
+the wrapper when exceeded. When set, the editor also renders a built-in
+[limit toast](#limittoast) at the top-right unless disabled.
 
 ### `enforceCharacterLimit`
 
@@ -299,3 +300,25 @@ When `true`, blocks text input past `characterLimit`.
 **Type:** `(count: number, limit?: number) => void`
 
 Called whenever the editor recalculates character count.
+
+### `limitToast`
+
+**Type:** `boolean` — default: `true`
+
+When a `characterLimit` is configured, the editor renders a small toast at
+the top-right of `.inkwell-editor-wrapper` whenever the document hits the
+limit. Visibility:
+
+- `characterCount > characterLimit` → shows `"Over limit by N"`.
+- `enforceCharacterLimit && characterCount >= characterLimit` → shows
+  `"Character limit reached"` so users hitting the wall under enforce mode
+  still get feedback.
+- Exactly at the limit but not enforced → hidden.
+
+The toast is `pointer-events: none` so it never blocks typing or selection,
+and uses `role="status"` + `aria-live="polite"` for screen readers. Style
+it via `.inkwell-editor-limit-toast` (and
+`.inkwell-editor-limit-toast-icon`) in your stylesheet.
+
+Pass `limitToast={false}` to opt out and render your own indicator via
+`onCharacterCount`.

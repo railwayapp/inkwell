@@ -68,6 +68,16 @@ Used when [collaboration](/docs/collaboration) is enabled:
 The cursor color is applied inline from `user.color`, so your CSS only
 needs to handle positioning and opacity.
 
+### Character limit
+
+Applied when a `characterLimit` is configured on the editor:
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-editor-wrapper.inkwell-editor-over-limit` | Wrapper while `characterCount > characterLimit`. Use to flag the surface (e.g. red outline). |
+| `.inkwell-editor-limit-toast` | Built-in toast surfaced at the top-right of the editor when the limit is reached. Opt out via `limitToast={false}`. |
+| `.inkwell-editor-limit-toast-icon` | The leading icon inside the toast. |
+
 ## Renderer
 
 The renderer wraps output in `<div class="inkwell-renderer">`. Inside,

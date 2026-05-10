@@ -2,10 +2,85 @@
 "@railway/inkwell": minor
 ---
 
-Add the `useInkwell` hook API, exposing `{ state, EditorInstance, editor }` plus imperative editor controls for focus, clearing, replacing Markdown, inserting Markdown, and state inspection.
+### `useInkwell` hook
 
-Ship default editor, plugin, and renderer styles via `@railway/inkwell/styles.css`.
+Adds the `useInkwell(options)` hook as the recommended editor API. Returns
+`{ state, EditorInstance, editor }`, where `editor` is a stable controller
+exposing imperative actions (`focus`, `clear`, `setMarkdown`, `insertMarkdown`,
+`getMarkdown`, `getText`, `getState`).
 
-Add built-in mentions and attachments plugins. Mentions provide a trigger-based searchable picker with persisted marker insertion, and attachments support pasted/dropped image uploads plus copied HTML image URLs.
+### Default stylesheet
 
-Add renderer mention hydration support, image block parsing/rendering/serialization, character limit state/enforcement, editable/read-only mode, editor state callbacks, and plugin setup lifecycle hooks.
+Ships a default editor, plugin, and renderer stylesheet at
+`@railway/inkwell/styles.css`. Designed as a neutral, theme-aware baseline —
+light by default, dark via `prefers-color-scheme: dark` — wired up via CSS
+custom properties (`--inkwell-bg`, `--inkwell-text`, `--inkwell-border`,
+`--inkwell-accent`, `--inkwell-code-bg`, etc.) so consumers can re-theme
+without rewriting selectors.
+
+### New built-in plugins
+
+- `createMentionsPlugin({ name, trigger, marker, search, renderItem, onSelect?, emptyMessage? })`
+  — generic trigger-based searchable picker. Inserts either `@<marker>[<id>]`
+  by default or the string returned by `onSelect`. Renderer-side hydration via
+  the new `MentionRenderer` type and `mentions` prop on `<InkwellRenderer />`.
+- `createAttachmentsPlugin({ accept, onUpload, onError?, maxSize? })` — paste
+  or drop image files into the editor; also handles HTML `<img>` paste with a
+  remote `src` URL.
+
+### Shared plugin picker primitive
+
+Snippets and mentions now both render through a shared `PluginMenuPrimitive`
+so the menu UI, search input, keyboard navigation, scoped key-forwarding
+(`window` event `inkwell-plugin-keydown:<plugin-name>`), and focus behavior
+are identical across plugins.
+
+**Breaking (CSS).** The previous plugin-specific class namespaces
+`.inkwell-plugin-snippets-*` and `.inkwell-plugin-mentions-*` are replaced by
+the shared `.inkwell-plugin-picker-*` namespace:
+
+| Old                                      | New                                |
+| ---------------------------------------- | ---------------------------------- |
+| `.inkwell-plugin-snippets-popup`         | `.inkwell-plugin-picker-popup`     |
+| `.inkwell-plugin-snippets-picker`        | `.inkwell-plugin-picker`           |
+| `.inkwell-plugin-snippets-search`        | `.inkwell-plugin-picker-search`    |
+| `.inkwell-plugin-snippets-item`          | `.inkwell-plugin-picker-item`      |
+| `.inkwell-plugin-snippets-item-active`   | `.inkwell-plugin-picker-item-active` |
+| `.inkwell-plugin-snippets-title`         | `.inkwell-plugin-picker-title`     |
+| `.inkwell-plugin-snippets-preview`       | `.inkwell-plugin-picker-preview`   |
+| `.inkwell-plugin-snippets-empty`         | `.inkwell-plugin-picker-empty`     |
+| `.inkwell-plugin-mentions-*` (any)       | `.inkwell-plugin-picker-*`         |
+
+`.inkwell-plugin-picker-subtitle` is new. Custom plugins built on top of
+`PluginMenuPrimitive` automatically inherit the same class namespace.
+
+### Character-limit additions
+
+- `characterLimit?: number`, `enforceCharacterLimit?: boolean`,
+  `onCharacterCount?: (count, limit?) => void` props (also available via
+  `useInkwell`).
+- New `limitToast?: boolean` prop (default `true`) renders a built-in toast at
+  the top-right of `.inkwell-editor-wrapper` when the document hits the limit.
+  Styled via `.inkwell-editor-limit-toast`. Pass `limitToast={false}` to opt
+  out and render your own indicator.
+- `.inkwell-editor-over-limit` is added to the wrapper whenever
+  `characterCount > characterLimit`.
+
+### Editor state + lifecycle
+
+- `editable?: boolean` (default `true`) for read-only mode.
+- `onStateChange?: (state: InkwellEditorState) => void` reporting
+  `{ markdown, text, isEmpty, isFocused, isEditable, characterCount, characterLimit, overLimit }`.
+- Plugins may opt into a `setup(ctx)` lifecycle hook.
+
+### Renderer additions
+
+- Image block parsing, rendering, and serialization round-trip.
+- `mentions: MentionRenderer[]` prop on `<InkwellRenderer />` to hydrate
+  Markdown markers into custom React nodes.
+
+### Better paste handling
+
+Attachments plugin and Slate `withMarkdown` paste pipeline now handle copied
+HTML `<img>` tags by resolving the remote URL through `onUpload`, matching
+file-clipboard parity.

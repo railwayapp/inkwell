@@ -64,6 +64,7 @@ Most applications should use `useInkwell`. The lower-level `InkwellEditor` compo
 - `characterLimit?: number` — Tracks character count and adds `inkwell-editor-over-limit` when exceeded.
 - `enforceCharacterLimit?: boolean` (default: `false`) — Blocks text input past `characterLimit`.
 - `onCharacterCount?: (count: number, limit?: number) => void` — Called when character count changes.
+- `limitToast?: boolean` (default: `true`) — Renders a built-in toast (`.inkwell-editor-limit-toast`) at the top-right of `.inkwell-editor-wrapper` when the document hits `characterLimit`. Set to `false` to render your own indicator instead.
 
 ### Editor Controller
 
@@ -309,6 +310,114 @@ interface Snippet {
 }
 ```
 
+### Built-in: Mentions
+
+Generic searchable picker for any list-of-things. Inserts `@<marker>[<id>]` markers into the document by default, or a custom string returned by `onSelect`.
+
+```tsx
+import {
+  createMentionsPlugin,
+  type MentionItem,
+  useInkwell,
+} from "@railway/inkwell";
+
+const USERS: MentionItem[] = [
+  { id: "alice", title: "Alice Anderson" },
+  { id: "bob",   title: "Bob Brown" },
+];
+
+const mentions = createMentionsPlugin<MentionItem>({
+  name: "mentions",        // unique per editor instance
+  trigger: "@",            // single character that opens the picker
+  marker: "user",          // produces `@user[<id>]` in the document
+  search: (query) =>
+    USERS.filter((u) =>
+      u.title.toLowerCase().includes(query.toLowerCase()),
+    ),
+  renderItem: (item, active) => (
+    <div data-active={active}>{item.title}</div>
+  ),
+  emptyMessage: "No matching users",
+});
+
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  plugins: [mentions],
+});
+```
+
+Mentions options:
+
+```tsx
+interface MentionItem {
+  id: string;
+  title: string;
+}
+
+interface MentionsPluginOptions<T extends MentionItem = MentionItem> {
+  name: string;
+  trigger: string;
+  marker: string;
+  search: (query: string) => Promise<T[]> | T[];
+  renderItem: (item: T, active: boolean) => ReactNode;
+  /** Override the inserted text. When omitted, inserts `@<marker>[<id>]`. */
+  onSelect?: (item: T) => string;
+  emptyMessage?: string;
+}
+```
+
+Render side: hydrate the persisted `@<marker>[<id>]` markers via `InkwellRenderer`'s `mentions` prop:
+
+```tsx
+import { InkwellRenderer, type MentionRenderer } from "@railway/inkwell";
+
+const mentionRenderers: MentionRenderer[] = [
+  {
+    pattern: /@user\[([a-z0-9-]+)\]/g,
+    resolve: (match) => {
+      const id = match[1];
+      const user = USERS.find((u) => u.id === id);
+      return <Chip>@{user?.title ?? id}</Chip>;
+    },
+  },
+];
+
+<InkwellRenderer content={markdown} mentions={mentionRenderers} />;
+```
+
+### Built-in: Attachments
+
+Paste or drop image files into the editor. The plugin runs each file through your `onUpload` and inserts a block image at the cursor. Also handles copied HTML `<img>` clipboard payloads with a remote `src`.
+
+```tsx
+import { createAttachmentsPlugin, useInkwell } from "@railway/inkwell";
+
+const attachments = createAttachmentsPlugin({
+  accept: "image/*",
+  onUpload: async (file) => uploadToS3(file), // returns a URL
+  onError: (err, file) => console.error(err, file.name),
+  maxSize: 5 * 1024 * 1024, // optional; bytes
+});
+
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  plugins: [attachments],
+});
+```
+
+### Shared Plugin Picker Primitive
+
+Snippets, mentions, and any custom picker-style plugin all render through `PluginMenuPrimitive` (re-exported as a building block). It provides:
+
+- search input with auto-focus on mount
+- sync `items` filtering or async `search` callback
+- keyboard navigation (`ArrowUp`/`ArrowDown` with wrap, `Enter` to select, `Escape` to dismiss, `Backspace` to shrink the query, typed chars extend the query)
+- forwarded editor keys via `window` event `inkwell-plugin-keydown:<plugin-name>`
+- mouse hover/click selection
+- a single CSS namespace (`.inkwell-plugin-picker-*`) so styling carries across plugins
+
 ### Custom Plugin Example
 
 ```tsx
@@ -411,7 +520,22 @@ When `collaboration` is provided, the Yjs document becomes the source of truth. 
 
 ## Styling
 
-Inkwell applies CSS classes to every element but ships no default styles.
+Inkwell ships a neutral, theme-aware default stylesheet at `@railway/inkwell/styles.css`:
+
+```ts
+import "@railway/inkwell/styles.css";
+```
+
+The defaults are light by default and switch to dark via `prefers-color-scheme: dark`. Theming is driven by CSS variables (declared on `.inkwell-editor`, `.inkwell-renderer`, `.inkwell-plugin-bubble-menu-container`, `.inkwell-plugin-picker-popup`):
+
+- `--inkwell-bg`, `--inkwell-bg-elevated`, `--inkwell-bg-subtle`
+- `--inkwell-border`, `--inkwell-border-strong`
+- `--inkwell-text`, `--inkwell-text-muted`, `--inkwell-text-dim`
+- `--inkwell-accent`, `--inkwell-accent-soft`, `--inkwell-danger`
+- `--inkwell-code-bg`, `--inkwell-code-fg`
+- `--inkwell-font-mono`, `--inkwell-radius`
+
+Override any token to retheme without rewriting selectors. Selectors below let you override or extend specific elements.
 
 ### Editor CSS Classes
 
@@ -434,6 +558,11 @@ Remote cursors:
 - `.inkwell-editor-remote-cursor` — Selection highlight
 - `.inkwell-editor-remote-caret` — Cursor position
 
+Character limit:
+- `.inkwell-editor-wrapper.inkwell-editor-over-limit` — Wrapper while `characterCount > characterLimit`
+- `.inkwell-editor-limit-toast` — Built-in over-limit toast (opt out via `limitToast={false}`)
+- `.inkwell-editor-limit-toast-icon` — Icon inside the toast
+
 ### Renderer CSS Classes
 
 - `.inkwell-renderer` — Wrapper div
@@ -451,15 +580,16 @@ Bubble menu:
 - `.inkwell-plugin-bubble-menu-item-italic`
 - `.inkwell-plugin-bubble-menu-item-strike`
 
-Snippets:
-- `.inkwell-plugin-snippets-popup`
-- `.inkwell-plugin-snippets-picker`
-- `.inkwell-plugin-snippets-search`
-- `.inkwell-plugin-snippets-item`
-- `.inkwell-plugin-snippets-item-active`
-- `.inkwell-plugin-snippets-title`
-- `.inkwell-plugin-snippets-preview`
-- `.inkwell-plugin-snippets-empty`
+Plugin picker (shared by snippets, mentions, and any custom picker plugin built on `PluginMenuPrimitive`):
+- `.inkwell-plugin-picker-popup`
+- `.inkwell-plugin-picker`
+- `.inkwell-plugin-picker-search`
+- `.inkwell-plugin-picker-item`
+- `.inkwell-plugin-picker-item-active`
+- `.inkwell-plugin-picker-title`
+- `.inkwell-plugin-picker-subtitle`
+- `.inkwell-plugin-picker-preview`
+- `.inkwell-plugin-picker-empty`
 
 ## Exports
 
@@ -481,6 +611,8 @@ Plugin creators:
 Plugin utilities:
 - `defaultBubbleMenuItems`
 - `pluginClass`
+- `PluginMenuPrimitive` — shared search-and-pick primitive used by `createSnippetsPlugin` and `createMentionsPlugin`. Use it to build your own picker plugins with the same keyboard, focus, and class-namespace contract.
+- `pluginPickerClass` — the `.inkwell-plugin-picker-*` class-name map produced by `PluginMenuPrimitive`.
 
 Serialization:
 - `serializeToMarkdown(html: string): string`
@@ -503,6 +635,9 @@ Types:
 - `BubbleMenuItem`
 - `BubbleMenuItemProps`
 - `CollaborationConfig`
+- `MentionItem`
+- `MentionRenderer`
+- `MentionsPluginOptions`
 - `PluginKeyDownContext`
 - `PluginRenderProps`
 - `PluginTrigger`

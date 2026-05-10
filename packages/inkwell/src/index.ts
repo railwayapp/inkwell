@@ -15,6 +15,10 @@ export {
   type MentionItem,
   type MentionsPluginOptions,
 } from "./plugins/mentions";
+export {
+  PluginMenuPrimitive,
+  pluginPickerClass,
+} from "./plugins/plugin-picker";
 export { createSnippetsPlugin } from "./plugins/snippets";
 export { serializeToMarkdown } from "./renderer/html-serializer";
 export { InkwellRenderer } from "./renderer/inkwell-renderer";

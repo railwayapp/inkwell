@@ -44,10 +44,26 @@ inkwell-dev/
           remark-flatten-blockquotes.ts  Custom remark plugin
           remark-no-tables.ts            Custom remark plugin
         plugins/
-          bubble-menu/         Built-in bubble menu plugin (19 tests)
+          plugin-picker.tsx        Shared PluginMenuPrimitive (search
+                                   input, keyboard nav, scoped key
+                                   forwarding, focus) used by every
+                                   picker-style plugin.
+          plugin-picker.test.tsx   Tests for the shared primitive.
+          bubble-menu/             Built-in bubble menu plugin.
             index.tsx
             index.test.tsx
-          snippets/            Snippet picker plugin (21 tests)
+          snippets/                Snippet picker plugin (uses
+                                   PluginMenuPrimitive).
+            index.tsx
+            index.test.tsx
+          mentions/                Mentions picker plugin (uses
+                                   PluginMenuPrimitive). Inserts
+                                   `@<marker>[<id>]` markers.
+            index.tsx
+            index.test.tsx
+          attachments/             Image paste/drop → onUpload → block
+                                   image insertion. Also handles copied
+                                   HTML `<img>` clipboard payloads.
             index.tsx
             index.test.tsx
     inkwell-docs/            (docs site — Astro Starlight + React islands)
@@ -124,9 +140,9 @@ The library also exports components directly for lower-level integrations. Most 
 - **Hooks**: `useInkwell`
 - **Components**: `InkwellEditor`, `InkwellRenderer`
 - **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createMentionsPlugin`, `createSnippetsPlugin`
-- **Plugin utilities**: `defaultBubbleMenuItems`, `pluginClass`
+- **Plugin utilities**: `defaultBubbleMenuItems`, `pluginClass`, `PluginMenuPrimitive`, `pluginPickerClass`
 - **Serialization**: `serializeToMarkdown`, `parseMarkdown`, `deserialize`
-- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `InkwellComponents`, `InkwellDecorations`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `Snippet`
+- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `Snippet`
 
 ### Editor Rendering Model (Slate.js)
 
@@ -139,7 +155,29 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
 
 **Decoration marks**: bold, italic, strikethrough, inlineCode, hljs, remoteCursor, remoteCursorCaret. Also marker spans for syntax dimming: boldMarker, italicMarker, strikeMarker, codeMarker.
 
-**Built-in plugins**: Bubble menu (enabled by default via `bubbleMenu` prop, customizable via `BubbleMenuItem[]`). Pass `bubbleMenu={false}` to disable. Default items: bold/italic/strike. Each item is a React component receiving `{ wrapSelection }`. User plugins merged after built-ins.
+**Built-in plugins**:
+
+- **Bubble menu** — enabled by default via `bubbleMenu` prop, customizable
+  via `BubbleMenuItem[]`. Pass `bubbleMenu={false}` to disable. Default
+  items: bold/italic/strike. Each item is a React component receiving
+  `{ wrapSelection }`.
+- **Snippets** — picker plugin for inserting Markdown templates.
+- **Mentions** — generic trigger-based searchable picker, inserts
+  `@<marker>[<id>]` (or the string returned by `onSelect`). Renderer
+  hydrates markers into custom React nodes via the `mentions` prop.
+- **Attachments** — image paste / drop → `onUpload` → block-image
+  insertion. Also resolves copied HTML `<img>` clipboard payloads.
+
+All picker-style plugins (snippets, mentions, anything custom) render
+through the shared `PluginMenuPrimitive` so the menu UI, keyboard nav,
+focus, and class namespace (`.inkwell-plugin-picker-*`) are identical.
+
+**Character-limit toast**. When `characterLimit` is set, the editor
+renders a built-in toast inside `.inkwell-editor-wrapper` at top-right
+whenever the document hits the limit. Opt out with `limitToast={false}`.
+Styled by `.inkwell-editor-limit-toast`.
+
+User plugins merged after built-ins.
 
 **wrapSelection toggle**: Wrapping already-formatted text removes the formatting instead of double-wrapping. Detects markers in the selection or surrounding the selection.
 
@@ -153,12 +191,26 @@ Two modes: standalone (`withHistory`) vs collab (`withYjs` + `withCursors` + `wi
 - **Bubble menu is built-in and customizable** — `createBubbleMenuPlugin({ items })` accepts custom `BubbleMenuItem[]` where each item is a React component. `defaultBubbleMenuItems` exported for extending. Items receive `{ wrapSelection }` as props.
 - **`editorElRef`** — stable React ref for the Slate DOM node, kept current via useEffect after mount. Fixes stale ref issues with plugin event handlers.
 - **Plugins are co-located** — live in `packages/inkwell/src/plugins/`, each in its own directory with co-located tests. Not a separate package.
+- **Shared picker primitive** — `plugins/plugin-picker.tsx` exposes
+  `PluginMenuPrimitive` and the `pluginPickerClass` namespace map. Any new
+  picker-style plugin should render through it so it inherits the keyboard,
+  focus, forwarded-key, and CSS-class contract that snippets and mentions
+  rely on. Direct unit tests live in `plugin-picker.test.tsx`.
 - **Docs site: vanilla Starlight** — no custom theming. Previous attempts at custom purple themes were rejected as "horrid". Keep it default. Has minor structural overrides (PageSidebar, custom CSS for inkwell component styling) but no theme changes.
 - **Landing page is separate** — custom Astro page with React demo island, NOT Starlight-themed.
 
 ## Design System Colors
 
-All colors are on the hsl(270) hue. Use these values (and tweaks of them) for all UI work:
+**Scope:** these tokens are for the **docs site / demo** only, not the
+published package. `@railway/inkwell/styles.css` ships a neutral,
+theme-aware baseline (light by default, dark via `prefers-color-scheme`,
+wired up via `--inkwell-*` CSS variables). The purple palette below is
+layered on top of those defaults inside
+`packages/inkwell-docs/src/styles/globals.css`, scoped under
+`[data-demo-style="custom"]` so the demo can flip between the docs theme
+and the unstyled package defaults.
+
+All docs-site colors are on the hsl(270) hue. Use these values (and tweaks of them) for all docs/demo UI work:
 
 | Token    | Value              | Usage                           |
 | -------- | ------------------ | ------------------------------- |

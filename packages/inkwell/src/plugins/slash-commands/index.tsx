@@ -67,6 +67,18 @@ const fuzzyMatch = (query: string, text: string): boolean => {
 
 const isSlashCommand = (input: string): boolean => input.trim().startsWith("/");
 
+const getActiveSlashLine = (markdown: string): string => {
+  const lines = markdown.split("\n");
+  return lines[lines.length - 1] ?? "";
+};
+
+const replaceActiveSlashLine = (markdown: string, nextLine: string): string => {
+  const lines = markdown.split("\n");
+  if (lines.length === 0) return nextLine;
+  lines[lines.length - 1] = nextLine;
+  return lines.join("\n");
+};
+
 const parseSlashCommand = (input: string): SlashCommandParsedInput | null => {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) return null;
@@ -122,7 +134,8 @@ function SlashCommandMenu<T extends SlashCommandItem>({
   stateRef: { current: SlashCommandMenuState };
   onReadyChange?: (ready: boolean) => void;
 }) {
-  const input = getMarkdown();
+  const markdown = getMarkdown();
+  const input = getActiveSlashLine(markdown);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [argChoices, setArgChoices] = useState<SlashCommandChoice[]>([]);
   const [loadingArgs, setLoadingArgs] = useState(false);
@@ -257,22 +270,29 @@ function SlashCommandMenu<T extends SlashCommandItem>({
 
   const close = useCallback(() => {
     onReadyChange?.(false);
-    setMarkdown("");
-  }, [onReadyChange, setMarkdown]);
+    setMarkdown(replaceActiveSlashLine(getMarkdown(), ""));
+  }, [getMarkdown, onReadyChange, setMarkdown]);
 
   const handleSelect = useCallback(
     (item: SlashCommandAutocompleteItem<T>) => {
       if (item.disabled) return;
       if (item.type === "command") {
         const hasArgs = item.command?.args && item.command.args.length > 0;
-        setMarkdown(`/${item.value}${hasArgs ? " " : ""}`);
+        setMarkdown(
+          replaceActiveSlashLine(
+            getMarkdown(),
+            `/${item.value}${hasArgs ? " " : ""}`,
+          ),
+        );
         return;
       }
 
       const commandPart = parsed?.command ?? "";
-      setMarkdown(`/${commandPart} ${item.label}`);
+      setMarkdown(
+        replaceActiveSlashLine(getMarkdown(), `/${commandPart} ${item.label}`),
+      );
     },
-    [parsed, setMarkdown],
+    [getMarkdown, parsed, setMarkdown],
   );
 
   const findNextEnabled = useCallback(

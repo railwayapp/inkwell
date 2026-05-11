@@ -138,6 +138,8 @@ function SlashCommandMenu<T extends SlashCommandItem>({
   setMarkdown,
   stateRef,
   onReadyChange,
+  active,
+  query,
 }: {
   commands: T[];
   emptyMessage: string;
@@ -145,9 +147,11 @@ function SlashCommandMenu<T extends SlashCommandItem>({
   setMarkdown: (markdown: string) => void;
   stateRef: { current: SlashCommandMenuState };
   onReadyChange?: (ready: boolean) => void;
+  active: boolean;
+  query: string;
 }) {
   const markdown = getMarkdown();
-  const input = getActiveSlashLine(markdown);
+  const input = active ? `/${query}` : getActiveSlashLine(markdown);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [argChoices, setArgChoices] = useState<SlashCommandChoice[]>([]);
   const [loadingArgs, setLoadingArgs] = useState(false);
@@ -332,14 +336,14 @@ function SlashCommandMenu<T extends SlashCommandItem>({
   );
 
   stateRef.current = {
-    visible: isSlashCommand(input),
+    visible: active || isSlashCommand(input),
     ready: commandIsComplete,
     selectActive,
     close,
     move,
   };
 
-  if (!isSlashCommand(input)) return null;
+  if (!active && !isSlashCommand(input)) return null;
 
   if (commandIsComplete && currentCommand) {
     return (
@@ -466,6 +470,8 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
           setMarkdown={setMarkdown}
           stateRef={stateRef}
           onReadyChange={onReadyChange}
+          active={props.active}
+          query={props.query}
         />
       );
     },

@@ -414,6 +414,7 @@ export const InkwellEditor = forwardRef<
   );
 
   const [activePlugin, setActivePlugin] = useState<InkwellPlugin | null>(null);
+  const [activePluginQuery, setActivePluginQuery] = useState("");
   const activePluginQueryRef = useRef("");
   const pluginPositionRef = useRef<{ top: number; left: number }>({
     top: 0,
@@ -623,7 +624,7 @@ export const InkwellEditor = forwardRef<
 
   const makePluginProps = (plugin: InkwellPlugin) => ({
     active: plugin.trigger ? activePlugin === plugin : true,
-    query: "",
+    query: activePlugin === plugin ? activePluginQuery : "",
     onSelect: handlePluginSelect,
     onDismiss: dismissPlugin,
     position: pluginPositionRef.current,
@@ -674,12 +675,13 @@ export const InkwellEditor = forwardRef<
                 dismissPlugin();
                 return;
               }
-              activePluginQueryRef.current = activePluginQueryRef.current.slice(
-                0,
-                -1,
-              );
+              const nextQuery = activePluginQueryRef.current.slice(0, -1);
+              activePluginQueryRef.current = nextQuery;
+              setActivePluginQuery(nextQuery);
             } else if (isPrintable) {
-              activePluginQueryRef.current = `${activePluginQueryRef.current}${event.key}`;
+              const nextQuery = `${activePluginQueryRef.current}${event.key}`;
+              activePluginQueryRef.current = nextQuery;
+              setActivePluginQuery(nextQuery);
             }
 
             window.dispatchEvent(
@@ -737,6 +739,7 @@ export const InkwellEditor = forwardRef<
           }
           if (hasModifiers) event.preventDefault();
           activePluginQueryRef.current = "";
+          setActivePluginQuery("");
           pluginPositionRef.current = getCursorPosition();
           setActivePlugin(plugin);
           return;

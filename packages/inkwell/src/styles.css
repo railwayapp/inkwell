@@ -329,6 +329,7 @@
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--inkwell-text);
+  margin-right: 0.5rem;
 }
 .inkwell-plugin-picker-subtitle {
   font-size: 0.75rem;
@@ -348,6 +349,14 @@
   text-align: center;
   color: var(--inkwell-text-dim);
   font-size: 0.85rem;
+}
+
+.inkwell-plugin-slash-commands-execute {
+  padding: 8px 10px;
+  color: var(--inkwell-text);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
 }
 
 /* ── Renderer ────────────────────────────────────────────────────── */

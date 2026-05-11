@@ -274,6 +274,7 @@
   font-size: 0.85rem;
   font-weight: 500;
   color: #e4e4e7;
+  margin-right: 0.5rem;
 }
 [data-demo-style="custom"] .inkwell-plugin-picker-subtitle {
   font-size: 0.75rem;
@@ -293,6 +294,14 @@
   text-align: center;
   color: #52525b;
   font-size: 0.85rem;
+}
+
+[data-demo-style="custom"] .inkwell-plugin-slash-commands-execute {
+  padding: 8px 12px;
+  color: #e4e4e7;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
 }
 
 /* Renderer */

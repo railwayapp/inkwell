@@ -30,6 +30,7 @@ import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import { createMentionsPlugin } from "../plugins/mentions";
+import { createSlashCommandsPlugin } from "../plugins/slash-commands";
 import type {
   CollaborationConfig,
   InkwellDecorations,
@@ -761,6 +762,506 @@ describe("InkwellEditor — plugin integration", () => {
 
     await waitFor(() => {
       expect(onChange).toHaveBeenLastCalledWith("@user[2]");
+    });
+  });
+
+  it("executes slash commands with a structured string-only payload and clears only the command line", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const onChange = vi.fn();
+    const onExecute = vi.fn();
+    const slashCommands = createSlashCommandsPlugin({
+      commands: [
+        {
+          name: "status",
+          description: "Set a thread status",
+          args: [
+            {
+              name: "status",
+              description: "Status to apply",
+              required: true,
+              choices: [
+                { value: "solved", label: "Solved" },
+                { value: "closed", label: "Closed" },
+              ],
+            },
+          ],
+        },
+      ],
+      getMarkdown: () => ref.current?.getMarkdown() ?? "",
+      setMarkdown: markdown => ref.current?.setMarkdown(markdown),
+      onExecute,
+    });
+
+    const { container } = render(
+      <InkwellEditor
+        ref={ref}
+        content="Intro"
+        onChange={onChange}
+        plugins={[slashCommands]}
+      />,
+    );
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+
+    act(() => {
+      ref.current?.focus({ at: "end" });
+      ref.current?.insertMarkdown("\n");
+    });
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "/" });
+    });
+    await screen.findByText("/status");
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "s" });
+    });
+    await screen.findByText("/status");
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "Enter" });
+    });
+    await screen.findByText("Solved");
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "Enter" });
+    });
+
+    expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "Enter" });
+    });
+
+    await waitFor(() => {
+      expect(onExecute).toHaveBeenCalledWith({
+        name: "status",
+        args: { status: "solved" },
+        raw: "/status Solved",
+      });
+    });
+    await waitFor(() => {
+      expect(ref.current?.getMarkdown()).toBe("Intro");
+    });
+  });
+
+  it("clears the slash command line when canceling from the execute phase", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const onExecute = vi.fn();
+    const slashCommands = createSlashCommandsPlugin({
+      commands: [{ name: "runbook", description: "Run a support runbook" }],
+      getMarkdown: () => ref.current?.getMarkdown() ?? "",
+      setMarkdown: markdown => ref.current?.setMarkdown(markdown),
+      onExecute,
+    });
+
+    const { container } = render(
+      <InkwellEditor
+        ref={ref}
+        content="Intro"
+        onChange={vi.fn()}
+        plugins={[slashCommands]}
+      />,
+    );
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+
+    act(() => {
+      ref.current?.focus({ at: "end" });
+      ref.current?.insertMarkdown("\n");
+    });
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "/" });
+    });
+    await screen.findByText("/runbook");
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "r" });
+    });
+    await screen.findByText("/runbook");
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "Enter" });
+    });
+
+    expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.keyDown(editor, { key: "Escape" });
+    });
+
+    expect(onExecute).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(ref.current?.getMarkdown()).toBe("Intro");
+    });
+  });
+
+  it("does not open slash commands for prose slashes", () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const slashCommands = createSlashCommandsPlugin({
+      commands: [{ name: "status", description: "Set a thread status" }],
+      getMarkdown: () => ref.current?.getMarkdown() ?? "",
+      setMarkdown: markdown => ref.current?.setMarkdown(markdown),
+    });
+
+    const { container } = render(
+      <InkwellEditor
+        ref={ref}
+        content="Intro"
+        onChange={vi.fn()}
+        plugins={[slashCommands]}
+      />,
+    );
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+
+    act(() => {
+      ref.current?.focus({ at: "end" });
+      fireEvent.keyDown(editor, { key: "/" });
+    });
+
+    expect(screen.queryByText("/status")).not.toBeInTheDocument();
+  });
+
+  describe("slash command integration", () => {
+    const createStatusPlugin = (
+      ref: React.RefObject<import("../types").InkwellEditorHandle | null>,
+      options: {
+        onExecute?: Parameters<typeof createSlashCommandsPlugin>[0]["onExecute"];
+        onReadyChange?: (ready: boolean) => void;
+      } = {},
+    ) =>
+      createSlashCommandsPlugin({
+        commands: [
+          {
+            name: "status",
+            description: "Set a thread status",
+            aliases: ["s"],
+            args: [
+              {
+                name: "status",
+                description: "Status to apply",
+                required: true,
+                choices: [
+                  { value: "solved", label: "Solved" },
+                  { value: "awaiting", label: "Awaiting User Response" },
+                  { value: "closed", label: "Closed", disabled: true },
+                ],
+              },
+            ],
+          },
+          { name: "runbook", description: "Run a support runbook" },
+          {
+            name: "bounty",
+            description: "Prepare a bounty action",
+            disabled: () => "Bounties are disabled",
+          },
+        ],
+        getMarkdown: () => ref.current?.getMarkdown() ?? "",
+        setMarkdown: markdown => ref.current?.setMarkdown(markdown),
+        onExecute: options.onExecute,
+        onReadyChange: options.onReadyChange,
+      });
+
+    const renderSlashEditor = (content = "Intro") => {
+      const ref = createRef<import("../types").InkwellEditorHandle>();
+      const onExecute = vi.fn();
+      const onReadyChange = vi.fn();
+      const { container } = render(
+        <InkwellEditor
+          ref={ref}
+          content={content}
+          onChange={vi.fn()}
+          plugins={[createStatusPlugin(ref, { onExecute, onReadyChange })]}
+        />,
+      );
+      const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+      return { ref, editor, container, onExecute, onReadyChange };
+    };
+
+    const startBlankSlashLine = (
+      ref: React.RefObject<import("../types").InkwellEditorHandle | null>,
+      editor: HTMLElement,
+    ) => {
+      act(() => {
+        ref.current?.focus({ at: "end" });
+        ref.current?.insertMarkdown("\n");
+      });
+      act(() => {
+        fireEvent.keyDown(editor, { key: "/" });
+      });
+    };
+
+    it("opens immediately on a blank slash line and renders at a cursor position", async () => {
+      const { ref, editor, container } = renderSlashEditor();
+      startBlankSlashLine(ref, editor);
+
+      expect(await screen.findByText("/status")).toBeInTheDocument();
+      expect(screen.getByText("/runbook")).toBeInTheDocument();
+      expect(screen.getByText("Bounties are disabled")).toBeInTheDocument();
+      const popup = container.querySelector(".inkwell-plugin-picker-popup") as HTMLElement;
+      expect(popup).toBeInTheDocument();
+      expect(popup.style.position).toBe("absolute");
+      expect(popup.style.zIndex).toBe("1001");
+    });
+
+    it("filters from typed editor text without a dedicated input", async () => {
+      const { ref, editor, container } = renderSlashEditor();
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "r" });
+      });
+
+      expect(screen.getByText("/runbook")).toBeInTheDocument();
+      expect(screen.queryByText("/status")).not.toBeInTheDocument();
+      expect(container.querySelector("input")).not.toBeInTheDocument();
+      expect(container.querySelector(".inkwell-plugin-picker-search")).toHaveTextContent("/r");
+    });
+
+    it("does not open for slashes after prose on the same line", () => {
+      const { ref, editor } = renderSlashEditor("Intro text");
+      act(() => {
+        ref.current?.focus({ at: "end" });
+        fireEvent.keyDown(editor, { key: "/" });
+      });
+
+      expect(screen.queryByText("/status")).not.toBeInTheDocument();
+    });
+
+    it("deleting the trigger closes the menu and releases Enter", async () => {
+      const { ref, editor } = renderSlashEditor();
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Backspace" });
+      });
+
+      expect(screen.queryByText("/status")).not.toBeInTheDocument();
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+      expect(screen.queryByText("/status")).not.toBeInTheDocument();
+    });
+
+    it("navigates commands with arrow keys and executes a no-arg command", async () => {
+      const { ref, editor, onExecute } = renderSlashEditor();
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "ArrowDown" });
+      });
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      await waitFor(() => {
+        expect(onExecute).toHaveBeenCalledWith({
+          name: "runbook",
+          args: {},
+          raw: "/runbook",
+        });
+      });
+    });
+
+    it("does not select disabled commands or disabled argument choices", async () => {
+      const { ref, editor, onExecute } = renderSlashEditor();
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      const disabledItem = screen.getByText("/bounty").closest("div");
+      expect(disabledItem).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByText("Bounties are disabled")).toBeInTheDocument();
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "ArrowUp" });
+      });
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      expect(onExecute).not.toHaveBeenCalled();
+      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+    });
+
+    it("shows required argument choices after selecting a command", async () => {
+      const { ref, editor, container } = renderSlashEditor();
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      expect(await screen.findByText("Solved")).toBeInTheDocument();
+      expect(screen.getByText("Awaiting User Response")).toBeInTheDocument();
+      expect(screen.getByText("(current)")).toBeInTheDocument();
+      expect(container.querySelector(".inkwell-plugin-picker-search")).toHaveTextContent("/status");
+    });
+
+    it("loads async argument choices and reports readiness transitions", async () => {
+      const ref = createRef<import("../types").InkwellEditorHandle>();
+      const onReadyChange = vi.fn();
+      const fetchChoices = vi.fn(async () => [
+        { value: "alpha", label: "Alpha" },
+        { value: "beta", label: "Beta" },
+      ]);
+      const slashCommands = createSlashCommandsPlugin({
+        commands: [
+          {
+            name: "assign",
+            description: "Assign ownership",
+            args: [
+              {
+                name: "owner",
+                description: "Owner to assign",
+                required: true,
+                fetchChoices,
+              },
+            ],
+          },
+        ],
+        getMarkdown: () => ref.current?.getMarkdown() ?? "",
+        setMarkdown: markdown => ref.current?.setMarkdown(markdown),
+        onReadyChange,
+      });
+      const { container } = render(
+        <InkwellEditor
+          ref={ref}
+          content="Intro"
+          onChange={vi.fn()}
+          plugins={[slashCommands]}
+        />,
+      );
+      const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/assign");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      expect(fetchChoices).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText("Alpha")).toBeInTheDocument();
+      expect(screen.getByText("Beta")).toBeInTheDocument();
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      expect(onReadyChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it("execute phase shows only centered instruction text", async () => {
+      const { ref, editor, container } = renderSlashEditor();
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+      await screen.findByText("Solved");
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      const execute = screen.getByText("Enter to execute · Esc to cancel");
+      expect(execute).toHaveClass("inkwell-plugin-slash-commands-execute");
+      const picker = container.querySelector(".inkwell-plugin-picker") as HTMLElement;
+      expect(picker).not.toHaveTextContent("✓");
+      expect(picker).not.toHaveTextContent("/status");
+      expect(picker).not.toHaveTextContent("Solved");
+    });
+
+    it("executes selected argument values as strings and clears only that command line", async () => {
+      const { ref, editor, onExecute } = renderSlashEditor("Intro\nMiddle");
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+      await screen.findByText("Solved");
+      act(() => {
+        fireEvent.keyDown(editor, { key: "ArrowDown" });
+      });
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      await waitFor(() => {
+        expect(onExecute).toHaveBeenCalledWith({
+          name: "status",
+          args: { status: "awaiting" },
+          raw: "/status Awaiting User Response",
+        });
+      });
+      await waitFor(() => {
+        expect(ref.current?.getMarkdown()).toBe("Intro\n\nMiddle");
+      });
+    });
+
+    it("canceling from execute phase clears only the command line and does not execute", async () => {
+      const { ref, editor, onExecute } = renderSlashEditor("Intro\nMiddle");
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "ArrowDown" });
+      });
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Escape" });
+      });
+
+      expect(onExecute).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(ref.current?.getMarkdown()).toBe("Intro\n\nMiddle");
+      });
+    });
+
+    it("Escape before execute closes the menu but keeps typed command text", async () => {
+      const { ref, editor } = renderSlashEditor();
+      startBlankSlashLine(ref, editor);
+      await screen.findByText("/status");
+
+      act(() => {
+        fireEvent.keyDown(editor, { key: "s" });
+        fireEvent.keyDown(editor, { key: "Escape" });
+      });
+
+      expect(screen.queryByText("/status")).not.toBeInTheDocument();
+      expect(ref.current?.getMarkdown()).toBe("Intro\n\n/");
+    });
+
+    it("does not teleport the cursor to the end when opening or closing in the middle", async () => {
+      const { ref, editor } = renderSlashEditor("Top\nBottom");
+      act(() => {
+        ref.current?.setMarkdown("Top\n\nBottom", { select: "start" });
+      });
+      act(() => {
+        fireEvent.keyDown(editor, { key: "/" });
+      });
+      await screen.findByText("/status");
+      act(() => {
+        fireEvent.keyDown(editor, { key: "Escape" });
+      });
+
+      expect(ref.current?.getMarkdown()).toBe("/Top\n\nBottom");
     });
   });
 

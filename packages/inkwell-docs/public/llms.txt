@@ -386,6 +386,51 @@ const mentionRenderers: MentionRenderer[] = [
 <InkwellRenderer content={markdown} mentions={mentionRenderers} />;
 ```
 
+### Built-in: Slash Commands
+
+Discord-style slash command picker for chat composers. `/` opens only on a
+blank/new line; prose `/` does not trigger. Query text is typed directly in the
+editor, not in a separate search input. Selecting a command/argument stages it;
+Enter executes and clears only the slash-command line, while Escape in the
+execute phase cancels and clears that line.
+
+```tsx
+import { createSlashCommandsPlugin, useInkwell } from "@railway/inkwell";
+
+const slashCommands = createSlashCommandsPlugin({
+  commands: [
+    {
+      name: "status",
+      description: "Set a thread status",
+      args: [
+        {
+          name: "status",
+          description: "Status to apply",
+          required: true,
+          choices: [
+            { value: "solved", label: "Solved" },
+            { value: "closed", label: "Closed" },
+          ],
+        },
+      ],
+    },
+  ],
+  getMarkdown: () => contentRef.current,
+  setMarkdown: setContent,
+  onExecute: command => {
+    // { name: "status", args: { status: "solved" }, raw: "/status Solved" }
+  },
+});
+```
+
+```tsx
+interface SlashCommandExecution {
+  name: string;
+  args: Record<string, string>;
+  raw: string;
+}
+```
+
 ### Built-in: Attachments
 
 Paste or drop image files into the editor. The plugin runs each file through your `onUpload` and inserts a block image at the cursor. Also handles copied HTML `<img>` clipboard payloads with a remote `src`.
@@ -613,7 +658,7 @@ Plugin creators:
 Plugin utilities:
 - `defaultBubbleMenuItems`
 - `pluginClass`
-- `PluginMenuPrimitive` — shared search-and-pick primitive used by `createSnippetsPlugin` and `createMentionsPlugin`. Use it to build your own picker plugins with the same keyboard, focus, and class-namespace contract.
+- `PluginMenuPrimitive` — shared picker primitive used by `createSnippetsPlugin` and `createMentionsPlugin`. Query is driven by editor text after the trigger; use it to build your own picker plugins with the same keyboard, focus, and class-namespace contract.
 - `pluginPickerClass` — the `.inkwell-plugin-picker-*` class-name map produced by `PluginMenuPrimitive`.
 
 Serialization:
@@ -648,6 +693,7 @@ Types:
 - `RehypePluginConfig`
 - `SlashCommandArg`
 - `SlashCommandChoice`
+- `SlashCommandExecution`
 - `SlashCommandItem`
 - `SlashCommandsPluginOptions`
 - `Snippet`

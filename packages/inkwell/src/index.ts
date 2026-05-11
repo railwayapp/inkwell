@@ -29,6 +29,7 @@ export {
   createSlashCommandsPlugin,
   type SlashCommandArg,
   type SlashCommandChoice,
+  type SlashCommandExecution,
   type SlashCommandItem,
   type SlashCommandsPluginOptions,
 } from "./plugins/slash-commands";

@@ -92,7 +92,6 @@ interface PluginDef {
   create?: (ctx: {
     getMarkdown: () => string;
     setMarkdown: (markdown: string) => void;
-    setSlashReady: (ready: boolean) => void;
   }) => InkwellPlugin;
 }
 
@@ -146,11 +145,11 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
     usage: (
       <>
         Type <Kbd>/</Kbd> to open commands, choose <code>/status</code>, then
-        pick a status. When the command is complete, <Kbd>Enter</Kbd> submits
-        via <code>onSubmit</code> in chat-style editors.
+        pick a status. When the command is complete, <Kbd>Enter</Kbd> executes
+        via the slash plugin's structured <code>onExecute</code> callback.
       </>
     ),
-    create: ({ getMarkdown, setMarkdown, setSlashReady }) =>
+    create: ({ getMarkdown, setMarkdown }) =>
       createSlashCommandsPlugin({
         commands: [
           {
@@ -189,7 +188,9 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
         ],
         getMarkdown,
         setMarkdown,
-        onReadyChange: setSlashReady,
+        onExecute: command => {
+          console.info("Slash command executed", command);
+        },
       }),
   },
   {
@@ -1157,7 +1158,6 @@ export function Demo() {
     DEFAULT_CHARACTER_LIMIT,
   );
   const [demoStyle, setDemoStyle] = useState<"custom" | "default">("custom");
-  const [slashReady, setSlashReady] = useState(false);
   const editorContentRef = useRef(editorContent);
   editorContentRef.current = editorContent;
   const overLimit = characterCount > characterLimit;
@@ -1168,7 +1168,6 @@ export function Demo() {
           p.create!({
             getMarkdown: () => editorContentRef.current,
             setMarkdown: setEditorContent,
-            setSlashReady,
           }),
       ),
     [enabledPluginIds],
@@ -1182,14 +1181,7 @@ export function Demo() {
     characterLimit,
     enforceCharacterLimit,
     onCharacterCount: setCharacterCount,
-    submitOnEnter: slashReady,
-    onSubmit: markdown => {
-      if (!markdown.trim().startsWith("/")) return;
-      setEditorContent(
-        `${markdown}\n\n> Demo command submitted at ${new Date().toLocaleTimeString()}`,
-      );
-      setSlashReady(false);
-    },
+
   });
 
   return (

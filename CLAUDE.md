@@ -142,7 +142,7 @@ The library also exports components directly for lower-level integrations. Most 
 - **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createEmojiPlugin`, `createMentionsPlugin`, `createSlashCommandsPlugin`, `createSnippetsPlugin`
 - **Plugin utilities**: `defaultBubbleMenuItems`, `pluginClass`, `PluginMenuPrimitive`, `pluginPickerClass`
 - **Serialization**: `serializeToMarkdown`, `parseMarkdown`, `deserialize`
-- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`
+- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`
 
 ### Editor Rendering Model (Slate.js)
 
@@ -167,6 +167,12 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
   hydrates markers into custom React nodes via the `mentions` prop.
 - **Attachments** — image paste / drop → `onUpload` → block-image
   insertion. Also resolves copied HTML `<img>` clipboard payloads.
+- **Slash commands** — Discord-style `/` command menu for blank/new lines.
+  Prose `/` does not trigger. Typing after `/` filters without a dedicated
+  search input. Selecting a command/argument stages execution; Enter calls
+  `onExecute({ name, args, raw })` with string-only arguments and clears only
+  the introduced slash-command line, while Escape in the execute phase cancels
+  and clears that line.
 
 All picker-style plugins (snippets, mentions, anything custom) render
 through the shared `PluginMenuPrimitive` so the menu UI, keyboard nav,

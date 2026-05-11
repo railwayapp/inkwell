@@ -120,7 +120,7 @@ const snippets = createSnippetsPlugin({
 
 Once the picker is open:
 
-- Type to filter snippets by title
+- Type in the editor to filter snippets by title; there is no separate search input
 - `↑` / `↓` to navigate the list
 - `Enter` to insert the selected snippet
 - `Esc` to close without inserting
@@ -160,17 +160,21 @@ const emoji = createEmojiPlugin({
 
 ## Slash commands
 
-A reusable chat-style command palette triggered by `/`. The plugin keeps the
+A reusable chat-style command palette triggered by `/` at the start of a blank/new line. The plugin keeps the
 command UI inside Inkwell, supports required first-argument choices, async
-choice loading, disabled commands/choices, and reports when the command is
-ready for Enter-to-submit.
+choice loading, disabled commands/choices, reports when the command is ready
+for Enter-to-submit, and can emit a structured command payload via `onExecute`.
+Slash commands are intentionally Discord-style: `/` in prose does not open the
+menu, typing after `/` filters the menu without a dedicated search input, and
+selecting/executing a command only removes the slash-command text that was
+introduced (for example, `/status Solved`) rather than clearing the whole
+editor.
 
 ```tsx
 import { createSlashCommandsPlugin, useInkwell } from "@railway/inkwell";
 
 function App() {
   const [content, setContent] = useState("");
-  const [ready, setReady] = useState(false);
   const contentRef = useRef(content);
   contentRef.current = content;
 
@@ -196,7 +200,7 @@ function App() {
         ],
         getMarkdown: () => contentRef.current,
         setMarkdown: setContent,
-        onReadyChange: setReady,
+        onExecute: command => runCommand(command),
       }),
     [],
   );
@@ -205,13 +209,29 @@ function App() {
     content,
     onChange: setContent,
     plugins: [slashCommands],
-    submitOnEnter: ready,
-    onSubmit: markdown => runCommand(markdown),
   });
 
   return <EditorInstance />;
 }
 ```
+
+When ready, Enter calls `onExecute` with a string-only structured payload and
+then clears only the active command line; the rest of the document is preserved.
+For `/status Solved`, the payload is:
+
+```ts
+{
+  name: "status",
+  args: { status: "solved" },
+  raw: "/status Solved",
+}
+```
+
+The `args` object uses argument names from the command definition and string
+values from selected choices. `submitOnEnter` / `onSubmit` remain generic editor
+APIs for non-slash composer submission; slash command execution should use
+`onExecute`. Use `onReadyChange` only when the host UI needs to know whether a
+slash command is staged for execution.
 
 ## Mentions
 

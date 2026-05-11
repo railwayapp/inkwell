@@ -151,24 +151,41 @@ function SlashCommandMenu<T extends SlashCommandItem>({
   query: string;
 }) {
   const markdown = getMarkdown();
-  const input = active ? `/${query}` : getActiveSlashLine(markdown);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [argChoices, setArgChoices] = useState<SlashCommandChoice[]>([]);
   const [loadingArgs, setLoadingArgs] = useState(false);
+  const [selectedCommandName, setSelectedCommandName] = useState<string | null>(
+    null,
+  );
+  const [completedCommandLine, setCompletedCommandLine] = useState<string | null>(
+    null,
+  );
 
-  const parsed = parseSlashCommand(input);
-  const typingCommand = isTypingCommandName(input);
-  const partialCommand = getPartialCommand(input);
-  const partialArg = getPartialArg(input);
+  const fallbackInput = getActiveSlashLine(markdown);
+  const fallbackParsed = parseSlashCommand(fallbackInput);
+  const selectedCommand = useMemo(() => {
+    if (selectedCommandName) {
+      return commands.find(
+        command =>
+          command.name === selectedCommandName ||
+          command.aliases?.includes(selectedCommandName),
+      ) ?? null;
+    }
 
-  const currentCommand = useMemo(() => {
-    if (!parsed) return null;
+    if (!fallbackParsed) return null;
     return commands.find(
       command =>
-        command.name === parsed.command ||
-        command.aliases?.includes(parsed.command),
-    );
-  }, [commands, parsed]);
+        command.name === fallbackParsed.command ||
+        command.aliases?.includes(fallbackParsed.command),
+    ) ?? null;
+  }, [commands, fallbackParsed, selectedCommandName]);
+
+  const commandQuery = active && !selectedCommandName ? query : (getPartialCommand(fallbackInput) ?? "");
+  const argumentQuery = selectedCommandName
+    ? ""
+    : (getPartialArg(fallbackInput) ?? "");
+  const typingCommand = active && !selectedCommandName;
+  const currentCommand = selectedCommand;
 
   useEffect(() => {
     let cancelled = false;
@@ -212,13 +229,12 @@ function SlashCommandMenu<T extends SlashCommandItem>({
 
   const items: SlashCommandAutocompleteItem<T>[] = useMemo(() => {
     if (typingCommand) {
-      const query = partialCommand ?? "";
       return commands
         .filter(command => {
-          if (!query) return true;
+          if (!commandQuery) return true;
           return (
-            fuzzyMatch(query, command.name) ||
-            command.aliases?.some(alias => fuzzyMatch(query, alias))
+            fuzzyMatch(commandQuery, command.name) ||
+            command.aliases?.some(alias => fuzzyMatch(commandQuery, alias))
           );
         })
         .map(command => {
@@ -236,9 +252,8 @@ function SlashCommandMenu<T extends SlashCommandItem>({
     }
 
     if (currentCommand && argChoices.length > 0) {
-      const query = partialArg ?? "";
       return argChoices
-        .filter(choice => !query || fuzzyMatch(query, choice.label))
+        .filter(choice => !argumentQuery || fuzzyMatch(argumentQuery, choice.label))
         .map(choice => ({
           type: "arg" as const,
           value: choice.value,
@@ -251,34 +266,20 @@ function SlashCommandMenu<T extends SlashCommandItem>({
     }
 
     return [];
-  }, [argChoices, commands, currentCommand, partialArg, partialCommand, typingCommand]);
+  }, [argChoices, argumentQuery, commands, commandQuery, currentCommand, typingCommand]);
 
   useEffect(() => {
     const firstEnabled = items.findIndex(item => !item.disabled);
     setSelectedIndex(firstEnabled >= 0 ? firstEnabled : 0);
-  }, [items.length, input]);
+  }, [items.length, commandQuery, argumentQuery, selectedCommandName]);
 
   const commandIsComplete = useMemo(() => {
+    if (completedCommandLine) return true;
     if (!currentCommand) return false;
     const args = currentCommand.args ?? [];
     const hasNoRequiredArgs = args.length === 0 || args.every(arg => !arg.required);
-    if (hasNoRequiredArgs) return true;
-    if (typingCommand) return false;
-
-    return args.every((arg, index) => {
-      if (!arg.required) return true;
-      const argValue = index === 0 ? partialArg : parsed?.args[index];
-      if (!argValue) return false;
-      if (index === 0 && argChoices.length > 0) {
-        return argChoices.some(
-          choice =>
-            !choice.disabled &&
-            choice.label.toLowerCase() === argValue.toLowerCase(),
-        );
-      }
-      return true;
-    });
-  }, [argChoices, currentCommand, parsed, partialArg, typingCommand]);
+    return hasNoRequiredArgs && !typingCommand;
+  }, [completedCommandLine, currentCommand, typingCommand]);
 
   useEffect(() => {
     onReadyChange?.(commandIsComplete);
@@ -286,6 +287,8 @@ function SlashCommandMenu<T extends SlashCommandItem>({
 
   const close = useCallback(() => {
     onReadyChange?.(false);
+    setSelectedCommandName(null);
+    setCompletedCommandLine(null);
     setMarkdown(replaceActiveSlashLine(getMarkdown(), ""));
   }, [getMarkdown, onReadyChange, setMarkdown]);
 
@@ -294,21 +297,20 @@ function SlashCommandMenu<T extends SlashCommandItem>({
       if (item.disabled) return;
       if (item.type === "command") {
         const hasArgs = item.command?.args && item.command.args.length > 0;
-        setMarkdown(
-          replaceActiveSlashLine(
-            getMarkdown(),
-            `/${item.value}${hasArgs ? " " : ""}`,
-          ),
-        );
+        const nextLine = `/${item.value}${hasArgs ? " " : ""}`;
+        setMarkdown(replaceActiveSlashLine(getMarkdown(), nextLine));
+        setSelectedCommandName(hasArgs ? item.value : null);
+        setCompletedCommandLine(hasArgs ? null : nextLine);
         return;
       }
 
-      const commandPart = parsed?.command ?? "";
-      setMarkdown(
-        replaceActiveSlashLine(getMarkdown(), `/${commandPart} ${item.label}`),
-      );
+      const commandPart = selectedCommandName ?? currentCommand?.name ?? "";
+      const nextLine = `/${commandPart} ${item.label}`;
+      setMarkdown(replaceActiveSlashLine(getMarkdown(), nextLine));
+      setSelectedCommandName(null);
+      setCompletedCommandLine(nextLine);
     },
-    [getMarkdown, parsed, setMarkdown],
+    [currentCommand, getMarkdown, selectedCommandName, setMarkdown],
   );
 
   const findNextEnabled = useCallback(
@@ -336,14 +338,16 @@ function SlashCommandMenu<T extends SlashCommandItem>({
   );
 
   stateRef.current = {
-    visible: active || isSlashCommand(input),
+    visible: active || isSlashCommand(fallbackInput) || selectedCommandName !== null,
     ready: commandIsComplete,
     selectActive,
     close,
     move,
   };
 
-  if (!active && !isSlashCommand(input)) return null;
+  if (!active && !isSlashCommand(fallbackInput) && selectedCommandName === null) {
+    return null;
+  }
 
   if (commandIsComplete && currentCommand) {
     return (

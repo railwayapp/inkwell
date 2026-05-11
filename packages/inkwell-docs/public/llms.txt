@@ -605,6 +605,7 @@ Components:
 Plugin creators:
 - `createAttachmentsPlugin`
 - `createBubbleMenuPlugin`
+- `createEmojiPlugin`
 - `createMentionsPlugin`
 - `createSlashCommandsPlugin`
 - `createSnippetsPlugin`
@@ -636,6 +637,8 @@ Types:
 - `BubbleMenuItem`
 - `BubbleMenuItemProps`
 - `CollaborationConfig`
+- `EmojiItem`
+- `EmojiPluginOptions`
 - `MentionItem`
 - `MentionRenderer`
 - `MentionsPluginOptions`

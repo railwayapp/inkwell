@@ -125,6 +125,94 @@ Once the picker is open:
 - `Enter` to insert the selected snippet
 - `Esc` to close without inserting
 
+## Emoji
+
+A searchable emoji picker triggered by `:`. It ships with a small default set
+and can accept your own emoji list or async search function.
+
+```tsx
+import { createEmojiPlugin, useInkwell } from "@railway/inkwell";
+
+const emoji = createEmojiPlugin();
+
+function App() {
+  const [content, setContent] = useState("");
+  const { EditorInstance } = useInkwell({
+    content,
+    onChange: setContent,
+    plugins: [emoji],
+  });
+
+  return <EditorInstance />;
+}
+```
+
+Custom emoji source:
+
+```tsx
+const emoji = createEmojiPlugin({
+  emojis: [
+    { emoji: "🚂", name: "train", tags: ["railway"] },
+    { emoji: "🚀", name: "rocket", shortcodes: ["ship"] },
+  ],
+});
+```
+
+## Slash commands
+
+A reusable chat-style command palette triggered by `/`. The plugin keeps the
+command UI inside Inkwell, supports required first-argument choices, async
+choice loading, disabled commands/choices, and reports when the command is
+ready for Enter-to-submit.
+
+```tsx
+import { createSlashCommandsPlugin, useInkwell } from "@railway/inkwell";
+
+function App() {
+  const [content, setContent] = useState("");
+  const [ready, setReady] = useState(false);
+  const contentRef = useRef(content);
+  contentRef.current = content;
+
+  const slashCommands = useMemo(
+    () =>
+      createSlashCommandsPlugin({
+        commands: [
+          {
+            name: "status",
+            description: "Set a thread status",
+            args: [
+              {
+                name: "status",
+                description: "Status to apply",
+                required: true,
+                choices: [
+                  { value: "solved", label: "Solved" },
+                  { value: "closed", label: "Closed" },
+                ],
+              },
+            ],
+          },
+        ],
+        getMarkdown: () => contentRef.current,
+        setMarkdown: setContent,
+        onReadyChange: setReady,
+      }),
+    [],
+  );
+
+  const { EditorInstance } = useInkwell({
+    content,
+    onChange: setContent,
+    plugins: [slashCommands],
+    submitOnEnter: ready,
+    onSubmit: markdown => runCommand(markdown),
+  });
+
+  return <EditorInstance />;
+}
+```
+
 ## Mentions
 
 A searchable picker for inserting persisted mention markers, such as users,

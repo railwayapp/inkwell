@@ -11,6 +11,12 @@ export {
   defaultBubbleMenuItems,
 } from "./plugins/bubble-menu";
 export {
+  createEmojiPlugin,
+  defaultEmojis,
+  type EmojiItem,
+  type EmojiPluginOptions,
+} from "./plugins/emoji";
+export {
   createMentionsPlugin,
   type MentionItem,
   type MentionsPluginOptions,

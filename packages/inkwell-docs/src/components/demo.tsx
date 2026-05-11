@@ -1,7 +1,9 @@
 import {
   type CollaborationConfig,
   createAttachmentsPlugin,
+  createEmojiPlugin,
   createMentionsPlugin,
+  createSlashCommandsPlugin,
   createSnippetsPlugin,
   deserialize,
   type InkwellPlugin,
@@ -87,7 +89,11 @@ interface PluginDef {
   summary: string;
   usage: ReactNode;
   /** Omitted for built-in plugins that are toggled via a dedicated editor prop. */
-  create?: () => InkwellPlugin;
+  create?: (ctx: {
+    getMarkdown: () => string;
+    setMarkdown: (markdown: string) => void;
+    setSlashReady: (ready: boolean) => void;
+  }) => InkwellPlugin;
 }
 
 const BUBBLE_MENU_ID = "bubble-menu";
@@ -119,6 +125,72 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
       </>
     ),
     create: () => createSnippetsPlugin({ snippets: DEMO_SNIPPETS }),
+  },
+  {
+    id: "emoji",
+    label: "Emoji",
+    summary: "Searchable emoji picker triggered by colon shortcodes.",
+    usage: (
+      <>
+        Press <Kbd>:</Kbd> and type a shortcode like <code>rocket</code>, then
+        use <Kbd>↑</Kbd>/<Kbd>↓</Kbd> and <Kbd>Enter</Kbd> to insert.
+      </>
+    ),
+    create: () => createEmojiPlugin(),
+  },
+  {
+    id: "slash-commands",
+    label: "Slash Commands",
+    summary:
+      "Chat-style command palette with required arguments and ready-to-submit state.",
+    usage: (
+      <>
+        Type <Kbd>/</Kbd> to open commands, choose <code>/status</code>, then
+        pick a status. When the command is complete, <Kbd>Enter</Kbd> submits
+        via <code>onSubmit</code> in chat-style editors.
+      </>
+    ),
+    create: ({ getMarkdown, setMarkdown, setSlashReady }) =>
+      createSlashCommandsPlugin({
+        commands: [
+          {
+            name: "status",
+            description: "Set a thread status",
+            aliases: ["s"],
+            args: [
+              {
+                name: "status",
+                description: "Status to apply",
+                required: true,
+                choices: [
+                  { value: "solved", label: "Solved" },
+                  {
+                    value: "awaiting-user",
+                    label: "Awaiting User Response",
+                  },
+                  {
+                    value: "awaiting-railway",
+                    label: "Awaiting Railway Response",
+                  },
+                  { value: "closed", label: "Closed", disabled: true },
+                ],
+              },
+            ],
+          },
+          {
+            name: "runbook",
+            description: "Ask the assistant to run a support runbook",
+            aliases: ["rb"],
+          },
+          {
+            name: "bounty",
+            description: "Prepare a bounty action for this thread",
+          },
+        ],
+        getMarkdown,
+        setMarkdown,
+        onReadyChange: setSlashReady,
+      }),
   },
   {
     id: "mentions",
@@ -705,17 +777,9 @@ function usePluginSelector() {
     });
   };
 
-  const plugins = useMemo(
-    () =>
-      AVAILABLE_PLUGINS.filter(p => p.create && enabled.has(p.id)).map(p =>
-        p.create!(),
-      ),
-    [enabled],
-  );
-
   const bubbleMenuEnabled = enabled.has(BUBBLE_MENU_ID);
 
-  return { plugins, enabled, toggle, bubbleMenuEnabled };
+  return { enabled, toggle, bubbleMenuEnabled };
 }
 
 class ErrorBoundary extends Component<
@@ -764,8 +828,9 @@ Inkwell is a Markdown editor and renderer for React with an extensible plugin sy
 
 1. Type \`-\` or \`1.\` followed by space to start a list
 2. Indent with two leading spaces for nested items
-3. Press \`[\` for snippets, \`@\` to mention @user[alice]
-4. Drop or paste an image — the Attachments plugin will insert it
+3. Press \`[\` for snippets, \`@\` to mention @user[alice], or \`:\` for emoji
+4. Type \`/status\` to try slash commands
+5. Drop or paste an image — the Attachments plugin will insert it
 
 ![A keyboard at golden hour](https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&h=300&fit=crop)
 
@@ -1079,7 +1144,6 @@ export function Demo() {
 
   const collab = useCollab(collabUser.name, collabUser.color);
   const {
-    plugins: selectedPlugins,
     enabled: enabledPluginIds,
     toggle: togglePlugin,
     bubbleMenuEnabled,
@@ -1093,7 +1157,22 @@ export function Demo() {
     DEFAULT_CHARACTER_LIMIT,
   );
   const [demoStyle, setDemoStyle] = useState<"custom" | "default">("custom");
+  const [slashReady, setSlashReady] = useState(false);
+  const editorContentRef = useRef(editorContent);
+  editorContentRef.current = editorContent;
   const overLimit = characterCount > characterLimit;
+  const selectedPlugins = useMemo(
+    () =>
+      AVAILABLE_PLUGINS.filter(p => p.create && enabledPluginIds.has(p.id)).map(
+        p =>
+          p.create!({
+            getMarkdown: () => editorContentRef.current,
+            setMarkdown: setEditorContent,
+            setSlashReady,
+          }),
+      ),
+    [enabledPluginIds],
+  );
   const { EditorInstance } = useInkwell({
     content: editorContent,
     onChange: setEditorContent,
@@ -1103,6 +1182,14 @@ export function Demo() {
     characterLimit,
     enforceCharacterLimit,
     onCharacterCount: setCharacterCount,
+    submitOnEnter: slashReady,
+    onSubmit: markdown => {
+      if (!markdown.trim().startsWith("/")) return;
+      setEditorContent(
+        `${markdown}\n\n> Demo command submitted at ${new Date().toLocaleTimeString()}`,
+      );
+      setSlashReady(false);
+    },
   });
 
   return (

@@ -140,6 +140,15 @@ export interface InkwellEditorProps {
    * `onCharacterCount`). The toast is styled by `.inkwell-editor-limit-toast`.
    */
   limitToast?: boolean;
+  /**
+   * When true, Enter submits the editor instead of inserting a newline.
+   * Shift+Enter still inserts a newline. Default: false.
+   */
+  submitOnEnter?: boolean;
+  /**
+   * Called when submitOnEnter handles Enter.
+   */
+  onSubmit?: (markdown: string) => void;
 }
 
 export type UseInkwellOptions = InkwellEditorProps;

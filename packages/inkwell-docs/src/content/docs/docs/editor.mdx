@@ -301,6 +301,20 @@ When `true`, blocks text input past `characterLimit`.
 
 Called whenever the editor recalculates character count.
 
+### `submitOnEnter`
+
+**Type:** `boolean` — default: `false`
+
+When `true`, pressing Enter calls `onSubmit(markdown)` instead of inserting a
+new line. Shift+Enter still inserts a line break. Useful for chat-style
+composers.
+
+### `onSubmit`
+
+**Type:** `(markdown: string) => void`
+
+Called when `submitOnEnter` handles Enter.
+
 ### `limitToast`
 
 **Type:** `boolean` — default: `true`

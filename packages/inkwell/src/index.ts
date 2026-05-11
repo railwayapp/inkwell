@@ -19,6 +19,13 @@ export {
   PluginMenuPrimitive,
   pluginPickerClass,
 } from "./plugins/plugin-picker";
+export {
+  createSlashCommandsPlugin,
+  type SlashCommandArg,
+  type SlashCommandChoice,
+  type SlashCommandItem,
+  type SlashCommandsPluginOptions,
+} from "./plugins/slash-commands";
 export { createSnippetsPlugin } from "./plugins/snippets";
 export { serializeToMarkdown } from "./renderer/html-serializer";
 export { InkwellRenderer } from "./renderer/inkwell-renderer";

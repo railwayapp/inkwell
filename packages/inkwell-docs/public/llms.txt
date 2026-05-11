@@ -606,6 +606,7 @@ Plugin creators:
 - `createAttachmentsPlugin`
 - `createBubbleMenuPlugin`
 - `createMentionsPlugin`
+- `createSlashCommandsPlugin`
 - `createSnippetsPlugin`
 
 Plugin utilities:
@@ -642,4 +643,8 @@ Types:
 - `PluginRenderProps`
 - `PluginTrigger`
 - `RehypePluginConfig`
+- `SlashCommandArg`
+- `SlashCommandChoice`
+- `SlashCommandItem`
+- `SlashCommandsPluginOptions`
 - `Snippet`

@@ -129,6 +129,8 @@ export const InkwellEditor = forwardRef<
     enforceCharacterLimit = false,
     onCharacterCount,
     limitToast = true,
+    submitOnEnter = false,
+    onSubmit,
   },
   ref,
 ) {
@@ -665,6 +667,12 @@ export const InkwellEditor = forwardRef<
         if (event.defaultPrevented) return;
       }
 
+      if (submitOnEnter && event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        onSubmit?.(serializeMarkdown());
+        return;
+      }
+
       // Check plugin triggers
       for (const plugin of plugins) {
         const t = plugin.trigger;
@@ -716,6 +724,9 @@ export const InkwellEditor = forwardRef<
       getCursorPosition,
       dismissPlugin,
       wrapSelection,
+      submitOnEnter,
+      onSubmit,
+      serializeMarkdown,
     ],
   );
 

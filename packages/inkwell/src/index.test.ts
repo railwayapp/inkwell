@@ -23,6 +23,7 @@ describe("@railway/inkwell public exports", () => {
     expect(Inkwell.createBubbleMenuPlugin).toBeTypeOf("function");
     expect(Inkwell.createMentionsPlugin).toBeTypeOf("function");
     expect(Inkwell.createSnippetsPlugin).toBeTypeOf("function");
+    expect(Inkwell.createSlashCommandsPlugin).toBeTypeOf("function");
   });
 
   it("re-exports plugin utilities + shared picker primitive", () => {

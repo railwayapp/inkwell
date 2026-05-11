@@ -291,11 +291,25 @@ export interface InkwellPlugin {
    */
   render: (props: PluginRenderProps) => ReactNode;
   /**
+   * Optional guard for character triggers. Return false to let the key type
+   * normally without activating the plugin.
+   */
+  shouldTrigger?: (
+    event: ReactKeyboardEvent,
+    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
+    editor: any,
+  ) => boolean;
+  /**
    * Optional keydown handler. Runs for events on the editor before trigger
    * matching, and is skipped while another plugin is active. Call
    * `event.preventDefault()` to stop further dispatch for this event.
    */
-  onKeyDown?: (event: ReactKeyboardEvent, ctx: PluginKeyDownContext) => void;
+  onKeyDown?: (
+    event: ReactKeyboardEvent,
+    ctx: PluginKeyDownContext,
+    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
+    editor: any,
+  ) => void;
   /**
    * Optional one-time editor setup. Runs once after the editor is created
    * so plugins can override editor methods (e.g. `insertData`) or register

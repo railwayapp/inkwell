@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { InkwellPlugin } from "../../types";
+import { Editor, Range } from "slate";
 import { PluginMenuPrimitive, pluginPickerClass } from "../plugin-picker";
 
 export interface EmojiItem {
@@ -101,9 +102,27 @@ export const createEmojiPlugin = <T extends EmojiItem = EmojiItem>({
   emptyMessage = "No emoji found",
 }: EmojiPluginOptions<T> = {}): InkwellPlugin => {
   const resolvedEmojis = (emojis ?? defaultEmojis) as T[];
-
   return {
     name,
+    shouldTrigger: (event, editor) => {
+      if (event.key !== trigger || event.ctrlKey || event.metaKey || event.altKey) {
+        return false;
+      }
+
+      const { selection } = editor;
+      if (!selection || !Range.isCollapsed(selection)) return false;
+
+      const before = Editor.before(editor, selection.anchor, {
+        unit: "character",
+      });
+      const previous = before
+        ? Editor.string(editor, { anchor: before, focus: selection.anchor })
+        : "";
+
+      // Open at token boundaries only. This keeps the plugin out of the way
+      // for emoticons and punctuation-heavy prose (`:)`, `http://`, `foo:bar`).
+      return previous === "" || /\s|[([{]/.test(previous);
+    },
     trigger: { key: trigger },
     render: props => {
       if (!props.active) return null;

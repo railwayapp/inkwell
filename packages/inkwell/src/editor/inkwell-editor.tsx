@@ -663,7 +663,7 @@ export const InkwellEditor = forwardRef<
       // Dispatch to plugin onKeyDown handlers. Short-circuit if a plugin
       // calls preventDefault so trigger matching doesn't run for the same event.
       for (const plugin of plugins) {
-        plugin.onKeyDown?.(event, { wrapSelection });
+        plugin.onKeyDown?.(event, { wrapSelection }, editor);
         if (event.defaultPrevented) return;
       }
 
@@ -700,6 +700,9 @@ export const InkwellEditor = forwardRef<
           : !event.ctrlKey && !event.metaKey;
 
         if (keyMatch && modMatch) {
+          if (plugin.shouldTrigger && !plugin.shouldTrigger(event, editor)) {
+            continue;
+          }
           if (hasModifiers) event.preventDefault();
           pluginPositionRef.current = getCursorPosition();
           setActivePlugin(plugin);

@@ -309,7 +309,7 @@
   background: var(--inkwell-bg);
   border: none;
   border-bottom: 1px solid var(--inkwell-border);
-  color: var(--inkwell-text);
+  color: var(--inkwell-text-muted);
   font-size: 0.85rem;
   outline: none;
 }

@@ -119,6 +119,13 @@ export function PluginMenuPrimitive<T>({
   const handlePluginKey = useCallback(
     (key: string) => {
       switch (key) {
+        case "Backspace":
+          if (query.length === 0) {
+            onSelect("");
+          } else {
+            setQuery(prev => prev.slice(0, -1));
+          }
+          break;
         case "ArrowDown": {
           const length = resultsRef.current.length;
           if (length === 0) break;
@@ -142,15 +149,12 @@ export function PluginMenuPrimitive<T>({
         case "Enter":
           commitSelected();
           break;
-        case "Backspace":
-          setQuery(prev => prev.slice(0, -1));
-          break;
         default:
           if (key.length === 1) setQuery(prev => `${prev}${key}`);
           break;
       }
     },
-    [commitSelected, updateSelectedIndex],
+    [commitSelected, onSelect, query.length, updateSelectedIndex],
   );
 
   useEffect(() => {

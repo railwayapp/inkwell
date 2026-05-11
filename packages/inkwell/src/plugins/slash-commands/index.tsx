@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Editor } from "slate";
 import type { InkwellPlugin } from "../../types";
 import { pluginPickerClass } from "../plugin-picker";
 
@@ -184,7 +183,9 @@ function SlashCommandMenu<T extends SlashCommandItem>({
   const argumentQuery = selectedCommandName
     ? ""
     : (getPartialArg(fallbackInput) ?? "");
-  const typingCommand = active && !selectedCommandName;
+  const typingCommand = selectedCommandName
+    ? false
+    : active || isTypingCommandName(fallbackInput);
   const currentCommand = selectedCommand;
 
   useEffect(() => {
@@ -421,21 +422,27 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
 
   return {
     name,
-    shouldTrigger: (_event, editor) => {
-      const { selection } = editor;
-      if (!selection) return false;
-      const anchor = selection.anchor;
-      const lineStart = { path: anchor.path, offset: 0 };
-      const beforeCursor = Editor.string(editor, {
-        anchor: lineStart,
-        focus: anchor,
-      });
-      return beforeCursor.trim() === "";
+    render: () => {
+      if (!stateRef.current.visible && !isSlashCommand(getActiveSlashLine(getMarkdown()))) {
+        return null;
+      }
+      return (
+        <SlashCommandMenu
+          commands={commands}
+          emptyMessage={emptyMessage}
+          getMarkdown={getMarkdown}
+          setMarkdown={setMarkdown}
+          stateRef={stateRef}
+          onReadyChange={onReadyChange}
+          active={false}
+          query=""
+        />
+      );
     },
-    trigger: { key: "/" },
-    onActiveKeyDown: event => {
+    onKeyDown: event => {
       const state = stateRef.current;
-      if (!state.visible) return false;
+
+      if (!state.visible) return;
 
       if (event.key === "Escape") {
         event.preventDefault();
@@ -444,7 +451,7 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
       }
 
       if (state.ready && event.key === "Enter") {
-        return false;
+        return;
       }
 
       if (event.key === "ArrowDown") {
@@ -464,21 +471,5 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
         state.selectActive();
       }
     },
-    render: props => {
-      if (!props.active && !stateRef.current.visible) return null;
-      return (
-        <SlashCommandMenu
-          commands={commands}
-          emptyMessage={emptyMessage}
-          getMarkdown={getMarkdown}
-          setMarkdown={setMarkdown}
-          stateRef={stateRef}
-          onReadyChange={onReadyChange}
-          active={props.active}
-          query={props.query}
-        />
-      );
-    },
-
   };
 };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Editor } from "slate";
 import type { InkwellPlugin } from "../../types";
 import { pluginPickerClass } from "../plugin-picker";
 
@@ -71,8 +72,7 @@ const findActiveSlashLineIndex = (markdown: string): number => {
   const lines = markdown.split("\n");
   for (let index = lines.length - 1; index >= 0; index--) {
     const line = lines[index] ?? "";
-    if (line.trim() === "") continue;
-    return line.trimStart().startsWith("/") ? index : -1;
+    if (/^\s*\//.test(line)) return index;
   }
   return -1;
 };
@@ -378,7 +378,6 @@ function SlashCommandMenu<T extends SlashCommandItem>({
                   onClick={() => handleSelect(item)}
                   aria-disabled={item.disabled}
                 >
-                  <span aria-hidden="true">/</span>
                   <span className={pluginPickerClass.title}>{item.label}</span>
                   <span className={pluginPickerClass.subtitle}>
                     {item.disabledReason ?? item.description}
@@ -414,16 +413,31 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
 
   return {
     name,
-    render: () => (
-      <SlashCommandMenu
-        commands={commands}
-        emptyMessage={emptyMessage}
-        getMarkdown={getMarkdown}
-        setMarkdown={setMarkdown}
-        stateRef={stateRef}
-        onReadyChange={onReadyChange}
-      />
-    ),
+    shouldTrigger: (_event, editor) => {
+      const { selection } = editor;
+      if (!selection) return false;
+      const anchor = selection.anchor;
+      const lineStart = { path: anchor.path, offset: 0 };
+      const beforeCursor = Editor.string(editor, {
+        anchor: lineStart,
+        focus: anchor,
+      });
+      return beforeCursor.trim() === "";
+    },
+    trigger: { key: "/" },
+    render: props => {
+      if (!props.active && !stateRef.current.visible) return null;
+      return (
+        <SlashCommandMenu
+          commands={commands}
+          emptyMessage={emptyMessage}
+          getMarkdown={getMarkdown}
+          setMarkdown={setMarkdown}
+          stateRef={stateRef}
+          onReadyChange={onReadyChange}
+        />
+      );
+    },
     onKeyDown: event => {
       const state = stateRef.current;
       if (!state.visible) return;

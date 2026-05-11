@@ -414,6 +414,7 @@ export const InkwellEditor = forwardRef<
   );
 
   const [activePlugin, setActivePlugin] = useState<InkwellPlugin | null>(null);
+  const activePluginQueryRef = useRef("");
   const pluginPositionRef = useRef<{ top: number; left: number }>({
     top: 0,
     left: 0,
@@ -605,10 +606,11 @@ export const InkwellEditor = forwardRef<
       dismissPlugin();
       requestAnimationFrame(() => {
         ReactEditor.focus(editor);
-        // If character trigger, delete the trigger character
+        // If character trigger, delete the trigger and any query characters
+        // that were typed into the editor while the picker was open.
         if (isCharTrigger) {
           Transforms.delete(editor, {
-            distance: 1,
+            distance: 1 + activePluginQueryRef.current.length,
             unit: "character",
             reverse: true,
           });
@@ -650,15 +652,36 @@ export const InkwellEditor = forwardRef<
             return;
           }
 
+          const isPrintable =
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            event.key.length === 1;
           const shouldForward =
-          event.key === "ArrowDown" ||
-          event.key === "ArrowUp" ||
-          event.key === "Enter" ||
-          event.key === "Backspace" ||
-          (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.length === 1);
+            event.key === "ArrowDown" ||
+            event.key === "ArrowUp" ||
+            event.key === "Enter" ||
+            event.key === "Backspace" ||
+            isPrintable;
 
           if (shouldForward) {
-            event.preventDefault();
+            if (event.key === "Enter") {
+              event.preventDefault();
+            } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+            } else if (event.key === "Backspace") {
+              if (activePluginQueryRef.current.length === 0) {
+                dismissPlugin();
+                return;
+              }
+              activePluginQueryRef.current = activePluginQueryRef.current.slice(
+                0,
+                -1,
+              );
+            } else if (isPrintable) {
+              activePluginQueryRef.current = `${activePluginQueryRef.current}${event.key}`;
+            }
+
             window.dispatchEvent(
               new CustomEvent(`inkwell-plugin-keydown:${activePlugin.name}`, {
                 detail: { key: event.key },
@@ -713,6 +736,7 @@ export const InkwellEditor = forwardRef<
             continue;
           }
           if (hasModifiers) event.preventDefault();
+          activePluginQueryRef.current = "";
           pluginPositionRef.current = getCursorPosition();
           setActivePlugin(plugin);
           return;

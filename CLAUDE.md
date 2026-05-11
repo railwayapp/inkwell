@@ -45,7 +45,7 @@ inkwell-dev/
           remark-no-tables.ts            Custom remark plugin
         plugins/
           plugin-picker.tsx        Shared PluginMenuPrimitive (search
-                                   input, keyboard nav, scoped key
+                                   display, keyboard nav, scoped key
                                    forwarding, focus) used by every
                                    picker-style plugin.
           plugin-picker.test.tsx   Tests for the shared primitive.

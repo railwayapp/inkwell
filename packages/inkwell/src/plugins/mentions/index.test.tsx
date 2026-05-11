@@ -15,6 +15,18 @@ const USERS: MentionItem[] = [
   { id: "3", title: "Carol" },
 ];
 
+function dispatchPluginKey(key: string) {
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent("inkwell-plugin-keydown:users", { detail: { key } }),
+    );
+  });
+}
+
+function typePluginQuery(query: string) {
+  for (const key of query) dispatchPluginKey(key);
+}
+
 const defaultRenderProps: PluginRenderProps = {
   active: true,
   query: "",
@@ -97,12 +109,8 @@ describe("createMentionsPlugin", () => {
 
     await waitFor(() => expect(screen.getByText("Alice")).toBeInTheDocument());
 
-    const input = document.querySelector("input");
-    if (!input) throw new Error("search input missing");
-
-    await act(async () => {
-      fireEvent.change(input, { target: { value: "ca" } });
-    });
+    typePluginQuery("ca");
+    await act(async () => {});
 
     await waitFor(() => {
       expect(screen.queryByText("Alice")).not.toBeInTheDocument();
@@ -127,13 +135,9 @@ describe("createMentionsPlugin", () => {
 
     await waitFor(() => expect(screen.getByText("Alice")).toBeInTheDocument());
 
-    const input = document.querySelector("input");
-    if (!input) throw new Error("search input missing");
-
-    await act(async () => {
-      fireEvent.keyDown(input, { key: "ArrowDown" });
-      fireEvent.keyDown(input, { key: "Enter" });
-    });
+    dispatchPluginKey("ArrowDown");
+    dispatchPluginKey("Enter");
+    await act(async () => {});
 
     expect(onSelect).toHaveBeenCalledWith("@user[2]");
   });
@@ -166,22 +170,6 @@ describe("createMentionsPlugin", () => {
     });
 
     expect(onSelect).toHaveBeenCalledWith("@user[2]");
-  });
-
-  it("auto-focuses the search input on mount", async () => {
-    const plugin = createMentionsPlugin({
-      name: "users",
-      trigger: "@",
-      marker: "user",
-      search: () => USERS,
-      renderItem: item => <span>{item.title}</span>,
-    });
-    render(<div>{plugin.render(defaultRenderProps)}</div>);
-    await waitFor(() => {
-      expect(document.activeElement).toBe(
-        document.querySelector(".inkwell-plugin-picker-search"),
-      );
-    });
   });
 
   it("shows the empty message when no results match", async () => {

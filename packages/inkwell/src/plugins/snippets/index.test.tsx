@@ -32,7 +32,19 @@ describe("createSnippetsPlugin", () => {
   });
 
   describe("SnippetPicker rendering", () => {
-    const defaultRenderProps: PluginRenderProps = {
+    function dispatchPluginKey(key: string) {
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent("inkwell-plugin-keydown:snippets", { detail: { key } }),
+    );
+  });
+}
+
+function typePluginQuery(query: string) {
+  for (const key of query) dispatchPluginKey(key);
+}
+
+const defaultRenderProps: PluginRenderProps = {
       active: true,
       query: "",
       onSelect: vi.fn(),
@@ -62,10 +74,7 @@ describe("createSnippetsPlugin", () => {
 
     it("filters snippets by query", () => {
       const { container } = renderPlugin();
-      const searchInput = container.querySelector(
-        ".inkwell-plugin-picker-search",
-      ) as HTMLInputElement;
-      fireEvent.change(searchInput, { target: { value: "bug" } });
+      typePluginQuery("bug");
       expect(screen.getByText("Bug Report")).toBeInTheDocument();
       expect(screen.queryByText("Feature Request")).not.toBeInTheDocument();
       expect(screen.queryByText("Meeting Notes")).not.toBeInTheDocument();
@@ -73,19 +82,13 @@ describe("createSnippetsPlugin", () => {
 
     it("is case-insensitive when filtering", () => {
       const { container } = renderPlugin();
-      const searchInput = container.querySelector(
-        ".inkwell-plugin-picker-search",
-      ) as HTMLInputElement;
-      fireEvent.change(searchInput, { target: { value: "BUG" } });
+      typePluginQuery("BUG");
       expect(screen.getByText("Bug Report")).toBeInTheDocument();
     });
 
     it("shows empty state when no snippets match", () => {
       const { container } = renderPlugin();
-      const searchInput = container.querySelector(
-        ".inkwell-plugin-picker-search",
-      ) as HTMLInputElement;
-      fireEvent.change(searchInput, { target: { value: "nonexistent" } });
+      typePluginQuery("nonexistent");
       expect(screen.getByText("No snippets found")).toBeInTheDocument();
     });
 
@@ -219,16 +222,12 @@ describe("createSnippetsPlugin", () => {
 
     it("resets selection when query changes", () => {
       const { container } = renderPlugin();
-      const searchInput = container.querySelector(
-        ".inkwell-plugin-picker-search",
-      ) as HTMLInputElement;
-
       // Navigate down
-      fireEvent.keyDown(searchInput, { key: "ArrowDown" });
-      fireEvent.keyDown(searchInput, { key: "ArrowDown" });
+      dispatchPluginKey("ArrowDown");
+      dispatchPluginKey("ArrowDown");
 
       // Change query — selection should reset to 0
-      fireEvent.change(searchInput, { target: { value: "b" } });
+      typePluginQuery("b");
 
       const items = container.querySelectorAll(".inkwell-plugin-picker-item");
       if (items.length > 0) {
@@ -252,8 +251,8 @@ describe("createSnippetsPlugin", () => {
       // selection path inside PluginMenuPrimitive. Without it, the
       // selectedIndex state update from ArrowDown would not be visible
       // to the Enter handler in the same batch.
-      fireEvent.keyDown(input, { key: "ArrowDown" });
-      fireEvent.keyDown(input, { key: "Enter" });
+      dispatchPluginKey("ArrowDown");
+      dispatchPluginKey("Enter");
 
       expect(onSelect).toHaveBeenCalledWith(SNIPPETS[1].content);
     });
@@ -276,15 +275,6 @@ describe("createSnippetsPlugin", () => {
       });
 
       expect(onSelect).toHaveBeenCalledWith(SNIPPETS[1].content);
-    });
-
-    it("auto-focuses the search input on mount", async () => {
-      renderPlugin();
-      await waitFor(() => {
-        expect(document.activeElement).toBe(
-          document.querySelector(".inkwell-plugin-picker-search"),
-        );
-      });
     });
   });
 });

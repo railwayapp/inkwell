@@ -191,10 +191,6 @@ export function PluginMenuPrimitive<T>({
     [handlePluginKey, onDismiss],
   );
 
-  const focusRef = useCallback((el: HTMLInputElement | null) => {
-    if (el) requestAnimationFrame(() => el.focus());
-  }, []);
-
   const activeItemRef = useCallback((el: HTMLDivElement | null) => {
     if (el && typeof el.scrollIntoView === "function") {
       el.scrollIntoView({ block: "nearest" });
@@ -242,16 +238,10 @@ export function PluginMenuPrimitive<T>({
       }}
       onMouseDown={event => event.preventDefault()}
     >
-      <div className={pluginPickerClass.picker}>
-        <input
-          ref={focusRef}
-          type="text"
-          placeholder={placeholder}
-          value={query}
-          onChange={event => setQuery(event.target.value)}
-          onKeyDown={handleKeyDown}
-          className={pluginPickerClass.search}
-        />
+      <div className={pluginPickerClass.picker} onKeyDown={handleKeyDown}>
+        <div className={pluginPickerClass.search} aria-label={placeholder}>
+          {query || placeholder}
+        </div>
         {results.length === 0 ? (
           <div className={pluginPickerClass.empty}>{emptyMessage}</div>
         ) : (

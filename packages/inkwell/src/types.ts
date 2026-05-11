@@ -311,6 +311,16 @@ export interface InkwellPlugin {
     editor: any,
   ) => void;
   /**
+   * Optional keydown handler while this plugin is active. Return `false` to
+   * dismiss the plugin and let the key continue into the editor normally.
+   */
+  onActiveKeyDown?: (
+    event: ReactKeyboardEvent,
+    ctx: PluginKeyDownContext & { dismiss: () => void },
+    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
+    editor: any,
+  ) => false | void;
+  /**
    * Optional one-time editor setup. Runs once after the editor is created
    * so plugins can override editor methods (e.g. `insertData`) or register
    * DOM listeners. The returned function, if any, runs when the editor

@@ -125,7 +125,7 @@ is consistent regardless of which plugin opened it.
 |----------|---------|
 | `.inkwell-plugin-picker-popup` | Positioned container |
 | `.inkwell-plugin-picker` | Picker wrapper |
-| `.inkwell-plugin-picker-search` | Search input |
+| `.inkwell-plugin-picker-search` | Inline query display (characters typed after the trigger) |
 | `.inkwell-plugin-picker-item` | Item row |
 | `.inkwell-plugin-picker-item-active` | Highlighted row |
 | `.inkwell-plugin-picker-title` | Item title |

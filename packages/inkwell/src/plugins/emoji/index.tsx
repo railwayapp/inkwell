@@ -124,6 +124,11 @@ export const createEmojiPlugin = <T extends EmojiItem = EmojiItem>({
       return previous === "" || /\s|[([{]/.test(previous);
     },
     trigger: { key: trigger },
+    onActiveKeyDown: event => {
+      if (event.key.length !== 1) return;
+      if (/[\p{L}\p{N}_+-]/u.test(event.key)) return;
+      return false;
+    },
     render: props => {
       if (!props.active) return null;
       return (

@@ -636,28 +636,37 @@ export const InkwellEditor = forwardRef<
       // editor receives the trigger key first), so forward navigation, submit,
       // editing, and printable keys through a scoped DOM event.
       if (activePlugin) {
-        if (event.key === "Escape") {
-          event.preventDefault();
+        const activeResult = activePlugin.onActiveKeyDown?.(
+          event,
+          { wrapSelection, dismiss: dismissPlugin },
+          editor,
+        );
+        if (activeResult === false) {
           dismissPlugin();
-          return;
-        }
+        } else {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            dismissPlugin();
+            return;
+          }
 
-        const shouldForward =
+          const shouldForward =
           event.key === "ArrowDown" ||
           event.key === "ArrowUp" ||
           event.key === "Enter" ||
           event.key === "Backspace" ||
           (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.length === 1);
 
-        if (shouldForward) {
-          event.preventDefault();
-          window.dispatchEvent(
-            new CustomEvent(`inkwell-plugin-keydown:${activePlugin.name}`, {
-              detail: { key: event.key },
-            }),
-          );
+          if (shouldForward) {
+            event.preventDefault();
+            window.dispatchEvent(
+              new CustomEvent(`inkwell-plugin-keydown:${activePlugin.name}`, {
+                detail: { key: event.key },
+              }),
+            );
+          }
+          return;
         }
-        return;
       }
 
       // Dispatch to plugin onKeyDown handlers. Short-circuit if a plugin

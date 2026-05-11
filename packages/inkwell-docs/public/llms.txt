@@ -411,7 +411,7 @@ const { EditorInstance } = useInkwell({
 
 Snippets, mentions, and any custom picker-style plugin all render through `PluginMenuPrimitive` (re-exported as a building block). It provides:
 
-- search input with auto-focus on mount
+- inline query display driven by characters typed after the trigger; focus stays in the editor
 - sync `items` filtering or async `search` callback
 - keyboard navigation (`ArrowUp`/`ArrowDown` with wrap, `Enter` to select, `Escape` to dismiss, `Backspace` to shrink the query, typed chars extend the query)
 - forwarded editor keys via `window` event `inkwell-plugin-keydown:<plugin-name>`

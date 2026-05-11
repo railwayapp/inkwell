@@ -35,6 +35,20 @@ function baseProps(
   };
 }
 
+function dispatchPluginKey(pluginName: string, key: string) {
+  act(() => {
+    window.dispatchEvent(
+      new CustomEvent(`inkwell-plugin-keydown:${pluginName}`, {
+        detail: { key },
+      }),
+    );
+  });
+}
+
+function typePluginQuery(pluginName: string, query: string) {
+  for (const key of query) dispatchPluginKey(pluginName, key);
+}
+
 function renderPrimitive(
   props: Partial<{
     pluginName: string;
@@ -99,14 +113,10 @@ describe("PluginMenuPrimitive", () => {
     });
   });
 
-  describe("focus", () => {
-    it("auto-focuses the search input on mount", async () => {
+  describe("query display", () => {
+    it("renders the placeholder before editor-forwarded typing", () => {
       renderPrimitive({ items: ITEMS });
-      await waitFor(() => {
-        expect(document.activeElement).toBe(
-          document.querySelector(`.${pluginPickerClass.search}`),
-        );
-      });
+      expect(document.querySelector(`.${pluginPickerClass.search}`)).toBeInTheDocument();
     });
 
     it("highlights the first result by default", () => {
@@ -120,22 +130,16 @@ describe("PluginMenuPrimitive", () => {
 
   describe("sync items path", () => {
     it("filters items by getKey on query change", () => {
-      const { container } = renderPrimitive({ items: ITEMS });
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
-      fireEvent.change(input, { target: { value: "b" } });
+      renderPrimitive({ pluginName: "sync", items: ITEMS });
+      typePluginQuery("sync", "b");
       expect(screen.getByText("Bravo")).toBeInTheDocument();
       expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
       expect(screen.queryByText("Charlie")).not.toBeInTheDocument();
     });
 
     it("renders empty message when nothing matches", () => {
-      const { container } = renderPrimitive({ items: ITEMS });
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
-      fireEvent.change(input, { target: { value: "zzz" } });
+      renderPrimitive({ pluginName: "sync", items: ITEMS });
+      typePluginQuery("sync", "zzz");
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
   });
@@ -145,17 +149,12 @@ describe("PluginMenuPrimitive", () => {
       const search = vi.fn(async (q: string) =>
         ITEMS.filter(i => i.label.toLowerCase().includes(q.toLowerCase())),
       );
-      const { container } = renderPrimitive({ search });
+      renderPrimitive({ pluginName: "async", search });
       await waitFor(() =>
         expect(screen.getByText("Alpha")).toBeInTheDocument(),
       );
 
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
-      await act(async () => {
-        fireEvent.change(input, { target: { value: "char" } });
-      });
+      typePluginQuery("async", "char");
       await waitFor(() => {
         expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
         expect(screen.getByText("Charlie")).toBeInTheDocument();
@@ -173,16 +172,11 @@ describe("PluginMenuPrimitive", () => {
           i.label.toLowerCase().includes(q.toLowerCase()),
         );
       });
-      const { container } = renderPrimitive({ search });
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
-      await act(async () => {
-        fireEvent.change(input, { target: { value: "first" } });
-      });
-      await act(async () => {
-        fireEvent.change(input, { target: { value: "b" } });
-      });
+      renderPrimitive({ pluginName: "async-stale", search });
+      typePluginQuery("async-stale", "first");
+      await act(async () => {});
+      for (let i = 0; i < "first".length; i++) dispatchPluginKey("async-stale", "Backspace");
+      typePluginQuery("async-stale", "b");
       // Late-arriving first response should be ignored.
       await act(async () => {
         resolveFirst(ITEMS);
@@ -196,12 +190,9 @@ describe("PluginMenuPrimitive", () => {
 
   describe("keyboard", () => {
     it("ArrowDown selects the next item and wraps to the first", () => {
-      const { container } = renderPrimitive({ items: ITEMS });
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
+      const { container } = renderPrimitive({ pluginName: "keys", items: ITEMS });
       for (let i = 0; i < ITEMS.length; i++) {
-        fireEvent.keyDown(input, { key: "ArrowDown" });
+        dispatchPluginKey("keys", "ArrowDown");
       }
       const items = container.querySelectorAll(
         `.${pluginPickerClass.item}`,
@@ -210,11 +201,8 @@ describe("PluginMenuPrimitive", () => {
     });
 
     it("ArrowUp wraps from first to last", () => {
-      const { container } = renderPrimitive({ items: ITEMS });
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
-      fireEvent.keyDown(input, { key: "ArrowUp" });
+      const { container } = renderPrimitive({ pluginName: "keys", items: ITEMS });
+      dispatchPluginKey("keys", "ArrowUp");
       const items = container.querySelectorAll(
         `.${pluginPickerClass.item}`,
       );
@@ -225,22 +213,16 @@ describe("PluginMenuPrimitive", () => {
 
     it("Enter selects the currently highlighted item", () => {
       const onSelect = vi.fn();
-      const { container } = renderPrimitive({ items: ITEMS, onSelect });
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
-      fireEvent.keyDown(input, { key: "ArrowDown" });
-      fireEvent.keyDown(input, { key: "Enter" });
+      renderPrimitive({ pluginName: "keys", items: ITEMS, onSelect });
+      dispatchPluginKey("keys", "ArrowDown");
+      dispatchPluginKey("keys", "Enter");
       expect(onSelect).toHaveBeenCalledWith("b");
     });
 
     it("Escape dismisses", () => {
       const onDismiss = vi.fn();
       const { container } = renderPrimitive({ items: ITEMS, onDismiss });
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
-      fireEvent.keyDown(input, { key: "Escape" });
+      fireEvent.keyDown(container.querySelector(`.${pluginPickerClass.picker}`)!, { key: "Escape" });
       expect(onDismiss).toHaveBeenCalled();
     });
 
@@ -287,27 +269,14 @@ describe("PluginMenuPrimitive", () => {
     });
 
     it("Backspace shrinks the query", async () => {
-      const { container } = renderPrimitive({
+      renderPrimitive({
         pluginName: "fwd",
         items: ITEMS,
       });
-      const input = container.querySelector(
-        `.${pluginPickerClass.search}`,
-      ) as HTMLInputElement;
-      // Type two chars then backspace once. After typing "br" only Bravo
-      // matches; after backspace ("b") Bravo still matches but the more
-      // permissive filter could expose others — we just assert the query
-      // value shrunk.
-      fireEvent.change(input, { target: { value: "br" } });
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent("inkwell-plugin-keydown:fwd", {
-            detail: { key: "Backspace" },
-          }),
-        );
-      });
+      typePluginQuery("fwd", "br");
+      dispatchPluginKey("fwd", "Backspace");
       await waitFor(() => {
-        expect(input.value).toBe("b");
+        expect(document.querySelector(`.${pluginPickerClass.search}`)).toHaveTextContent("b");
       });
     });
 

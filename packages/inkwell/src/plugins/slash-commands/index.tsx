@@ -425,22 +425,9 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
       return beforeCursor.trim() === "";
     },
     trigger: { key: "/" },
-    render: props => {
-      if (!props.active && !stateRef.current.visible) return null;
-      return (
-        <SlashCommandMenu
-          commands={commands}
-          emptyMessage={emptyMessage}
-          getMarkdown={getMarkdown}
-          setMarkdown={setMarkdown}
-          stateRef={stateRef}
-          onReadyChange={onReadyChange}
-        />
-      );
-    },
-    onKeyDown: event => {
+    onActiveKeyDown: event => {
       const state = stateRef.current;
-      if (!state.visible) return;
+      if (!state.visible) return false;
 
       if (event.key === "Escape") {
         event.preventDefault();
@@ -448,7 +435,9 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
         return;
       }
 
-      if (state.ready) return;
+      if (state.ready && event.key === "Enter") {
+        return false;
+      }
 
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -467,5 +456,19 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
         state.selectActive();
       }
     },
+    render: props => {
+      if (!props.active && !stateRef.current.visible) return null;
+      return (
+        <SlashCommandMenu
+          commands={commands}
+          emptyMessage={emptyMessage}
+          getMarkdown={getMarkdown}
+          setMarkdown={setMarkdown}
+          stateRef={stateRef}
+          onReadyChange={onReadyChange}
+        />
+      );
+    },
+
   };
 };

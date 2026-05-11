@@ -67,15 +67,27 @@ const fuzzyMatch = (query: string, text: string): boolean => {
 
 const isSlashCommand = (input: string): boolean => input.trim().startsWith("/");
 
+const findActiveSlashLineIndex = (markdown: string): number => {
+  const lines = markdown.split("\n");
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "") continue;
+    return line.trimStart().startsWith("/") ? index : -1;
+  }
+  return -1;
+};
+
 const getActiveSlashLine = (markdown: string): string => {
   const lines = markdown.split("\n");
-  return lines[lines.length - 1] ?? "";
+  const index = findActiveSlashLineIndex(markdown);
+  return index === -1 ? "" : (lines[index] ?? "");
 };
 
 const replaceActiveSlashLine = (markdown: string, nextLine: string): string => {
   const lines = markdown.split("\n");
-  if (lines.length === 0) return nextLine;
-  lines[lines.length - 1] = nextLine;
+  const index = findActiveSlashLineIndex(markdown);
+  if (index === -1) return markdown;
+  lines[index] = nextLine;
   return lines.join("\n");
 };
 

@@ -1060,11 +1060,16 @@ export function Demo() {
 
         {activeTab === "editor" && editor}
         {activeTab === "preview" && (
-          <InkwellRenderer
-            content={editorContent}
-            copyButton
-            mentions={MENTION_RENDERERS}
-          />
+          <div
+            className="inkwell-editor"
+            style={{ maxHeight: 760, overflowY: "auto" }}
+          >
+            <InkwellRenderer
+              content={editorContent}
+              copyButton
+              mentions={MENTION_RENDERERS}
+            />
+          </div>
         )}
 
         {/* Settings live behind the gear button + modal. Hash `#demo-settings`

@@ -1,13 +1,7 @@
 import { Editor, Element, Node, type NodeEntry, Range } from "slate";
-import type { Plugin } from "unified";
 import { renderMarkdownToHtml } from "../../lib/render-html";
+import type { RehypePluginConfig } from "../../types";
 import type { InkwellElement, InkwellText } from "./types";
-
-// biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
-type RehypePlugin = Plugin<any[], any>;
-type RehypePluginConfig =
-  | RehypePlugin
-  | [RehypePlugin, Record<string, unknown>];
 
 /**
  * Compute decoration ranges for a Slate node entry.

@@ -100,21 +100,27 @@ Renderer utilities:
 ```tsx
 import { htmlToMarkdown, parseMarkdown } from "@railway/inkwell";
 
-const reactNodes = parseMarkdown(content, { rehypePlugins: [] });
+const reactNodes = parseMarkdown(content, {
+  components,
+  rehypePlugins: [[rehypePlugin, ...options]],
+  mentions,
+});
 const markdown = htmlToMarkdown(html);
 ```
+
+`RehypePluginConfig` accepts a plugin function or `[plugin, ...options]`.
 
 ## Plugins
 
 Built-in plugin factories include:
 
-- `createAttachmentsPlugin`
-- `createBubbleMenuPlugin`
+- `createAttachmentsPlugin` — `onUpload(file)` returns `string | { url: string; alt?: string }`
+- `createBubbleMenuPlugin` — options type is `BubbleMenuOptions`
 - `createCharacterLimitPlugin`
-- `createCompletionsPlugin`
-- `createEmojiPlugin`
+- `createCompletionsPlugin` — options type is `CompletionsPluginOptions`
+- `createEmojiPlugin` — supports custom item generics with `emojis` or `search`
 - `createMentionsPlugin`
-- `createSlashCommandsPlugin`
+- `createSlashCommandsPlugin` — commands use one optional `arg?: SlashCommandArg`
 - `createSnippetsPlugin`
 
 Example:

@@ -62,9 +62,13 @@ Items can include an optional `shortcut` (a single key, automatically
 paired with Cmd/Ctrl) and an `onShortcut` handler for keyboard
 activation.
 
-### Bubble menu item shape
+### Bubble menu option shape
 
 ```tsx
+interface BubbleMenuOptions {
+  items?: BubbleMenuItem[];
+}
+
 interface BubbleMenuItem {
   key: string;
   shortcut?: string;
@@ -74,6 +78,9 @@ interface BubbleMenuItem {
   }) => ReactNode;
 }
 ```
+
+`BubbleMenuOptions` is exported for callers that build their bubble menu
+configuration outside the `createBubbleMenuPlugin()` call.
 
 ## Snippets
 
@@ -167,14 +174,30 @@ const emoji = createEmojiPlugin({
 ### Emoji options
 
 ```tsx
-interface EmojiPluginOptions {
+type EmojiPluginOptions<T extends EmojiItem = EmojiItem> = {
   name?: string;
   trigger?: string;
-  emojis?: EmojiItem[];
-  search?: (query: string) => Promise<EmojiItem[]> | EmojiItem[];
-  renderItem?: (item: EmojiItem, active: boolean) => ReactNode;
+  renderItem?: (item: T, active: boolean) => ReactNode;
   emptyMessage?: string;
+} & EmojiSource<T>;
+
+type EmojiSource<T extends EmojiItem> =
+  // The default EmojiItem path can use Inkwell's default emoji list.
+  | { emojis?: EmojiItem[]; search?: (query: string) => Promise<EmojiItem[]> | EmojiItem[] }
+  // Custom item fields are preserved when you provide `emojis` or `search`.
+  | { emojis: T[]; search?: (query: string) => Promise<T[]> | T[] }
+  | { emojis?: T[]; search: (query: string) => Promise<T[]> | T[] };
+
+// Custom item fields are preserved in `renderItem` when `emojis` or `search`
+// provides the custom item type.
+interface CustomEmoji extends EmojiItem {
+  category: string;
 }
+
+const emoji = createEmojiPlugin<CustomEmoji>({
+  emojis: [{ emoji: "🚂", name: "train", category: "transport" }],
+  renderItem: item => <span>{item.category}: {item.emoji}</span>,
+});
 ```
 
 ## Completions
@@ -216,7 +239,7 @@ Plugin objects are cheap to create. You can create plugins inline as shown above
 ### Completion options
 
 ```tsx
-interface CompletionPluginOptions {
+interface CompletionsPluginOptions {
   name?: string;
   getCompletion: () => string | null;
   isLoading?: () => boolean;
@@ -239,7 +262,7 @@ A reusable chat-style command palette. The menu opens when `/` is typed on an
 empty or whitespace-only line, then filters as the user types without a separate
 search input. Selecting or executing a command removes only the introduced
 command text, such as `/label Idea`, so unrelated prose stays intact. The plugin
-supports required first-argument choices, async choice loading, disabled
+supports one optional argument with choices, async choice loading, disabled
 commands/choices, readiness reporting for Enter-to-submit, and structured
 `onExecute` payloads.
 
@@ -267,17 +290,14 @@ function App() {
             {
               name: "label",
               description: "Apply a document label",
-              args: [
-                {
-                  name: "label",
-                  description: "Label to apply",
-                  required: true,
+              arg: {
+                name: "label",
+                description: "Label to apply",
                   choices: [
-                    { value: "idea", label: "Idea" },
-                    { value: "bug", label: "Bug" },
-                  ],
-                },
-              ],
+                  { value: "idea", label: "Idea" },
+                  { value: "bug", label: "Bug" },
+                ],
+              },
             },
           ],
           onExecute: handleCommand,
@@ -300,11 +320,11 @@ For `/label Idea`, the payload is:
 }
 ```
 
-The `args` object uses argument names from the command definition and string
-values from selected choices. `submitOnEnter` / `onSubmit` remain generic editor
-APIs for non-slash composer submission; slash command execution should use
-`onExecute`. Use `onReadyChange` only when the host UI needs to know whether the
-mounted slash menu is staged for execution.
+The execution `args` object uses the singular `arg` name from the command
+definition and the selected choice value. `submitOnEnter` / `onSubmit` remain
+generic editor APIs for non-slash composer submission; slash command execution
+should use `onExecute`. Use `onReadyChange` only when the host UI needs to know
+whether the mounted slash menu is staged for execution.
 
 ## Mentions
 
@@ -457,14 +477,22 @@ function App() {
 While upload is pending, Inkwell inserts an image placeholder with the default
 alt text `Uploading…`. When the promise resolves, the returned URL is validated
 against the same safe image URL allowlist before it is stored. Safe URLs update
-the placeholder and use the original file name as alt text. If upload fails or
-returns an unsafe URL, the placeholder is removed and `onError` is called.
+the placeholder and use either the returned `alt`, when provided, or the
+original file name as alt text. If upload fails or returns an unsafe URL, the
+placeholder is removed and `onError` is called.
 
 ### Attachment options
 
 ```tsx
+type AttachmentUploadResult =
+  | string
+  | {
+      url: string;
+      alt?: string;
+    };
+
 interface AttachmentsPluginOptions {
-  onUpload: (file: File) => Promise<string>;
+  onUpload: (file: File) => Promise<AttachmentUploadResult>;
   accept?: string;
   uploadingPlaceholder?: (file: File) => string;
   onError?: (error: unknown, file: File) => void;

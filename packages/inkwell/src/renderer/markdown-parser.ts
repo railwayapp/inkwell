@@ -15,13 +15,11 @@ import type {
   InkwellComponents,
   MentionRenderer,
   ParseMarkdownOptions,
+  RehypePluginConfig,
 } from "../types";
 
 // biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
 type RehypePlugin = Plugin<any[], any>;
-type RehypePluginConfig =
-  | RehypePlugin
-  | [RehypePlugin, Record<string, unknown>];
 
 interface ProcessorOptions {
   components?: InkwellComponents;
@@ -137,7 +135,8 @@ function createProcessor(options: ProcessorOptions = {}) {
   ];
   for (const plugin of plugins) {
     if (Array.isArray(plugin)) {
-      proc.use(plugin[0], plugin[1]);
+      const [rehypePlugin, ...options] = plugin;
+      proc.use(rehypePlugin, ...options);
     } else {
       proc.use(plugin);
     }

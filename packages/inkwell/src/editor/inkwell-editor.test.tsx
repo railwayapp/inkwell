@@ -895,17 +895,14 @@ describe("InkwellEditor — plugin integration", () => {
         {
           name: "status",
           description: "Set a thread status",
-          args: [
-            {
-              name: "status",
-              description: "Status to apply",
-              required: true,
-              choices: [
-                { value: "solved", label: "Solved" },
-                { value: "closed", label: "Closed" },
-              ],
-            },
-          ],
+          arg: {
+            name: "status",
+            description: "Status to apply",
+            choices: [
+              { value: "solved", label: "Solved" },
+              { value: "closed", label: "Closed" },
+            ],
+          },
         },
       ],
       onExecute,
@@ -1057,18 +1054,15 @@ describe("InkwellEditor — plugin integration", () => {
             name: "status",
             description: "Set a thread status",
             aliases: ["s"],
-            args: [
-              {
-                name: "status",
-                description: "Status to apply",
-                required: true,
-                choices: [
-                  { value: "solved", label: "Solved" },
-                  { value: "awaiting", label: "Awaiting User Response" },
-                  { value: "closed", label: "Closed", disabled: true },
-                ],
-              },
-            ],
+            arg: {
+              name: "status",
+              description: "Status to apply",
+              choices: [
+                { value: "solved", label: "Solved" },
+                { value: "awaiting", label: "Awaiting User Response" },
+                { value: "closed", label: "Closed", disabled: true },
+              ],
+            },
           },
           { name: "runbook", description: "Run a support runbook" },
           {
@@ -1230,7 +1224,7 @@ describe("InkwellEditor — plugin integration", () => {
       ).toBeInTheDocument();
     });
 
-    it("shows required argument choices after selecting a command", async () => {
+    it("shows argument choices after selecting a command", async () => {
       const { ref, editor, container } = await renderSlashEditor();
       await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
@@ -1259,14 +1253,11 @@ describe("InkwellEditor — plugin integration", () => {
           {
             name: "assign",
             description: "Assign ownership",
-            args: [
-              {
-                name: "owner",
-                description: "Owner to assign",
-                required: true,
-                fetchChoices,
-              },
-            ],
+            arg: {
+              name: "owner",
+              description: "Owner to assign",
+              fetchChoices,
+            },
           },
         ],
         onReadyChange,
@@ -4109,17 +4100,14 @@ describe("InkwellEditor — plugin integration", () => {
         {
           name: "status",
           description: "Set a thread status",
-          args: [
-            {
-              name: "status",
-              description: "Status to apply",
-              required: true,
-              choices: [
-                { value: "solved", label: "Solved" },
-                { value: "closed", label: "Closed" },
-              ],
-            },
-          ],
+          arg: {
+            name: "status",
+            description: "Status to apply",
+            choices: [
+              { value: "solved", label: "Solved" },
+              { value: "closed", label: "Closed" },
+            ],
+          },
         },
       ],
       onExecute,
@@ -4271,18 +4259,15 @@ describe("InkwellEditor — plugin integration", () => {
             name: "status",
             description: "Set a thread status",
             aliases: ["s"],
-            args: [
-              {
-                name: "status",
-                description: "Status to apply",
-                required: true,
-                choices: [
-                  { value: "solved", label: "Solved" },
-                  { value: "awaiting", label: "Awaiting User Response" },
-                  { value: "closed", label: "Closed", disabled: true },
-                ],
-              },
-            ],
+            arg: {
+              name: "status",
+              description: "Status to apply",
+              choices: [
+                { value: "solved", label: "Solved" },
+                { value: "awaiting", label: "Awaiting User Response" },
+                { value: "closed", label: "Closed", disabled: true },
+              ],
+            },
           },
           { name: "runbook", description: "Run a support runbook" },
           {
@@ -4444,7 +4429,7 @@ describe("InkwellEditor — plugin integration", () => {
       ).toBeInTheDocument();
     });
 
-    it("shows required argument choices after selecting a command", async () => {
+    it("shows argument choices after selecting a command", async () => {
       const { ref, editor, container } = await renderSlashEditor();
       await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
@@ -4473,14 +4458,11 @@ describe("InkwellEditor — plugin integration", () => {
           {
             name: "assign",
             description: "Assign ownership",
-            args: [
-              {
-                name: "owner",
-                description: "Owner to assign",
-                required: true,
-                fetchChoices,
-              },
-            ],
+            arg: {
+              name: "owner",
+              description: "Owner to assign",
+              fetchChoices,
+            },
           },
         ],
         onReadyChange,

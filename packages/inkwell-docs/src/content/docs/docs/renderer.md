@@ -96,7 +96,7 @@ A map of HTML element names to React components. See
 **Type:** `RehypePluginConfig[]`
 
 Custom rehype plugins for the Markdown rendering pipeline. Accepts a
-plugin function or a `[plugin, options]` tuple.
+plugin function or a tuple such as `[plugin, ...options]`.
 
 ### `copyButton`
 
@@ -123,3 +123,28 @@ inserted by the mentions plugin.
 **Type:** `string`
 
 CSS class applied to the wrapper `<div>`.
+
+## Utilities
+
+Use the renderer utilities when you need the same parsing or HTML conversion
+without rendering `<InkwellRenderer />` directly.
+
+```tsx
+import { htmlToMarkdown, parseMarkdown } from "@railway/inkwell";
+
+const previewNodes = parseMarkdown(content, {
+  components,
+  rehypePlugins: [[rehypeShiki, { theme: "github-dark" }]],
+  mentions,
+});
+const markdown = htmlToMarkdown(html);
+```
+
+### `parseMarkdown(content, options)`
+
+Parses Markdown source into React nodes using the same component overrides,
+rehype plugin pipeline, and mention hydration options as `InkwellRenderer`.
+
+### `htmlToMarkdown(html)`
+
+Converts an HTML string into Markdown source.

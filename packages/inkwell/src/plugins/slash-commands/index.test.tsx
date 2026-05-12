@@ -96,7 +96,7 @@ describe("createSlashCommandsPlugin", () => {
   });
 
   describe("option surface", () => {
-    it("accepts commands with required choice-backed arguments", () => {
+    it("accepts commands with choice-backed arguments", () => {
       // Just a shape check — exercises that the public types accept the
       // documented payloads.
       const plugin = createSlashCommandsPlugin({
@@ -105,17 +105,14 @@ describe("createSlashCommandsPlugin", () => {
             name: "status",
             description: "Set a thread status",
             aliases: ["s"],
-            args: [
-              {
-                name: "status",
-                description: "Status to apply",
-                required: true,
-                choices: [
-                  { value: "solved", label: "Solved" },
-                  { value: "closed", label: "Closed", disabled: true },
-                ],
-              },
-            ],
+            arg: {
+              name: "status",
+              description: "Status to apply",
+              choices: [
+                { value: "solved", label: "Solved" },
+                { value: "closed", label: "Closed", disabled: true },
+              ],
+            },
           },
         ],
         onExecute: vi.fn(),
@@ -134,14 +131,11 @@ describe("createSlashCommandsPlugin", () => {
           {
             name: "assign",
             description: "Assign ownership",
-            args: [
-              {
-                name: "owner",
-                description: "Owner",
-                required: true,
-                fetchChoices,
-              },
-            ],
+            arg: {
+              name: "owner",
+              description: "Owner",
+              fetchChoices,
+            },
           },
         ],
       });

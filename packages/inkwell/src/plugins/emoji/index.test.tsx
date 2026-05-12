@@ -380,5 +380,24 @@ describe("createEmojiPlugin", () => {
         "custom:saturn",
       );
     });
+
+    it("preserves custom emoji item fields in reusable options", async () => {
+      interface CustomEmoji extends EmojiItem {
+        category: string;
+      }
+      const options: EmojiPluginOptions<CustomEmoji> = {
+        emojis: [{ emoji: "🪐", name: "saturn", category: "planet" }],
+        renderItem: item => (
+          <span data-testid="custom-row">
+            {item.category}:{item.name}
+          </span>
+        ),
+      };
+      const plugin = createEmojiPlugin(options);
+      render(<div>{plugin.render?.(makeRenderProps())}</div>);
+      expect(await screen.findByTestId("custom-row")).toHaveTextContent(
+        "planet:saturn",
+      );
+    });
   });
 });

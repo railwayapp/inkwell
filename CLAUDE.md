@@ -72,8 +72,9 @@ like a normal edit and flows through change handling.
 
 The root package exports the component APIs, built-in plugin factories, renderer
 utilities (`parseMarkdown(content, options)`, `htmlToMarkdown(html)`), and public
-types. Do not export internal Slate helpers or shared plugin primitives from the
-root API.
+types. `RehypePluginConfig` supports plugin tuples with rest options:
+`[plugin, ...options]`. Do not export internal Slate helpers or shared plugin
+primitives from the root API.
 
 ## Editor Rendering Model
 
@@ -101,13 +102,17 @@ Do not add a public top-level `style` prop.
 
 Built-in plugin factories:
 
-- `createAttachmentsPlugin`
-- `createBubbleMenuPlugin`
+- `createAttachmentsPlugin` — uploads can resolve to a URL string or
+  `{ url, alt? }`.
+- `createBubbleMenuPlugin` — `BubbleMenuOptions` is public for reusable
+  menu configuration.
 - `createCharacterLimitPlugin`
-- `createCompletionsPlugin`
-- `createEmojiPlugin`
+- `createCompletionsPlugin` — options type is `CompletionsPluginOptions`.
+- `createEmojiPlugin` — custom item generics are supported when callers
+  provide `emojis` or `search`.
 - `createMentionsPlugin`
-- `createSlashCommandsPlugin`
+- `createSlashCommandsPlugin` — commands use one optional `arg`, not an
+  `args` array.
 - `createSnippetsPlugin`
 
 Character-limit toast UI lives in `createCharacterLimitPlugin()`. The editor

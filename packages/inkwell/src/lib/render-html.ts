@@ -4,33 +4,16 @@ import rehypeStringify from "rehype-stringify";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
-import type { Plugin } from "unified";
 import { unified } from "unified";
+import type { RehypePluginConfig } from "../types";
 import remarkFlattenBlockquotes from "./remark-flatten-blockquotes";
 import remarkNoTables from "./remark-no-tables";
 
-// biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
-type RehypePlugin = Plugin<any[], any>;
-type RehypePluginConfig =
-  | RehypePlugin
-  | [RehypePlugin, Record<string, unknown>];
-
-/**
- * Cache processors by serialized plugin config to avoid recreating.
- */
+/** Cache the default processor; custom plugin arrays get fresh processors. */
 // biome-ignore lint/suspicious/noExplicitAny: unified processor chain types are incompatible across plugins
 const processorCache = new Map<string, any>();
 
-function getProcessor(rehypePlugins?: RehypePluginConfig[]) {
-  const key = rehypePlugins
-    ? JSON.stringify(
-        rehypePlugins.map(p => (Array.isArray(p) ? p[1] : "default")),
-      )
-    : "default";
-
-  const cached = processorCache.get(key);
-  if (cached) return cached;
-
+function createProcessor(rehypePlugins?: RehypePluginConfig[]) {
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -41,7 +24,8 @@ function getProcessor(rehypePlugins?: RehypePluginConfig[]) {
   const plugins = rehypePlugins ?? [[rehypeHighlight, { detect: true }]];
   for (const plugin of plugins) {
     if (Array.isArray(plugin)) {
-      processor.use(plugin[0], plugin[1]);
+      const [rehypePlugin, ...options] = plugin;
+      processor.use(rehypePlugin, ...options);
     } else {
       processor.use(plugin);
     }
@@ -58,7 +42,17 @@ function getProcessor(rehypePlugins?: RehypePluginConfig[]) {
   });
 
   processor.use(rehypeStringify);
-  processorCache.set(key, processor);
+  return processor;
+}
+
+function getProcessor(rehypePlugins?: RehypePluginConfig[]) {
+  if (rehypePlugins) return createProcessor(rehypePlugins);
+
+  const cached = processorCache.get("default");
+  if (cached) return cached;
+
+  const processor = createProcessor();
+  processorCache.set("default", processor);
   return processor;
 }
 

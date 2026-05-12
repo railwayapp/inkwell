@@ -12,9 +12,7 @@ import type { XmlText as YXmlText } from "yjs";
 // biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
 type RehypePlugin = Plugin<any[], any>;
 
-export type RehypePluginConfig =
-  | RehypePlugin
-  | [RehypePlugin, Record<string, unknown>];
+export type RehypePluginConfig = RehypePlugin | [RehypePlugin, ...unknown[]];
 
 export interface InkwellEditorState {
   /** Current source content. Markdown syntax is part of the content. */

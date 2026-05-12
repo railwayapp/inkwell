@@ -15,14 +15,35 @@ export interface EmojiItem {
   tags?: string[];
 }
 
-export interface EmojiPluginOptions {
+interface EmojiPluginBaseOptions<T extends EmojiItem> {
   name?: string;
   trigger?: string;
-  emojis?: EmojiItem[];
-  search?: (query: string) => Promise<EmojiItem[]> | EmojiItem[];
-  renderItem?: (item: EmojiItem, active: boolean) => ReactNode;
+  renderItem?: (item: T, active: boolean) => ReactNode;
   emptyMessage?: string;
 }
+
+type IsExactEmojiItem<T extends EmojiItem> = EmojiItem extends T
+  ? T extends EmojiItem
+    ? true
+    : false
+  : false;
+
+export type EmojiPluginOptions<T extends EmojiItem = EmojiItem> =
+  EmojiPluginBaseOptions<T> &
+    (IsExactEmojiItem<T> extends true
+      ? {
+          emojis?: T[];
+          search?: (query: string) => Promise<T[]> | T[];
+        }
+      :
+          | {
+              emojis: T[];
+              search?: (query: string) => Promise<T[]> | T[];
+            }
+          | {
+              emojis?: T[];
+              search: (query: string) => Promise<T[]> | T[];
+            });
 
 export const defaultEmojis: EmojiItem[] = [
   { emoji: "😀", name: "grinning", shortcodes: ["smile"], tags: ["happy"] },
@@ -98,6 +119,10 @@ const DefaultEmojiItem = ({ item }: { item: EmojiItem }) => (
   </>
 );
 
+export function createEmojiPlugin<T extends EmojiItem>(
+  options: EmojiPluginOptions<T>,
+): InkwellPlugin;
+export function createEmojiPlugin(options?: EmojiPluginOptions): InkwellPlugin;
 export function createEmojiPlugin({
   name = "emoji",
   trigger = ":",

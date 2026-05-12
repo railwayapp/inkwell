@@ -1,9 +1,11 @@
 export { InkwellEditor } from "./editor/inkwell-editor";
 export {
   type AttachmentsPluginOptions,
+  type AttachmentUploadResult,
   createAttachmentsPlugin,
 } from "./plugins/attachments";
 export {
+  type BubbleMenuOptions,
   createBubbleMenuPlugin,
   defaultBubbleMenuItems,
 } from "./plugins/bubble-menu";
@@ -12,7 +14,7 @@ export {
   createCharacterLimitPlugin,
 } from "./plugins/character-limit";
 export {
-  type CompletionPluginOptions,
+  type CompletionsPluginOptions,
   createCompletionsPlugin,
 } from "./plugins/completions";
 export {

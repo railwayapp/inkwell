@@ -27,7 +27,6 @@ export interface SlashCommandChoice {
 export interface SlashCommandArg {
   name: string;
   description: string;
-  required: boolean;
   choices?: SlashCommandChoice[];
   fetchChoices?: () => Promise<SlashCommandChoice[]>;
 }
@@ -36,7 +35,7 @@ export interface SlashCommandItem {
   name: string;
   description: string;
   aliases?: string[];
-  args?: SlashCommandArg[];
+  arg?: SlashCommandArg;
   disabled?: () => string | false;
 }
 
@@ -46,7 +45,9 @@ export interface SlashCommandExecution {
   raw: string;
 }
 
-export interface SlashCommandsPluginOptions<T extends SlashCommandItem> {
+export interface SlashCommandsPluginOptions<
+  T extends SlashCommandItem = SlashCommandItem,
+> {
   /** Plugin name. Defaults to `"slash-commands"`. */
   name?: string;
   /** Commands shown in the picker. */
@@ -144,7 +145,7 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
         return;
       }
 
-      const firstArg = selectedCommand.args?.[0];
+      const firstArg = selectedCommand.arg;
       if (!firstArg) {
         setArgChoices([]);
         return;
@@ -210,7 +211,7 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
           label: choice.label,
           description: choice.disabled
             ? "(current)"
-            : (selectedCommand?.args?.[0]?.description ?? ""),
+            : (selectedCommand?.arg?.description ?? ""),
           disabled: choice.disabled,
         })),
     [argChoices, query, selectedCommand],
@@ -245,19 +246,18 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
       if (item.type === "command") {
         const command = item.command;
         if (!command) return;
-        const hasRequiredArgs =
-          command.args?.some(arg => arg.required) ?? false;
-        const nextLine = `/${command.name}${hasRequiredArgs ? " " : ""}`;
+        const hasArg = !!command.arg;
+        const nextLine = `/${command.name}${hasArg ? " " : ""}`;
         writeSlashLine(nextLine);
         setSelectedCommand(command);
         setSelectedArg(null);
         setQuery("");
-        setMode(hasRequiredArgs ? "args" : "ready");
+        setMode(hasArg ? "args" : "ready");
         return;
       }
 
       if (!selectedCommand) return;
-      const firstArg = selectedCommand.args?.[0];
+      const firstArg = selectedCommand.arg;
       writeSlashLine(`/${selectedCommand.name} ${item.label}`);
       setSelectedArg(
         firstArg ? { name: firstArg.name, value: item.value } : null,

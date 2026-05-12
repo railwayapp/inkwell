@@ -3,12 +3,19 @@
 import { sanitizeImageUrl } from "../../lib/safe-url";
 import type { InkwellPlugin, InkwellPluginEditor } from "../../types";
 
+export type AttachmentUploadResult =
+  | string
+  | {
+      url: string;
+      alt?: string;
+    };
+
 export interface AttachmentsPluginOptions {
   /**
-   * Upload a single file and resolve to the public URL the renderer should
-   * point at. Rejection triggers `onError`.
+   * Upload a single file and resolve to the public image URL, or an object
+   * containing the URL and replacement alt text. Rejection triggers `onError`.
    */
-  onUpload: (file: File) => Promise<string>;
+  onUpload: (file: File) => Promise<AttachmentUploadResult>;
   /**
    * MIME-type filter. Supports exact matches (`image/png`) and wildcards
    * (`image/*`). Files that don't match pass through untouched.
@@ -96,14 +103,17 @@ const insertUploadedImage = (
 
   Promise.resolve()
     .then(() => options.onUpload(file))
-    .then(url => {
+    .then(result => {
+      const url = typeof result === "string" ? result : result.url;
       const safeUrl = sanitizeImageUrl(url);
       if (!safeUrl) {
         editor.removeImage(id);
         options.onError?.(new Error("Unsafe upload URL"), file);
         return;
       }
-      editor.updateImage(id, { url: safeUrl, alt: file.name });
+      const alt =
+        typeof result === "string" ? file.name : (result.alt ?? file.name);
+      editor.updateImage(id, { url: safeUrl, alt });
     })
     .catch(err => {
       editor.removeImage(id);

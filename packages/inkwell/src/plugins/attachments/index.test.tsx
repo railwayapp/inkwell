@@ -167,6 +167,27 @@ describe("createAttachmentsPlugin", () => {
     expect(images(editor)[0].alt).toBe("cat.png");
   });
 
+  it("uses returned upload alt text when provided", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => ({
+        url: "https://cdn/cat.png",
+        alt: "A custom cat description",
+      }),
+    });
+
+    const file = new File(["data"], "cat.png", { type: "image/png" });
+    insertData(plugin, editor, mockDataTransfer([file]));
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(images(editor)).toHaveLength(1);
+    expect(images(editor)[0].url).toBe("https://cdn/cat.png");
+    expect(images(editor)[0].alt).toBe("A custom cat description");
+  });
+
   it("removes the placeholder and calls onError if upload rejects", async () => {
     const editor = createTestEditor();
     editor.children = deserialize("");

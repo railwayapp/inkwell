@@ -3,7 +3,7 @@
 import type { KeyboardEvent } from "react";
 import type { InkwellPlugin, InkwellPluginEditor } from "../../types";
 
-export interface CompletionPluginOptions {
+export interface CompletionsPluginOptions {
   /** Unique plugin name. Defaults to `completions`. */
   name?: string;
   /** Completion content to render as placeholder text. Return null when inactive. */
@@ -72,7 +72,7 @@ export function createCompletionsPlugin({
   onDismiss,
   onRestore,
   restoreOnUndo = true,
-}: CompletionPluginOptions): InkwellPlugin {
+}: CompletionsPluginOptions): InkwellPlugin {
   return {
     name,
     getPlaceholder: editor => {

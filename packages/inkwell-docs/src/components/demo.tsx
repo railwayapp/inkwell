@@ -170,7 +170,7 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
     id: "slash-commands",
     label: "Slash Commands",
     summary:
-      "Chat-style command palette with required arguments and ready-to-submit state.",
+      "Chat-style command palette with choice-backed arguments and ready-to-submit state.",
     usage: (
       <>
         Type <Kbd>/</Kbd> to open commands, choose <code>/label</code>, then
@@ -185,19 +185,16 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
             name: "label",
             description: "Apply a document label",
             aliases: ["l"],
-            args: [
-              {
-                name: "label",
-                description: "Label to apply",
-                required: true,
-                choices: [
-                  { value: "idea", label: "Idea" },
-                  { value: "bug", label: "Bug" },
-                  { value: "question", label: "Question" },
-                  { value: "archived", label: "Archived", disabled: true },
-                ],
-              },
-            ],
+            arg: {
+              name: "label",
+              description: "Label to apply",
+              choices: [
+                { value: "idea", label: "Idea" },
+                { value: "bug", label: "Bug" },
+                { value: "question", label: "Question" },
+                { value: "archived", label: "Archived", disabled: true },
+              ],
+            },
           },
           {
             name: "outline",

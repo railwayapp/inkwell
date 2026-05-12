@@ -461,8 +461,10 @@ interface CompletionPluginOptions {
 
 ### Built-in: Slash Commands
 
-Discord-style slash command picker for chat composers. `/` opens only on a
-blank/new line; prose `/` does not trigger. Query text is typed directly in the
+Discord-style slash command picker for chat composers. `/` opens only when
+there is no prose between the start of the current line and the caret
+(blank line, after a newline, or at the very start of a non-empty line);
+`/` after prose does not trigger. Query text is typed directly in the
 editor, not in a separate search input. Selecting a command/argument stages it;
 Enter executes and clears only the slash-command line, while Escape in the
 execute phase cancels and clears that line.
@@ -513,7 +515,7 @@ const attachments = createAttachmentsPlugin({
   accept: "image/*",
   onUpload: async (file) => uploadToS3(file), // returns a URL
   onError: (err, file) => console.error(err, file.name),
-  maxSize: 5 * 1024 * 1024, // optional; bytes
+  uploadingPlaceholder: file => `Uploading ${file.name}…`, // optional
 });
 
 const { EditorInstance } = useInkwell({

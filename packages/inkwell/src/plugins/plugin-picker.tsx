@@ -192,6 +192,8 @@ export function PluginMenuPrimitive<T>({
     }
   }, []);
 
+  const listboxId = `${pluginPickerClass.picker}-listbox`;
+  const activeOptionId = `${listboxId}-option-${selectedIndex}`;
   const renderedResults = useMemo(
     () =>
       results.map((item, index) => {
@@ -200,6 +202,9 @@ export function PluginMenuPrimitive<T>({
           <div
             key={getKey(item)}
             ref={active ? activeItemRef : undefined}
+            id={`${listboxId}-option-${index}`}
+            role="option"
+            aria-selected={active}
             className={`${pluginPickerClass.item} ${
               active ? pluginPickerClass.itemActive : ""
             }`}
@@ -215,6 +220,7 @@ export function PluginMenuPrimitive<T>({
       activeItemRef,
       commitItem,
       getKey,
+      listboxId,
       renderItem,
       results,
       selectedIndex,
@@ -233,14 +239,26 @@ export function PluginMenuPrimitive<T>({
       }}
       onMouseDown={event => event.preventDefault()}
     >
-      <div className={pluginPickerClass.picker} onKeyDown={handleKeyDown}>
+      <div
+        className={pluginPickerClass.picker}
+        onKeyDown={handleKeyDown}
+        role="combobox"
+        aria-expanded="true"
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-activedescendant={results.length > 0 ? activeOptionId : undefined}
+      >
         <div className={pluginPickerClass.search} aria-label={placeholder}>
           {query || placeholder}
         </div>
         {results.length === 0 ? (
-          <div className={pluginPickerClass.empty}>{emptyMessage}</div>
+          <div className={pluginPickerClass.empty} role="status">
+            {emptyMessage}
+          </div>
         ) : (
-          <div>{renderedResults}</div>
+          <div id={listboxId} role="listbox">
+            {renderedResults}
+          </div>
         )}
       </div>
     </div>

@@ -145,6 +145,57 @@ describe("PluginMenuPrimitive", () => {
     });
   });
 
+  describe("ARIA contract", () => {
+    it("wires combobox → listbox → option roles with aria-activedescendant", () => {
+      const { container } = renderPrimitive({ items: ITEMS });
+      const combobox = container.querySelector(`.${pluginPickerClass.picker}`);
+      expect(combobox).toHaveAttribute("role", "combobox");
+      expect(combobox).toHaveAttribute("aria-expanded", "true");
+      expect(combobox).toHaveAttribute("aria-haspopup", "listbox");
+
+      const listboxId = combobox?.getAttribute("aria-controls");
+      expect(listboxId).toBeTruthy();
+      const listbox = container.querySelector(`#${listboxId}`);
+      expect(listbox).toHaveAttribute("role", "listbox");
+
+      const options = container.querySelectorAll('[role="option"]');
+      expect(options.length).toBe(ITEMS.length);
+      // First option is selected by default.
+      expect(options[0]).toHaveAttribute("aria-selected", "true");
+      expect(options[1]).toHaveAttribute("aria-selected", "false");
+      // Combobox points at the active option.
+      expect(combobox).toHaveAttribute(
+        "aria-activedescendant",
+        options[0].getAttribute("id") ?? "",
+      );
+    });
+
+    it("moves aria-activedescendant in lockstep with ArrowDown", () => {
+      const { container, dispatchPluginKey } = renderPrimitive({
+        pluginName: "aria",
+        items: ITEMS,
+      });
+      const combobox = container.querySelector(`.${pluginPickerClass.picker}`);
+      dispatchPluginKey("ArrowDown");
+      const options = container.querySelectorAll('[role="option"]');
+      expect(options[1]).toHaveAttribute("aria-selected", "true");
+      expect(combobox).toHaveAttribute(
+        "aria-activedescendant",
+        options[1].getAttribute("id") ?? "",
+      );
+    });
+
+    it("renders the empty state as role=status (announced to AT)", () => {
+      const { typePluginQuery } = renderPrimitive({
+        pluginName: "aria-empty",
+        items: ITEMS,
+      });
+      typePluginQuery("zzz");
+      const empty = screen.getByText("No matches");
+      expect(empty).toHaveAttribute("role", "status");
+    });
+  });
+
   describe("query display", () => {
     it("renders the placeholder before editor-forwarded typing", () => {
       renderPrimitive({ items: ITEMS });

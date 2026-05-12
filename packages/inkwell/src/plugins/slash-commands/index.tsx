@@ -483,8 +483,9 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
   return {
     name,
     // Slash commands has no trigger character — it activates from
-    // `onKeyDown` once `/` is typed on a blank line. Without this flag the
-    // editor would render the menu by default (since there is no trigger).
+    // `onKeyDown` once `/` is typed with no prose between the start of
+    // the current line and the caret. Without this flag the editor would
+    // render the menu by default (since there is no trigger).
     activatable: true,
     setup: editor => {
       editorRef = editor;
@@ -508,7 +509,11 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
     },
     onKeyDown: (event, ctx, editor) => {
       editorRef = editor;
-      // Opening: `/` typed at the start of a blank/whitespace line.
+      // Opening: `/` typed with no prose between the start of the
+      // current line and the caret. This permits opening at the start of
+      // an otherwise non-empty line (the typed `/` is inserted ahead of
+      // the existing line content) as long as the user hasn't started
+      // writing prose first.
       if (
         event.key === "/" &&
         !event.metaKey &&

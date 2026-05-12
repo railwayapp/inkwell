@@ -179,8 +179,10 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
   plugin objects can be created inline without stale closure refs. While active,
   empty non-paragraph Slate blocks are canonicalized to a plain paragraph so
   placeholder typography is stable across clears.
-- **Slash commands** — Discord-style `/` command menu for blank/new lines.
-  Prose `/` does not trigger. Typing after `/` filters without a dedicated
+- **Slash commands** — Discord-style `/` command menu. The menu opens
+  when `/` is typed with no prose between the start of the current line
+  and the caret (blank line, after a newline, or at the very start of a
+  non-empty line). `/` after prose does not trigger. Typing after `/` filters without a dedicated
   search input. Selecting a command/argument stages execution; Enter calls
   `onExecute({ name, args, raw })` with string-only arguments and clears only
   the introduced slash-command line, while Escape in the execute phase cancels

@@ -95,6 +95,52 @@ describe("withCharacterLimit", () => {
   });
 
   it(
+    "allows replacing a selection at the limit because the replacement " +
+      "first deletes the selected text",
+    () => {
+      const editor = createTestEditor(5, true);
+      editor.children = deserialize("abcde");
+      editor.onChange();
+
+      // Select "cde" — the trailing 3 chars.
+      Transforms.select(editor, {
+        anchor: { path: [0, 0], offset: 2 },
+        focus: { path: [0, 0], offset: 5 },
+      });
+
+      // Typing a single char should replace the selection: effective
+      // pre-insert length is 5 - 3 = 2, so 2 + 1 = 3 fits within limit 5.
+      editor.insertText("X");
+
+      expect(getText(editor)).toBe("abX");
+    },
+  );
+
+  it(
+    "does not overcount when pasting into a non-collapsed selection " +
+      "that overlaps the limit",
+    () => {
+      const editor = createTestEditor(5, true);
+      editor.children = deserialize("abcde");
+      editor.onChange();
+
+      // Select all 5 chars and paste "xyz" — should be accepted in full
+      // (3 ≤ limit 5) rather than rejected because raw length was 5.
+      Transforms.select(editor, {
+        anchor: { path: [0, 0], offset: 0 },
+        focus: { path: [0, 0], offset: 5 },
+      });
+      const data = {
+        types: ["text/plain"],
+        getData: (type: string) => (type === "text/plain" ? "xyz" : ""),
+      } as unknown as DataTransfer;
+      editor.insertData(data);
+
+      expect(getText(editor)).toBe("xyz");
+    },
+  );
+
+  it(
     "keeps a clipped paste flowing through the downstream insertData so " +
       "markdown-paste handling still parses headings/etc.",
     () => {

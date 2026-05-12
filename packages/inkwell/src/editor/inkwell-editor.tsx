@@ -208,7 +208,11 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         if (typeof cleanup === "function") cleanups.push(cleanup);
       }
       return () => {
-        for (const c of cleanups) c();
+        // Run cleanups in reverse order so plugins that wrap editor
+        // methods (e.g. `editor.insertData`) unwrap in the inverse order
+        // they were stacked — each cleanup restores the editor to the
+        // state the next-outer plugin captured.
+        for (let i = cleanups.length - 1; i >= 0; i--) cleanups[i]();
       };
     }, [editor, plugins]);
 
@@ -740,14 +744,17 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       (text: string) => {
         const triggerKey = activePlugin?.trigger?.key;
         const isCharTrigger = triggerKey && !triggerKey.includes("+");
+        // Capture the query length *before* dismissing — dismiss clears
+        // the ref, and the rAF-deferred delete below needs to remove the
+        // trigger plus every query character the user typed into the
+        // editor while the picker was open.
+        const queryLength = activePluginQueryRef.current.length;
         dismissPlugin();
         requestAnimationFrame(() => {
           ReactEditor.focus(editor);
-          // If character trigger, delete the trigger and any query characters
-          // that were typed into the editor while the picker was open.
           if (isCharTrigger) {
             Transforms.delete(editor, {
-              distance: 1 + activePluginQueryRef.current.length,
+              distance: 1 + queryLength,
               unit: "character",
               reverse: true,
             });

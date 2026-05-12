@@ -1,10 +1,8 @@
 "use client";
 
 import type { KeyboardEvent } from "react";
-import { Editor, Transforms } from "slate";
+import { type Editor, Node, Transforms } from "slate";
 import { deserialize } from "../../editor/slate/deserialize";
-import { serialize } from "../../editor/slate/serialize";
-import type { InkwellElement } from "../../editor/slate/types";
 import type { InkwellPlugin, RehypePluginConfig } from "../../types";
 
 export interface CompletionPluginOptions {
@@ -39,12 +37,14 @@ const isPlainTypingKey = (event: KeyboardEvent): boolean => {
   );
 };
 
-const getSerializedMarkdown = (editor: Editor): string => {
-  return serialize(editor.children as InkwellElement[]);
-};
-
+/**
+ * Cheap emptiness check that walks the Slate tree once and short-circuits
+ * on the first non-whitespace character. `getPlaceholder` is called on
+ * every render, so this needs to stay O(text length) and avoid the full
+ * unified/remark serialize pipeline.
+ */
 const isEditorEmpty = (editor: Editor): boolean => {
-  return getSerializedMarkdown(editor).trim().length === 0;
+  return Node.string(editor).trim().length === 0;
 };
 
 const insertCompletion = (editor: Editor, completion: string): void => {

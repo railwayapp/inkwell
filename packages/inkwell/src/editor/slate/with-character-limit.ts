@@ -1,5 +1,23 @@
-import { Node } from "slate";
+import { Editor, Node, Range } from "slate";
 import type { InkwellEditor } from "./types";
+
+/**
+ * Effective length of the document if the current selection were
+ * deleted. Slate's `insertText`/`insertData` first delete the selection
+ * (when non-collapsed) and then insert, so any limit check needs to use
+ * the post-deletion length, not the raw `Node.string(editor).length`.
+ */
+function effectiveLength(editor: InkwellEditor): number {
+  const total = Node.string(editor).length;
+  const { selection } = editor;
+  if (!selection || Range.isCollapsed(selection)) return total;
+  try {
+    const selectedText = Editor.string(editor, selection);
+    return total - selectedText.length;
+  } catch {
+    return total;
+  }
+}
 
 /**
  * Create a `DataTransfer`-shaped clone of `original` with the
@@ -60,7 +78,7 @@ export function withCharacterLimit(
   editor.insertText = (text: string) => {
     const cfg = configRef.current;
     if (cfg.enforce && cfg.limit !== undefined) {
-      const current = Node.string(editor).length;
+      const current = effectiveLength(editor);
       if (current + text.length > cfg.limit) {
         const remaining = Math.max(0, cfg.limit - current);
         if (remaining === 0) return;
@@ -74,7 +92,7 @@ export function withCharacterLimit(
     const cfg = configRef.current;
     if (cfg.enforce && cfg.limit !== undefined) {
       const pasted = data.getData("text/plain");
-      const current = Node.string(editor).length;
+      const current = effectiveLength(editor);
       if (pasted && current + pasted.length > cfg.limit) {
         const remaining = Math.max(0, cfg.limit - current);
         if (remaining === 0) return;

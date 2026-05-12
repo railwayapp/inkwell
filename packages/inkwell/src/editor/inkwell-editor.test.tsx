@@ -769,6 +769,75 @@ describe("InkwellEditor — plugin integration", () => {
     });
   });
 
+  it(
+    "deletes the trigger plus all typed query chars from the document " +
+      "when an item is selected (regression: rAF-deferred delete was reading " +
+      "a query ref that dismiss() had already cleared)",
+    async () => {
+      const ref = createRef<import("../types").InkwellEditorHandle>();
+      const onChange = vi.fn();
+      const mentions = createMentionsPlugin({
+        name: "users",
+        trigger: "@",
+        marker: "user",
+        search: (query: string) =>
+          [
+            { id: "1", title: "Alice" },
+            { id: "2", title: "Bob" },
+          ].filter(u => u.title.toLowerCase().includes(query.toLowerCase())),
+        renderItem: item => <span>{item.title}</span>,
+      });
+
+      const { container } = render(
+        <InkwellEditor
+          ref={ref}
+          content="Hello "
+          onChange={onChange}
+          plugins={[mentions]}
+        />,
+      );
+      const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+      await flushEffects();
+      await act(async () => {
+        ref.current?.focus({ at: "end" });
+      });
+
+      // Simulate real-browser typing: each printable keydown also lands
+      // the corresponding character in the contenteditable. jsdom's
+      // fireEvent doesn't do that, so insert the characters explicitly
+      // alongside the keydown events that drive the picker state.
+      await act(async () => {
+        fireEvent.keyDown(editor, { key: "@" });
+        ref.current?.insertMarkdown("@");
+      });
+      await screen.findByText("Alice");
+
+      await act(async () => {
+        fireEvent.keyDown(editor, { key: "b" });
+        ref.current?.insertMarkdown("b");
+      });
+      await act(async () => {
+        fireEvent.keyDown(editor, { key: "o" });
+        ref.current?.insertMarkdown("o");
+      });
+      await screen.findByText("Bob");
+
+      // Pre-select assertion: the document currently contains the typed
+      // chars verbatim.
+      expect(ref.current?.getMarkdown()).toBe("Hello @bo");
+
+      await act(async () => {
+        fireEvent.keyDown(editor, { key: "Enter" });
+      });
+
+      await waitFor(() => {
+        // After selection the trigger and query chars must be removed and
+        // the mention marker inserted in their place — not appended.
+        expect(ref.current?.getMarkdown()).toBe("Hello @user[2]");
+      });
+    },
+  );
+
   it("forwards typed query keys to active character plugins", async () => {
     const onChange = vi.fn();
     const mentions = createMentionsPlugin({

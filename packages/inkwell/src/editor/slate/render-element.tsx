@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Node } from "slate";
 import { type RenderElementProps, useSelected } from "slate-react";
 import { editorClass } from "../../lib/class-names";
+import { sanitizeImageUrl } from "../../lib/safe-url";
 import type { InkwellElement } from "./types";
 
 const LIST_MARKER_RE = /^(\s*)(\d+\.|[-*+]) /;
@@ -89,7 +90,7 @@ function ImageElement({
       data-selected={selected || undefined}
     >
       <img
-        src={element.url ?? ""}
+        src={sanitizeImageUrl(element.url)}
         alt={element.alt ?? ""}
         contentEditable={false}
         draggable={false}

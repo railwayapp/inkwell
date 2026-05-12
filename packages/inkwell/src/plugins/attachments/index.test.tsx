@@ -162,6 +162,75 @@ describe("createAttachmentsPlugin", () => {
     expect(onUpload).toHaveBeenCalledTimes(1);
   });
 
+  it(
+    "forwards non-matching files in a mixed payload through the base " +
+      "insertData instead of silently dropping them",
+    async () => {
+      const editor = createTestEditor();
+      editor.children = deserialize("");
+      editor.onChange();
+
+      // Wrap the base insertData so we can observe what flows through it.
+      const baseInsertData = vi.fn();
+      editor.insertData = baseInsertData;
+
+      const onUpload = vi.fn(async () => "https://cdn/a.png");
+      const plugin = createAttachmentsPlugin({
+        onUpload,
+        accept: "image/*",
+      });
+      plugin.setup?.(editor);
+
+      const image = new File(["data"], "a.png", { type: "image/png" });
+      const pdf = new File(["data"], "report.pdf", {
+        type: "application/pdf",
+      });
+      editor.insertData(mockDataTransfer([image, pdf]));
+
+      // Matching image: placeholder inserted, onUpload queued.
+      expect(
+        (editor.children as InkwellElement[]).some(el => el.type === "image"),
+      ).toBe(true);
+      for (let i = 0; i < 3; i++) await Promise.resolve();
+      expect(onUpload).toHaveBeenCalledTimes(1);
+      expect(onUpload).toHaveBeenCalledWith(image);
+
+      // Non-matching pdf passed through to the base insertData.
+      expect(baseInsertData).toHaveBeenCalledTimes(1);
+      const forwarded = baseInsertData.mock.calls[0][0] as DataTransfer;
+      const forwardedFiles = Array.from(forwarded.files ?? []);
+      expect(forwardedFiles).toHaveLength(1);
+      expect(forwardedFiles[0]).toBe(pdf);
+    },
+  );
+
+  it(
+    "does not forward to base insertData when every file matched the " +
+      "accept filter",
+    () => {
+      const editor = createTestEditor();
+      editor.children = deserialize("");
+      editor.onChange();
+
+      const baseInsertData = vi.fn();
+      editor.insertData = baseInsertData;
+
+      const plugin = createAttachmentsPlugin({
+        onUpload: async () => "https://cdn/a.png",
+        accept: "image/*",
+      });
+      plugin.setup?.(editor);
+
+      const image = new File(["data"], "a.png", { type: "image/png" });
+      editor.insertData(mockDataTransfer([image]));
+
+      // Every file was handled — base should not be re-invoked (it would
+      // see the same file again and could double-process accompanying
+      // HTML payloads).
+      expect(baseInsertData).not.toHaveBeenCalled();
+    },
+  );
+
   it("inserts copied HTML images by URL", () => {
     const editor = createTestEditor();
     editor.children = deserialize("");

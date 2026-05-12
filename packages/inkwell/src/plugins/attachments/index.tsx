@@ -3,6 +3,7 @@
 import { type Editor, Node, Transforms } from "slate";
 import type { InkwellElement } from "../../editor/slate/types";
 import { generateId } from "../../editor/slate/with-node-id";
+import { isSafeImageUrl } from "../../lib/safe-url";
 import type { InkwellPlugin } from "../../types";
 
 export interface AttachmentsPluginOptions {
@@ -59,6 +60,27 @@ function extractFiles(data: DataTransfer): File[] {
   return files;
 }
 
+/**
+ * Build a synthetic `DataTransfer` carrying only the supplied files (no
+ * text/html or text/plain payload). Used to forward non-matching files
+ * back into the editor's base `insertData` so they aren't silently
+ * dropped. We avoid `new DataTransfer()` because it isn't constructable
+ * in jsdom (and is only partially constructable in real browsers).
+ */
+function filesOnlyDataTransfer(files: File[]): DataTransfer {
+  return {
+    types: files.length > 0 ? ["Files"] : [],
+    files: files as unknown as FileList,
+    items: undefined as unknown as DataTransferItemList,
+    getData: () => "",
+    setData: () => {},
+    clearData: () => {},
+    setDragImage: () => {},
+    dropEffect: "none",
+    effectAllowed: "all",
+  } as DataTransfer;
+}
+
 function extractHtmlImages(
   data: DataTransfer,
 ): Array<{ url: string; alt: string }> {
@@ -72,7 +94,10 @@ function extractHtmlImages(
   for (const match of html.matchAll(imgRe)) {
     const tag = match[0];
     const url = srcRe.exec(tag)?.[1]?.trim();
-    if (!url) continue;
+    // Drop tags with a missing or unsafe src — we don't want to write
+    // `javascript:`, `data:text/html`, or `data:image/svg+xml` (script
+    // execution surface) into the document.
+    if (!url || !isSafeImageUrl(url)) continue;
     images.push({ url, alt: altRe.exec(tag)?.[1] ?? "" });
   }
   return images;
@@ -120,6 +145,16 @@ export function createAttachmentsPlugin(
             insertImage(editor, image);
           }
           return;
+        }
+
+        // Pass non-matching files through to the editor's base
+        // `insertData` so they aren't silently dropped — the docstring
+        // for `accept` promises files that don't match flow through
+        // untouched. We strip text/html and text/plain so any pasted
+        // markup describing the same files isn't double-handled.
+        const unmatched = files.filter(f => !matching.includes(f));
+        if (unmatched.length > 0) {
+          insertData(filesOnlyDataTransfer(unmatched));
         }
 
         for (const file of matching) {

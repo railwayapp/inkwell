@@ -218,15 +218,18 @@ When a completion placeholder is active, Inkwell normalizes an otherwise empty e
 
 ## Slash commands
 
-A reusable chat-style command palette triggered by `/` at the start of a blank/new line. The plugin keeps the
-command UI inside Inkwell, supports required first-argument choices, async
-choice loading, disabled commands/choices, reports when the command is ready
-for Enter-to-submit, and can emit a structured command payload via `onExecute`.
-Slash commands are intentionally Discord-style: `/` in prose does not open the
-menu, typing after `/` filters the menu without a dedicated search input, and
-selecting/executing a command only removes the slash-command text that was
-introduced (for example, `/label Idea`) rather than clearing the whole
-editor.
+A reusable chat-style command palette. The menu opens when `/` is typed
+with no prose between the start of the current line and the caret — so
+it fires on a blank line, after a newline, and at the very start of an
+existing line, but never in the middle of prose. The plugin keeps the
+command UI inside Inkwell, supports required first-argument choices,
+async choice loading, disabled commands/choices, reports when the
+command is ready for Enter-to-submit, and can emit a structured command
+payload via `onExecute`. Slash commands are intentionally Discord-style:
+`/` after prose does not open the menu, typing after `/` filters the
+menu without a dedicated search input, and selecting/executing a
+command only removes the slash-command text that was introduced (for
+example, `/label Idea`) rather than clearing the whole editor.
 
 ```tsx
 import { createSlashCommandsPlugin, useInkwell } from "@railway/inkwell";
@@ -359,15 +362,24 @@ Once the picker is open:
 
 ### Rendering mention markers
 
-`InkwellRenderer` can hydrate mention markers into custom React components via
-the `mentions` prop:
+`InkwellRenderer` can hydrate persisted mention markers (e.g.
+`@user[<id>]`) into custom React components via the `mentions` prop.
+It accepts an array of `MentionRenderer` entries; each entry pairs a
+regex with a `resolve` callback that maps a `RegExpExecArray` match to
+a React node:
 
 ```tsx
-import { InkwellRenderer } from "@railway/inkwell";
+import { InkwellRenderer, type MentionRenderer } from "@railway/inkwell";
 
-const mentionRenderers = {
-  user: ({ id }: { id: string }) => <a href={`/users/${id}`}>@{id}</a>,
-};
+const mentionRenderers: MentionRenderer[] = [
+  {
+    pattern: /@user\[([a-z0-9-]+)\]/g,
+    resolve: match => {
+      const id = match[1];
+      return <a href={`/users/${id}`}>@{id}</a>;
+    },
+  },
+];
 
 function Preview({ content }: { content: string }) {
   return <InkwellRenderer content={content} mentions={mentionRenderers} />;

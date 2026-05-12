@@ -304,11 +304,35 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       initialValue.reduce((sum, n) => sum + Node.string(n).length, 0),
     );
     const [isFocused, setIsFocused] = useState(false);
+    const focusStateFrameRef = useRef<number | null>(null);
     const [stateVersion, setStateVersion] = useState(0);
 
     const bumpStateVersion = useCallback(() => {
       setStateVersion(version => version + 1);
     }, []);
+
+    // Some browsers can fail to visibly paint the caret on first click if
+    // React re-renders during the native contenteditable focus/selection path.
+    // Defer focus UI state one frame so browser selection settles first.
+    const scheduleFocusedState = useCallback((nextFocused: boolean) => {
+      if (focusStateFrameRef.current !== null) {
+        cancelAnimationFrame(focusStateFrameRef.current);
+      }
+
+      focusStateFrameRef.current = requestAnimationFrame(() => {
+        focusStateFrameRef.current = null;
+        setIsFocused(nextFocused);
+      });
+    }, []);
+
+    useEffect(
+      () => () => {
+        if (focusStateFrameRef.current !== null) {
+          cancelAnimationFrame(focusStateFrameRef.current);
+        }
+      },
+      [],
+    );
 
     const updateCharacterCount = useCallback(() => {
       const length = Node.string(editor).length;
@@ -1031,8 +1055,8 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
             aria-placeholder={resolvedPlaceholder}
             data-placeholder={resolvedPlaceholder}
             readOnly={!editable}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            onFocus={() => scheduleFocusedState(true)}
+            onBlur={() => scheduleFocusedState(false)}
             onKeyDown={handleKeyDown}
           />
         </Slate>

@@ -1,12 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { createEditor, type Editor } from "slate";
+import { createEditor, Editor } from "slate";
 import { withHistory } from "slate-history";
 import { withReact } from "slate-react";
 import { describe, expect, it, vi } from "vitest";
 import { withMarkdown } from "../../editor/slate/with-markdown";
 import { withNodeId } from "../../editor/slate/with-node-id";
 import type {
+  InkwellPluginEditor,
   PluginKeyDownContext,
   PluginRenderProps,
   SubscribeForwardedKey,
@@ -41,6 +42,35 @@ function makeEditor(): Editor {
 }
 
 /** Build a controllable forwarded-key channel for plugin render tests. */
+
+function createPluginEditor(): InkwellPluginEditor {
+  return {
+    getState: () => ({
+      content: "",
+      isEmpty: true,
+      isFocused: false,
+      isEditable: true,
+      characterCount: 0,
+      overLimit: false,
+      isEnforcingCharacterLimit: false,
+    }),
+    isEmpty: () => true,
+    focus: () => {},
+    clear: () => {},
+    setContent: () => {},
+    insertContent: () => {},
+    getContentBeforeCursor: () => "",
+    getCurrentBlockContent: () => "",
+    getCurrentBlockContentBeforeCursor: () => "",
+    replaceCurrentBlockContent: () => {},
+    clearCurrentBlock: () => {},
+    wrapSelection: () => {},
+    insertImage: () => "image-id",
+    updateImage: () => {},
+    removeImage: () => {},
+  };
+}
+
 function createForwardedKeyChannel(): {
   subscribe: SubscribeForwardedKey;
   emit: (key: string) => void;
@@ -69,6 +99,7 @@ const makeRenderProps = (
   wrapSelection: vi.fn(),
   subscribeForwardedKey: () => () => {},
   ...overrides,
+  editor: overrides.editor ?? createPluginEditor(),
 });
 
 const makeKeyboardEvent = (
@@ -82,10 +113,43 @@ const makeKeyboardEvent = (
     ...init,
   }) as unknown as ReactKeyboardEvent<Element>;
 
-const baseCtx: PluginKeyDownContext = {
+const makeCtx = (editor: Editor): PluginKeyDownContext => ({
+  editor: {
+    getState: () => ({
+      content: "",
+      isEmpty: true,
+      isFocused: false,
+      isEditable: true,
+      characterCount: 0,
+      overLimit: false,
+      isEnforcingCharacterLimit: false,
+    }),
+    isEmpty: () => false,
+    focus: () => {},
+    clear: () => {},
+    setContent: () => {},
+    insertContent: () => {},
+    getContentBeforeCursor: () => {
+      const { selection } = editor;
+      if (!selection) return null;
+      return Editor.string(editor, {
+        anchor: { path: selection.anchor.path, offset: 0 },
+        focus: selection.anchor,
+      });
+    },
+    getCurrentBlockContent: () => null,
+    getCurrentBlockContentBeforeCursor: () => null,
+    replaceCurrentBlockContent: () => {},
+    clearCurrentBlock: () => {},
+    wrapSelection: () => {},
+    insertImage: () => "image-id",
+    updateImage: () => {},
+    removeImage: () => {},
+  },
   wrapSelection: vi.fn(),
-  setActivePlugin: vi.fn(),
-};
+  activate: vi.fn(),
+  dismiss: vi.fn(),
+});
 
 const seedCursorAt = (editor: Editor, text: string, offset: number) => {
   editor.children = [
@@ -107,13 +171,21 @@ describe("createEmojiPlugin", () => {
     it("returns a plugin with name and `:` trigger by default", () => {
       const plugin = createEmojiPlugin();
       expect(plugin.name).toBe("emoji");
-      expect(plugin.trigger?.key).toBe(":");
+      expect(
+        plugin.activation?.type === "trigger"
+          ? plugin.activation.key
+          : undefined,
+      ).toBe(":");
     });
 
     it("accepts a custom name and trigger character", () => {
       const plugin = createEmojiPlugin({ name: "moods", trigger: "+" });
       expect(plugin.name).toBe("moods");
-      expect(plugin.trigger?.key).toBe("+");
+      expect(
+        plugin.activation?.type === "trigger"
+          ? plugin.activation.key
+          : undefined,
+      ).toBe("+");
     });
 
     it("exposes shouldTrigger, onActiveKeyDown, and render", () => {
@@ -145,52 +217,52 @@ describe("createEmojiPlugin", () => {
     it("opens at the start of an empty document", () => {
       const editor = makeEditor();
       seedCursorAt(editor, "", 0);
-      expect(guard(makeKeyboardEvent(":"), editor)).toBe(true);
+      expect(guard(makeKeyboardEvent(":"), makeCtx(editor))).toBe(true);
     });
 
     it("opens after a leading space", () => {
       const editor = makeEditor();
       seedCursorAt(editor, " ", 1);
-      expect(guard(makeKeyboardEvent(":"), editor)).toBe(true);
+      expect(guard(makeKeyboardEvent(":"), makeCtx(editor))).toBe(true);
     });
 
     it("opens after an opening parenthesis (e.g. `(:` smiley shortcut)", () => {
       const editor = makeEditor();
       seedCursorAt(editor, "(", 1);
-      expect(guard(makeKeyboardEvent(":"), editor)).toBe(true);
+      expect(guard(makeKeyboardEvent(":"), makeCtx(editor))).toBe(true);
     });
 
     it("does NOT open inside `:)` style emoticons (prev char is a glyph)", () => {
       const editor = makeEditor();
       // The user is typing the second `:` of `::` or the `:` in `):`.
       seedCursorAt(editor, ")", 1);
-      expect(guard(makeKeyboardEvent(":"), editor)).toBe(false);
+      expect(guard(makeKeyboardEvent(":"), makeCtx(editor))).toBe(false);
     });
 
     it("does NOT open in the middle of a word (`foo:bar`)", () => {
       const editor = makeEditor();
       seedCursorAt(editor, "foo", 3);
-      expect(guard(makeKeyboardEvent(":"), editor)).toBe(false);
+      expect(guard(makeKeyboardEvent(":"), makeCtx(editor))).toBe(false);
     });
 
     it("does NOT open when modifier keys are held", () => {
       const editor = makeEditor();
       seedCursorAt(editor, "", 0);
-      expect(guard(makeKeyboardEvent(":", { metaKey: true }), editor)).toBe(
-        false,
-      );
-      expect(guard(makeKeyboardEvent(":", { ctrlKey: true }), editor)).toBe(
-        false,
-      );
-      expect(guard(makeKeyboardEvent(":", { altKey: true }), editor)).toBe(
-        false,
-      );
+      expect(
+        guard(makeKeyboardEvent(":", { metaKey: true }), makeCtx(editor)),
+      ).toBe(false);
+      expect(
+        guard(makeKeyboardEvent(":", { ctrlKey: true }), makeCtx(editor)),
+      ).toBe(false);
+      expect(
+        guard(makeKeyboardEvent(":", { altKey: true }), makeCtx(editor)),
+      ).toBe(false);
     });
 
     it("does NOT open for keys other than the configured trigger", () => {
       const editor = makeEditor();
       seedCursorAt(editor, "", 0);
-      expect(guard(makeKeyboardEvent("a"), editor)).toBe(false);
+      expect(guard(makeKeyboardEvent("a"), makeCtx(editor))).toBe(false);
     });
   });
 
@@ -201,66 +273,54 @@ describe("createEmojiPlugin", () => {
       throw new Error("emoji plugin must expose onActiveKeyDown");
 
     it("does not dismiss on letters", () => {
-      const editor = makeEditor();
       const result = onActiveKeyDown(
         makeKeyboardEvent("a"),
-        { ...baseCtx, dismiss: vi.fn() },
-        editor,
+        makeCtx(makeEditor()),
       );
       expect(result).not.toBe(false);
     });
 
     it("does not dismiss on digits", () => {
-      const editor = makeEditor();
       const result = onActiveKeyDown(
         makeKeyboardEvent("3"),
-        { ...baseCtx, dismiss: vi.fn() },
-        editor,
+        makeCtx(makeEditor()),
       );
       expect(result).not.toBe(false);
     });
 
     it("does not dismiss on `_`, `+`, `-` (valid emoji-name chars)", () => {
-      const editor = makeEditor();
       for (const key of ["_", "+", "-"]) {
         const result = onActiveKeyDown(
           makeKeyboardEvent(key),
-          { ...baseCtx, dismiss: vi.fn() },
-          editor,
+          makeCtx(makeEditor()),
         );
         expect(result).not.toBe(false);
       }
     });
 
     it("dismisses on whitespace", () => {
-      const editor = makeEditor();
       const result = onActiveKeyDown(
         makeKeyboardEvent(" "),
-        { ...baseCtx, dismiss: vi.fn() },
-        editor,
+        makeCtx(makeEditor()),
       );
       expect(result).toBe(false);
     });
 
     it("dismisses on punctuation (period, comma, slash)", () => {
-      const editor = makeEditor();
       for (const key of [".", ",", "/"]) {
         const result = onActiveKeyDown(
           makeKeyboardEvent(key),
-          { ...baseCtx, dismiss: vi.fn() },
-          editor,
+          makeCtx(makeEditor()),
         );
         expect(result).toBe(false);
       }
     });
 
     it("ignores multi-character keys (navigation, escape, etc.)", () => {
-      const editor = makeEditor();
       for (const key of ["ArrowDown", "Enter", "Escape", "Tab"]) {
         const result = onActiveKeyDown(
           makeKeyboardEvent(key),
-          { ...baseCtx, dismiss: vi.fn() },
-          editor,
+          makeCtx(makeEditor()),
         );
         expect(result).not.toBe(false);
       }
@@ -273,7 +333,7 @@ describe("createEmojiPlugin", () => {
       const channel = createForwardedKeyChannel();
       render(
         <div>
-          {plugin.render(
+          {plugin.render?.(
             makeRenderProps({ subscribeForwardedKey: channel.subscribe }),
           )}
         </div>,
@@ -285,7 +345,7 @@ describe("createEmojiPlugin", () => {
 
     it("returns null when not active", () => {
       const plugin = createEmojiPlugin();
-      const rendered = plugin.render(makeRenderProps({ active: false }));
+      const rendered = plugin.render?.(makeRenderProps({ active: false }));
       expect(rendered).toBeNull();
     });
 
@@ -294,7 +354,7 @@ describe("createEmojiPlugin", () => {
         { emoji: "🪐", name: "saturn", shortcodes: ["ringed"] },
       ];
       const plugin = createEmojiPlugin({ emojis });
-      render(<div>{plugin.render(makeRenderProps())}</div>);
+      render(<div>{plugin.render?.(makeRenderProps())}</div>);
       expect(await screen.findByText(":saturn:")).toBeInTheDocument();
     });
 
@@ -304,7 +364,7 @@ describe("createEmojiPlugin", () => {
       ]);
       const options: EmojiPluginOptions = { search };
       const plugin = createEmojiPlugin(options);
-      render(<div>{plugin.render(makeRenderProps())}</div>);
+      render(<div>{plugin.render?.(makeRenderProps())}</div>);
       expect(await screen.findByText(":fox:")).toBeInTheDocument();
     });
 
@@ -315,7 +375,7 @@ describe("createEmojiPlugin", () => {
           <span data-testid="custom-row">custom:{item.name}</span>
         ),
       });
-      render(<div>{plugin.render(makeRenderProps())}</div>);
+      render(<div>{plugin.render?.(makeRenderProps())}</div>);
       expect(await screen.findByTestId("custom-row")).toHaveTextContent(
         "custom:saturn",
       );

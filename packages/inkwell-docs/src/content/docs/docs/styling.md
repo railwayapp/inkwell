@@ -76,7 +76,7 @@ Applied when a `characterLimit` is configured on the editor:
 | Selector | Element |
 |----------|---------|
 | `.inkwell-editor-wrapper.inkwell-editor-over-limit` | Wrapper while `characterCount > characterLimit`. Use to flag the surface (e.g. red outline). |
-| `.inkwell-editor-limit-toast` | Built-in toast shown when the document is over limit, or exactly at the limit when `enforceCharacterLimit` blocks more typing. Opt out via `limitToast={false}`. |
+| `.inkwell-editor-limit-toast` | Toast rendered by `createCharacterLimitPlugin()` when the document is over limit, or exactly at the limit when `enforceCharacterLimit` blocks more typing. |
 | `.inkwell-editor-limit-toast-icon` | The leading icon inside the toast. |
 
 ## Renderer

@@ -17,8 +17,9 @@ built-in one with `bubbleMenu: false` to avoid duplicates:
 import {
   createBubbleMenuPlugin,
   defaultBubbleMenuItems,
-  useInkwell,
+  InkwellEditor,
 } from "@railway/inkwell";
+import { useState } from "react";
 
 const customBubbleMenu = createBubbleMenuPlugin({
   items: [
@@ -41,14 +42,14 @@ const customBubbleMenu = createBubbleMenuPlugin({
 
 function App() {
   const [content, setContent] = useState("");
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-    bubbleMenu: false,
-    plugins: [customBubbleMenu],
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content={content}
+      onChange={setContent}
+      bubbleMenu={false}
+      plugins={[customBubbleMenu]}
+    />
+  );
 }
 ```
 
@@ -80,7 +81,8 @@ A searchable picker for inserting predefined Markdown templates. Type a
 trigger key to open the picker, then search by title.
 
 ```tsx
-import { createSnippetsPlugin, useInkwell } from "@railway/inkwell";
+import { createSnippetsPlugin, InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
 
 const snippets = createSnippetsPlugin({
   snippets: [
@@ -99,13 +101,13 @@ const snippets = createSnippetsPlugin({
 
 function App() {
   const [content, setContent] = useState("");
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-    plugins: [snippets],
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content={content}
+      onChange={setContent}
+      plugins={[snippets]}
+    />
+  );
 }
 ```
 
@@ -114,7 +116,7 @@ The default trigger key is `[`. To change it:
 ```tsx
 const snippets = createSnippetsPlugin({
   snippets: [...],
-  key: "/",
+  trigger: "/",
 });
 ```
 
@@ -134,19 +136,20 @@ prose such as `foo:bar`. It ships with a default emoji list exported as
 `defaultEmojis`, and can accept your own emoji list or async search function.
 
 ```tsx
-import { createEmojiPlugin, useInkwell } from "@railway/inkwell";
+import { createEmojiPlugin, InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
 
 const emoji = createEmojiPlugin();
 
 function App() {
   const [content, setContent] = useState("");
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-    plugins: [emoji],
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content={content}
+      onChange={setContent}
+      plugins={[emoji]}
+    />
+  );
 }
 ```
 
@@ -164,44 +167,45 @@ const emoji = createEmojiPlugin({
 ### Emoji options
 
 ```tsx
-interface EmojiPluginOptions<T extends EmojiItem = EmojiItem> {
+interface EmojiPluginOptions {
   name?: string;
   trigger?: string;
-  emojis?: T[];
-  search?: (query: string) => Promise<T[]> | T[];
-  renderItem?: (item: T, active: boolean) => ReactNode;
+  emojis?: EmojiItem[];
+  search?: (query: string) => Promise<EmojiItem[]> | EmojiItem[];
+  renderItem?: (item: EmojiItem, active: boolean) => ReactNode;
   emptyMessage?: string;
 }
 ```
 
 ## Completions
 
-A generic completion plugin for suggested text flows. You provide the current Markdown completion, and Inkwell shows it through the editor placeholder while the document is empty. By default the placeholder is prefixed with `[tab ↹]`. Users press `Tab` to accept, `Escape` to dismiss, or type normally to dismiss and continue writing.
+A generic completion plugin for suggested text flows. You provide the current Markdown completion, and Inkwell shows it through the editor placeholder while the document is empty. By default the placeholder is prefixed with `[tab ↹]`. Users press `Tab` to accept. `Escape` or normal typing calls `onDismiss`; clear your completion state there so `getCompletion()` returns `null`.
 
 ```tsx
-import { createCompletionsPlugin, useInkwell } from "@railway/inkwell";
+import { createCompletionsPlugin, InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("");
   const [completion, setCompletion] = useState<string | null>(
     "Welcome to Inkwell — Markdown stays readable and portable.",
   );
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-    plugins: [
-      createCompletionsPlugin({
-        getCompletion: () => completion,
-        isLoading: () => false,
-        loadingText: "Drafting a suggestion…",
-        onAccept: () => setCompletion(null),
-        onDismiss: () => setCompletion(null),
-        onRestore: restored => setCompletion(restored),
-      }),
-    ],
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content={content}
+      onChange={setContent}
+      plugins={[
+        createCompletionsPlugin({
+          getCompletion: () => completion,
+          isLoading: () => false,
+          loadingText: "Drafting a suggestion…",
+          onAccept: () => setCompletion(null),
+          onDismiss: () => setCompletion(null),
+          onRestore: restored => setCompletion(restored),
+        }),
+      ]}
+    />
+  );
 }
 ```
 
@@ -222,65 +226,65 @@ interface CompletionPluginOptions {
   onDismiss?: (completion: string) => void;
   onRestore?: (completion: string) => void;
   restoreOnUndo?: boolean;
-  rehypePlugins?: RehypePluginConfig[];
 }
 ```
 
 When `restoreOnUndo` is true (the default), undoing an accepted completion back to an empty document calls `onRestore(completion)`. Use that callback to put the completion back into your host state.
 
-Completion placeholder text is source content text. `acceptHint` controls the prefix prepended to the placeholder text and defaults to `[tab ↹]`. `rehypePlugins` is kept for API compatibility; native placeholders cannot render rich Markdown.
-
-When a completion placeholder is active, Inkwell normalizes an otherwise empty editor to a single plain paragraph. This prevents placeholders from inheriting stale heading, code, list, or blockquote styles after the user clears existing content.
+Completion placeholder text is source content text. `acceptHint` controls the prefix prepended to the placeholder text and defaults to `[tab ↹]`.
 
 ## Slash commands
 
-A reusable chat-style command palette. The menu opens when `/` is typed
-on an empty or whitespace-only line. It does not open before existing text in
-the same block, which prevents command cleanup from touching unrelated prose.
-The plugin keeps the command UI inside Inkwell, supports required
-first-argument choices,
-async choice loading, disabled commands/choices, reports when the
-command is ready for Enter-to-submit, and can emit a structured command
-payload via `onExecute`. Slash commands are intentionally Discord-style:
-`/` after prose does not open the menu, typing after `/` filters the
-menu without a dedicated search input, and selecting/executing a
-command only removes the slash-command text that was introduced (for
-example, `/label Idea`) rather than clearing the whole editor.
+A reusable chat-style command palette. The menu opens when `/` is typed on an
+empty or whitespace-only line, then filters as the user types without a separate
+search input. Selecting or executing a command removes only the introduced
+command text, such as `/label Idea`, so unrelated prose stays intact. The plugin
+supports required first-argument choices, async choice loading, disabled
+commands/choices, readiness reporting for Enter-to-submit, and structured
+`onExecute` payloads.
 
 ```tsx
-import { createSlashCommandsPlugin, useInkwell } from "@railway/inkwell";
+import {
+  createSlashCommandsPlugin,
+  InkwellEditor,
+  type SlashCommandExecution,
+} from "@railway/inkwell";
+import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("");
+  const handleCommand = (command: SlashCommandExecution) => {
+    console.log("Execute command", command);
+  };
 
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-    plugins: [
-      createSlashCommandsPlugin({
-        commands: [
-          {
-            name: "label",
-            description: "Apply a document label",
-            args: [
-              {
-                name: "label",
-                description: "Label to apply",
-                required: true,
-                choices: [
-                  { value: "idea", label: "Idea" },
-                  { value: "bug", label: "Bug" },
-                ],
-              },
-            ],
-          },
-        ],
-        onExecute: command => runCommand(command),
-      }),
-    ],
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content={content}
+      onChange={setContent}
+      plugins={[
+        createSlashCommandsPlugin({
+          commands: [
+            {
+              name: "label",
+              description: "Apply a document label",
+              args: [
+                {
+                  name: "label",
+                  description: "Label to apply",
+                  required: true,
+                  choices: [
+                    { value: "idea", label: "Idea" },
+                    { value: "bug", label: "Bug" },
+                  ],
+                },
+              ],
+            },
+          ],
+          onExecute: handleCommand,
+        }),
+      ]}
+    />
+  );
 }
 ```
 
@@ -299,8 +303,8 @@ For `/label Idea`, the payload is:
 The `args` object uses argument names from the command definition and string
 values from selected choices. `submitOnEnter` / `onSubmit` remain generic editor
 APIs for non-slash composer submission; slash command execution should use
-`onExecute`. Use `onReadyChange` only when the host UI needs to know whether a
-slash command is staged for execution.
+`onExecute`. Use `onReadyChange` only when the host UI needs to know whether the
+mounted slash menu is staged for execution.
 
 ## Mentions
 
@@ -309,7 +313,8 @@ teams, tickets, or any other entity in your app. Type the trigger key to open
 the picker, search, then press `Enter` to insert the active item.
 
 ```tsx
-import { createMentionsPlugin, useInkwell } from "@railway/inkwell";
+import { createMentionsPlugin, InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
 
 type UserMention = {
   id: string;
@@ -340,13 +345,13 @@ const mentions = createMentionsPlugin<UserMention>({
 
 function App() {
   const [content, setContent] = useState("");
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-    plugins: [mentions],
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content={content}
+      onChange={setContent}
+      plugins={[mentions]}
+    />
+  );
 }
 ```
 
@@ -414,7 +419,8 @@ values such as `javascript:`, `file:`, `data:text/html`, or
 `data:image/svg+xml` are ignored.
 
 ```tsx
-import { createAttachmentsPlugin, useInkwell } from "@railway/inkwell";
+import { createAttachmentsPlugin, InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
 
 const attachments = createAttachmentsPlugin({
   accept: "image/*",
@@ -438,13 +444,13 @@ const attachments = createAttachmentsPlugin({
 
 function App() {
   const [content, setContent] = useState("");
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-    plugins: [attachments],
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content={content}
+      onChange={setContent}
+      plugins={[attachments]}
+    />
+  );
 }
 ```
 
@@ -476,13 +482,13 @@ React component, memoize the array and plugin objects when possible so setup
 plugins do not clean up and re-run on unrelated renders.
 
 ```tsx
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  plugins: [snippets, mentions, attachments, myCustomPlugin],
-});
-
-return <EditorInstance />;
+return (
+  <InkwellEditor
+    content={content}
+    onChange={setContent}
+    plugins={[snippets, mentions, attachments, myCustomPlugin]}
+  />
+);
 ```
 
 ## Creating custom plugins
@@ -492,37 +498,36 @@ A plugin is an object that implements `InkwellPlugin`:
 ```tsx
 interface InkwellPlugin {
   name: string;
-  trigger?: { key: string };
-  // When true, only render while this plugin is the active one. Plugins
-  // with a `trigger` are activatable by default; non-trigger plugins
-  // that claim activation through `ctx.setActivePlugin` (e.g. slash
-  // commands) must set this explicitly.
-  activatable?: boolean;
-  render: (props: PluginRenderProps) => ReactNode;
-  getPlaceholder?: (editor: Editor) => string | InkwellPluginPlaceholder | null;
-  onEditorChange?: (editor: Editor) => void;
-  shouldTrigger?: (event: React.KeyboardEvent, editor: Editor) => boolean;
-  onKeyDown?: (
+  activation?:
+    | { type: "always" }
+    | { type: "trigger"; key: string }
+    | { type: "manual" };
+  render?: (props: PluginRenderProps) => ReactNode;
+  getPlaceholder?: (
+    editor: InkwellPluginEditor,
+  ) => string | InkwellPluginPlaceholder | null;
+  onEditorChange?: (editor: InkwellPluginEditor) => void;
+  shouldTrigger?: (
     event: React.KeyboardEvent,
     ctx: PluginKeyDownContext,
-    editor: Editor,
-  ) => void;
+  ) => boolean;
+  onKeyDown?: (event: React.KeyboardEvent, ctx: PluginKeyDownContext) => void;
   onActiveKeyDown?: (
     event: React.KeyboardEvent,
-    ctx: PluginKeyDownContext & { dismiss: () => void },
-    editor: Editor,
+    ctx: PluginKeyDownContext,
   ) => false | void;
-  setup?: (editor: Editor) => void | (() => void);
+  onInsertData?: (
+    data: DataTransfer,
+    ctx: PluginInsertDataContext,
+  ) => boolean | void;
+  setup?: (editor: InkwellPluginEditor) => void | (() => void);
 }
 
 interface PluginKeyDownContext {
+  editor: InkwellPluginEditor;
   wrapSelection: (before: string, after: string) => void;
-  // Claim or release editor activation imperatively. Used by plugins
-  // (e.g. slash commands) that activate from context rather than from a
-  // single character trigger.
-  setActivePlugin: (
-    plugin: { name: string; query?: string } | null,
-  ) => void;
+  activate: (options?: { query?: string }) => void;
+  dismiss: () => void;
 }
 
 interface InkwellPluginPlaceholder {
@@ -546,7 +551,13 @@ import type { InkwellPlugin } from "@railway/inkwell";
 
 const commandPalette: InkwellPlugin = {
   name: "command-palette",
-  trigger: { key: "Control+k" },
+  activation: { type: "manual" },
+  onKeyDown: (event, ctx) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      ctx.activate();
+    }
+  },
   render: ({ active, query, onSelect, onDismiss, position }) => {
     if (!active) return null;
 
@@ -578,8 +589,9 @@ const commandPalette: InkwellPlugin = {
 
 ### Triggers
 
-The `trigger` field determines how a plugin activates. It uses
-[tinykeys](https://github.com/jamiebuilds/tinykeys)-style key strings.
+The `activation` field determines how a plugin activates. Trigger keys support
+single keys and explicit modifier combos such as `Control+/`, `Meta+k`,
+`Alt+x`, and `Shift+Enter`.
 
 **Modifier combos** like `"Control+/"` or `"Meta+k"`:
 
@@ -593,12 +605,15 @@ The `trigger` field determines how a plugin activates. It uses
   automatically removed
 - Best for inline pickers (snippets, emoji, mentions)
 
-**No trigger** (omit the field and leave `activatable` undefined):
+**Always active** (`activation: { type: "always" }`, or omit `activation`):
 
 - The plugin is always rendered with `active: true`
 - Best for persistent UI like status bars or word counts
-- Non-trigger plugins that claim activation through `setActivePlugin` should
-  set `activatable: true`
+
+**Manual activation** (`activation: { type: "manual" }`):
+
+- The plugin renders only after it calls `ctx.activate()`
+- Best for context-sensitive flows that are not driven by one trigger key
 
 ### Render props
 
@@ -613,6 +628,7 @@ Your `render` function receives these props:
 | `onDismiss`             | `() => void`                            | Deactivate the plugin and return focus to the editor.                                                                             |
 | `wrapSelection`         | `(before, after) => void`               | Toggle Markdown markers around the current selection.                                                                             |
 | `editorRef`             | `RefObject<HTMLDivElement \| null>`     | Ref to the editor's contenteditable element.                                                                                      |
+| `editor`                | `InkwellPluginEditor`                   | Narrow editor controller for plugin actions.                                                                                      |
 | `subscribeForwardedKey` | `SubscribeForwardedKey`                 | Subscribe to editor-forwarded ArrowUp/Down, Enter, Backspace, and printable keys while this plugin is active; returns cleanup.   |
 
 ### Keyboard shortcuts
@@ -653,7 +669,7 @@ single-character trigger can insert Markdown snippets.
 ````tsx
 const slashCommands: InkwellPlugin = {
   name: "slash-commands",
-  trigger: { key: "/" },
+  activation: { type: "trigger", key: "/" },
   render: ({ active, query, onSelect, onDismiss, position }) => {
     if (!active) return null;
 

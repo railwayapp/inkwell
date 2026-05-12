@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
+  InkwellPluginEditor,
   PluginRenderProps,
   Snippet,
   SubscribeForwardedKey,
@@ -26,6 +27,34 @@ function createForwardedKeyChannel(): {
   };
 }
 
+function createPluginEditor(): InkwellPluginEditor {
+  return {
+    getState: () => ({
+      content: "",
+      isEmpty: true,
+      isFocused: false,
+      isEditable: true,
+      characterCount: 0,
+      overLimit: false,
+      isEnforcingCharacterLimit: false,
+    }),
+    isEmpty: () => true,
+    focus: () => {},
+    clear: () => {},
+    setContent: () => {},
+    insertContent: () => {},
+    getContentBeforeCursor: () => "",
+    getCurrentBlockContent: () => "",
+    getCurrentBlockContentBeforeCursor: () => "",
+    replaceCurrentBlockContent: () => {},
+    clearCurrentBlock: () => {},
+    wrapSelection: () => {},
+    insertImage: () => "image-id",
+    updateImage: () => {},
+    removeImage: () => {},
+  };
+}
+
 const SNIPPETS: Snippet[] = [
   { title: "Bug Report", content: "## Bug Report\n\n**Steps:**\n1. " },
   { title: "Feature Request", content: "## Feature Request\n\n" },
@@ -37,21 +66,23 @@ describe("createSnippetsPlugin", () => {
   it("returns a valid InkwellPlugin", () => {
     const plugin = createSnippetsPlugin({ snippets: SNIPPETS });
     expect(plugin.name).toBe("snippets");
-    expect(plugin.trigger?.key).toBe("[");
+    expect(
+      plugin.activation?.type === "trigger" ? plugin.activation.key : undefined,
+    ).toBe("[");
     expect(plugin.render).toBeTypeOf("function");
   });
 
   it("uses default key of [", () => {
     const plugin = createSnippetsPlugin({ snippets: SNIPPETS });
-    expect(plugin.trigger).toEqual({ key: "[" });
+    expect(plugin.activation).toEqual({ type: "trigger", key: "[" });
   });
 
   it("allows custom key configuration", () => {
     const plugin = createSnippetsPlugin({
       snippets: SNIPPETS,
-      key: "Meta+j",
+      trigger: "Meta+j",
     });
-    expect(plugin.trigger).toEqual({ key: "Meta+j" });
+    expect(plugin.activation).toEqual({ type: "trigger", key: "Meta+j" });
   });
 
   describe("SnippetPicker rendering", () => {
@@ -81,6 +112,7 @@ describe("createSnippetsPlugin", () => {
       onDismiss: vi.fn(),
       position: { top: 100, left: 50 },
       editorRef: { current: null },
+      editor: createPluginEditor(),
       wrapSelection: vi.fn(),
     };
 
@@ -93,7 +125,7 @@ describe("createSnippetsPlugin", () => {
       const plugin = createSnippetsPlugin({ snippets });
       return render(
         <div>
-          {plugin.render({
+          {plugin.render?.({
             ...baseRenderProps,
             subscribeForwardedKey: channel.subscribe,
             ...props,

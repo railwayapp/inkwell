@@ -1,36 +1,7 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { createEditor } from "slate";
-import { withHistory } from "slate-history";
-import { withReact } from "slate-react";
 import { describe, expect, it, vi } from "vitest";
-import { deserialize } from "../../editor/slate/deserialize";
-import { serialize } from "../../editor/slate/serialize";
-import type { InkwellElement } from "../../editor/slate/types";
-import { withMarkdown } from "../../editor/slate/with-markdown";
-import { withNodeId } from "../../editor/slate/with-node-id";
-import type { PluginRenderProps } from "../../types";
+import type { InkwellPluginEditor, PluginKeyDownContext } from "../../types";
 import { createCompletionsPlugin } from ".";
-
-function createTestEditor() {
-  const decorationsRef = {
-    current: {
-      heading1: true,
-      heading2: true,
-      heading3: true,
-      heading4: true,
-      heading5: true,
-      heading6: true,
-      lists: true,
-      blockquotes: true,
-      codeBlocks: true,
-      images: true,
-    },
-  };
-  return withMarkdown(
-    withHistory(withNodeId(withReact(createEditor()))),
-    decorationsRef,
-  );
-}
 
 const createKeyboardEvent = (key: string): ReactKeyboardEvent<Element> => {
   return new KeyboardEvent("keydown", {
@@ -40,37 +11,70 @@ const createKeyboardEvent = (key: string): ReactKeyboardEvent<Element> => {
   }) as unknown as ReactKeyboardEvent<Element>;
 };
 
-const defaultRenderProps: PluginRenderProps = {
-  active: true,
-  query: "",
-  onSelect: vi.fn(),
-  onDismiss: vi.fn(),
-  position: { top: 100, left: 50 },
-  editorRef: { current: null },
+function createPluginEditor(content = ""): InkwellPluginEditor {
+  let currentContent = content;
+  return {
+    getState: () => ({
+      content: currentContent,
+      isEmpty: currentContent.trim().length === 0,
+      isFocused: false,
+      isEditable: true,
+      characterCount: currentContent.length,
+      overLimit: false,
+      isEnforcingCharacterLimit: false,
+    }),
+    isEmpty: () => currentContent.trim().length === 0,
+    focus: () => {},
+    clear: () => {
+      currentContent = "";
+    },
+    setContent: next => {
+      currentContent = next;
+    },
+    insertContent: next => {
+      currentContent = `${currentContent}${next}`;
+    },
+    getContentBeforeCursor: () => currentContent,
+    getCurrentBlockContent: () => currentContent,
+    getCurrentBlockContentBeforeCursor: () => currentContent,
+    replaceCurrentBlockContent: next => {
+      currentContent = next;
+    },
+    clearCurrentBlock: () => {
+      currentContent = "";
+    },
+    wrapSelection: () => {},
+    insertImage: () => "image-id",
+    updateImage: () => {},
+    removeImage: () => {},
+  };
+}
+
+const createContext = (editor: InkwellPluginEditor): PluginKeyDownContext => ({
+  editor,
   wrapSelection: vi.fn(),
-  subscribeForwardedKey: () => () => {},
-};
+  activate: vi.fn(),
+  dismiss: vi.fn(),
+});
 
 describe("createCompletionsPlugin", () => {
-  it("returns a valid InkwellPlugin", () => {
+  it("returns a headless InkwellPlugin", () => {
     const plugin = createCompletionsPlugin({
       getCompletion: () => "Hello",
     });
 
     expect(plugin.name).toBe("completions");
-    expect(plugin.render).toBeTypeOf("function");
+    expect(plugin.render).toBeUndefined();
     expect(plugin.onKeyDown).toBeTypeOf("function");
     expect(plugin.onEditorChange).toBeTypeOf("function");
   });
 
   it("uses the completion as the editor placeholder while empty", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("");
+    const editor = createPluginEditor("");
     const plugin = createCompletionsPlugin({
       getCompletion: () => "**Suggested** reply",
     });
 
-    expect(plugin.render(defaultRenderProps)).toBeNull();
     expect(plugin.getPlaceholder?.(editor)).toEqual({
       text: "**Suggested** reply",
       hint: "[tab ↹]",
@@ -78,8 +82,7 @@ describe("createCompletionsPlugin", () => {
   });
 
   it("uses loading text as the editor placeholder while loading", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("");
+    const editor = createPluginEditor("");
     const plugin = createCompletionsPlugin({
       getCompletion: () => null,
       isLoading: () => true,
@@ -93,8 +96,7 @@ describe("createCompletionsPlugin", () => {
   });
 
   it("uses a custom accept hint", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("");
+    const editor = createPluginEditor("");
     const plugin = createCompletionsPlugin({
       getCompletion: () => "Suggested text",
       acceptHint: "Apply",
@@ -107,8 +109,7 @@ describe("createCompletionsPlugin", () => {
   });
 
   it("does not override the placeholder when the editor is not empty", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("Existing text");
+    const editor = createPluginEditor("Existing text");
     const plugin = createCompletionsPlugin({
       getCompletion: () => "Suggested text",
     });
@@ -117,13 +118,7 @@ describe("createCompletionsPlugin", () => {
   });
 
   it("accepts a completion with Tab", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("");
-    editor.selection = {
-      anchor: { path: [0, 0], offset: 0 },
-      focus: { path: [0, 0], offset: 0 },
-    };
-
+    const editor = createPluginEditor("");
     const onAccept = vi.fn();
     const plugin = createCompletionsPlugin({
       getCompletion: () => "Accepted **reply**",
@@ -131,24 +126,15 @@ describe("createCompletionsPlugin", () => {
     });
 
     const event = createKeyboardEvent("Tab");
-
-    plugin.onKeyDown?.(
-      event,
-      { wrapSelection: vi.fn(), setActivePlugin: vi.fn() },
-      editor,
-    );
+    plugin.onKeyDown?.(event, createContext(editor));
 
     expect(event.defaultPrevented).toBe(true);
     expect(onAccept).toHaveBeenCalledWith("Accepted **reply**");
-    expect(serialize(editor.children as InkwellElement[])).toBe(
-      "Accepted **reply**",
-    );
+    expect(editor.getState().content).toBe("Accepted **reply**");
   });
 
   it("dismisses a completion with Escape", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("");
-
+    const editor = createPluginEditor("");
     const onDismiss = vi.fn();
     const plugin = createCompletionsPlugin({
       getCompletion: () => "Nope",
@@ -156,21 +142,14 @@ describe("createCompletionsPlugin", () => {
     });
 
     const event = createKeyboardEvent("Escape");
-
-    plugin.onKeyDown?.(
-      event,
-      { wrapSelection: vi.fn(), setActivePlugin: vi.fn() },
-      editor,
-    );
+    plugin.onKeyDown?.(event, createContext(editor));
 
     expect(event.defaultPrevented).toBe(true);
     expect(onDismiss).toHaveBeenCalledWith("Nope");
   });
 
   it("dismisses on normal typing without preventing the key", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("");
-
+    const editor = createPluginEditor("");
     const onDismiss = vi.fn();
     const plugin = createCompletionsPlugin({
       getCompletion: () => "Suggestion",
@@ -178,39 +157,44 @@ describe("createCompletionsPlugin", () => {
     });
 
     const event = createKeyboardEvent("a");
-
-    plugin.onKeyDown?.(
-      event,
-      { wrapSelection: vi.fn(), setActivePlugin: vi.fn() },
-      editor,
-    );
+    plugin.onKeyDown?.(event, createContext(editor));
 
     expect(event.defaultPrevented).toBe(false);
     expect(onDismiss).toHaveBeenCalledWith("Suggestion");
   });
 
   it("restores an accepted completion when the document becomes empty", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("");
-    editor.selection = {
-      anchor: { path: [0, 0], offset: 0 },
-      focus: { path: [0, 0], offset: 0 },
-    };
-
+    const editor = createPluginEditor("");
     const onRestore = vi.fn();
     const plugin = createCompletionsPlugin({
       getCompletion: () => "Restorable",
       onRestore,
     });
 
-    plugin.onKeyDown?.(
-      createKeyboardEvent("Tab"),
-      { wrapSelection: vi.fn(), setActivePlugin: vi.fn() },
-      editor,
-    );
-
-    editor.children = deserialize("");
+    plugin.onKeyDown?.(createKeyboardEvent("Tab"), createContext(editor));
+    editor.clear();
     plugin.onEditorChange?.(editor);
+
+    expect(onRestore).toHaveBeenCalledWith("Restorable");
+  });
+
+  it("restores an accepted completion after plugin recreation", () => {
+    const editor = createPluginEditor("");
+    const onRestore = vi.fn();
+    const firstPlugin = createCompletionsPlugin({
+      name: "inline-completions",
+      getCompletion: () => "Restorable",
+      onRestore,
+    });
+    const nextPlugin = createCompletionsPlugin({
+      name: "inline-completions",
+      getCompletion: () => null,
+      onRestore,
+    });
+
+    firstPlugin.onKeyDown?.(createKeyboardEvent("Tab"), createContext(editor));
+    editor.clear();
+    nextPlugin.onEditorChange?.(editor);
 
     expect(onRestore).toHaveBeenCalledWith("Restorable");
   });

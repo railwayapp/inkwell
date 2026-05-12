@@ -8,30 +8,22 @@ string. The Markdown source is the text.
 
 ## Usage
 
-The recommended API is `useInkwell`. Give it your content string and an
-`onChange` handler, render the returned `EditorInstance`, and use the
-grouped `editor` controller when you need to inspect or manipulate the
-document.
+The primary API is the `InkwellEditor` component. Give it your content string
+and an `onChange` handler.
 
 ```tsx
-import { useInkwell } from "@railway/inkwell";
+import { InkwellEditor } from "@railway/inkwell";
 import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello **world**");
-  const { state, EditorInstance, editor } = useInkwell({
-    content,
-    onChange: setContent,
-    placeholder: "Write something...",
-  });
 
   return (
-    <>
-      <EditorInstance />
-      <p>{state.characterCount} characters</p>
-      <button onClick={() => editor.focus({ at: "end" })}>Focus editor</button>
-      <button onClick={() => editor.clear()}>Clear</button>
-    </>
+    <InkwellEditor
+      content={content}
+      onChange={setContent}
+      placeholder="Write something..."
+    />
   );
 }
 ```
@@ -39,48 +31,28 @@ function App() {
 `content` is the Markdown source string. `onChange` fires on every edit with
 the updated content.
 
-## Low-level component
-
-Most applications should use `useInkwell`. The lower-level `InkwellEditor`
-component is exported for custom abstractions and integrations that need to
-own component rendering directly. Prefer the hook unless you have a specific
-reason not to use it.
-
-```tsx
-import { InkwellEditor } from "@railway/inkwell";
-
-<InkwellEditor content={content} onChange={setContent} />;
-```
-
 ## Editor controller
 
-The `editor` object returned by `useInkwell` exposes `getState()`, `focus()`,
-`clear()`, `setContent()`, and `insertContent()`.
+Use a ref when you need imperative editor actions. The ref exposes
+`getState()`, `focus()`, `clear()`, `setContent()`, and `insertContent()`.
 
 ```tsx
-editor.getState().content;
-editor.getState();
-editor.focus({ at: "end" });
-editor.setContent("Replacement");
-editor.insertContent(" **more**");
+import { type InkwellEditorHandle, InkwellEditor } from "@railway/inkwell";
+import { useRef } from "react";
+
+const editorRef = useRef<InkwellEditorHandle>(null);
+
+<InkwellEditor ref={editorRef} content={content} onChange={setContent} />;
+
+editorRef.current?.getState().content;
+editorRef.current?.focus({ at: "end" });
+editorRef.current?.setContent("Replacement");
+editorRef.current?.insertContent(" **more**");
 ```
 
 `setContent()` and `clear()` replace editor content without calling `onChange`.
 `insertContent()` behaves like an edit at the current selection and flows through
 normal change handling.
-
-If you are building a custom abstraction around the low-level component,
-the same methods are available through
-`ref={useRef<InkwellEditorHandle>(null)}` on `InkwellEditor`.
-
-## Hook return value
-
-`useInkwell(options)` returns:
-
-- `state` — the latest `InkwellEditorState` snapshot.
-- `EditorInstance` — a stable React component that renders the configured
-  editor. Render it once per hook call.
-- `editor` — the grouped controller for reading and manipulating content.
 
 ## Formatting
 
@@ -130,35 +102,31 @@ or disable them.
 
 ## Disabling formatting
 
-Use the `decorations` option to turn off specific block-level formatting.
-All decorations are enabled by default — you only need this prop to
+Use the `features` option to turn off specific block-level formatting.
+All features are enabled by default — you only need this prop to
 disable something.
 
 ```tsx
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  decorations: {
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  features={{
     codeBlocks: false,
-    heading4: false,
-    heading5: false,
-    heading6: false,
-  },
-});
-
-return <EditorInstance />;
+    headings: { h4: false, h5: false, h6: false },
+  }}
+/>;
 ```
 
-| Decoration              | Default | Controls                                                 |
+| Feature                 | Default | Controls                                                 |
 | ----------------------- | ------- | -------------------------------------------------------- |
-| `heading1` – `heading6` | `true`  | Individual heading levels                                |
+| `headings`              | `true`  | Heading levels, with optional `h1`–`h6` overrides        |
 | `lists`                 | `true`  | Unordered, ordered, and indented list items (`-`, `*`, `+`, `1.`) |
 | `blockquotes`           | `true`  | Blockquotes (`>`)                                        |
 | `codeBlocks`            | `true`  | Fenced code blocks (` ``` `)                             |
 | `images`                | `true`  | Block images (`![alt](url)` on their own line)           |
 
-When a decoration is disabled, its syntax is treated as source text with
-no visual formatting.
+When a feature is disabled, its syntax is treated as source text with no
+visual formatting.
 
 ## Syntax highlighting
 
@@ -173,16 +141,14 @@ import "highlight.js/styles/github-dark.css";
 To use a different highlighter, pass it through the `rehypePlugins` option:
 
 ```tsx
-import { useInkwell } from "@railway/inkwell";
+import { InkwellEditor } from "@railway/inkwell";
 import rehypeShiki from "@shikijs/rehype";
 
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  rehypePlugins: [[rehypeShiki, { theme: "github-dark" }]],
-});
-
-return <EditorInstance />;
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  rehypePlugins={[[rehypeShiki, { theme: "github-dark" }]]}
+/>;
 ```
 
 The same `rehypePlugins` option is available on
@@ -196,13 +162,7 @@ and the toolbar appears with bold, italic, and strikethrough buttons.
 To disable it:
 
 ```tsx
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  bubbleMenu: false,
-});
-
-return <EditorInstance />;
+<InkwellEditor content={content} onChange={setContent} bubbleMenu={false} />;
 ```
 
 To customize the toolbar items, see the
@@ -212,7 +172,7 @@ To customize the toolbar items, see the
 
 ### `content`
 
-**Type:** `string`
+**Type:** `string | undefined` — default: `""`
 
 The Markdown source content to display and edit. When
 [collaboration](/docs/collaboration) is enabled, this only seeds an empty
@@ -230,8 +190,8 @@ Called on every document change with the updated content.
 
 Called with a full state snapshot when content, focus, editability, or
 character count changes. The state includes `content`, `isEmpty`,
-`isFocused`, `isEditable`, `characterCount`, `characterLimit`, and
-`overLimit`.
+`isFocused`, `isEditable`, `characterCount`, `characterLimit`, `overLimit`,
+and `isEnforcingCharacterLimit`.
 
 ### `placeholder`
 
@@ -243,13 +203,22 @@ Text shown when the editor is empty.
 
 **Type:** `string`
 
-CSS class applied to the outer wrapper element.
+CSS class applied to the outer wrapper element. This is an alias for
+`classNames.root`.
 
-### `style`
+### `classNames`
 
-**Type:** `React.CSSProperties`
+**Type:** `{ root?: string; editor?: string }`
 
-Inline styles applied to the editable surface. Use this for sizing the editor, such as `height`, `minHeight`, or `width`.
+CSS classes for editor slots. `root` applies to the outer wrapper; `editor`
+applies to the editable surface.
+
+### `styles`
+
+**Type:** `{ root?: React.CSSProperties; editor?: React.CSSProperties }`
+
+Inline styles for editor slots. Use `styles.editor` for sizing the editable
+surface, such as `height`, `minHeight`, or `width`.
 
 ### `editable`
 
@@ -258,9 +227,9 @@ Inline styles applied to the editable surface. Use this for sizing the editor, s
 Whether users can edit the document. Pass `false` for read-only composer
 states.
 
-### `decorations`
+### `features`
 
-**Type:** `InkwellDecorations`
+**Type:** `InkwellFeatures`
 
 Controls which block-level formatting the editor recognizes. All enabled
 by default. See [Disabling formatting](#disabling-formatting).
@@ -298,8 +267,8 @@ function or a `[plugin, options]` tuple. See
 **Type:** `number`
 
 Tracks the current character count and adds `inkwell-editor-over-limit` to
-the wrapper when exceeded. When set, the editor can also render a built-in
-[limit toast](#limittoast) at the top-right unless disabled.
+the wrapper when exceeded. Use `createCharacterLimitPlugin()` when you want the
+built-in limit toast UI.
 
 ### `enforceCharacterLimit`
 
@@ -330,23 +299,21 @@ composers.
 
 Called when `submitOnEnter` handles Enter.
 
-### `limitToast`
+## Character-limit toast plugin
 
-**Type:** `boolean` — default: `true`
+`createCharacterLimitPlugin()` renders the optional built-in toast UI for
+`characterLimit`. Add it to `plugins` when you want that UI:
 
-When a `characterLimit` is configured, the editor can render a small toast at
-the top-right of `.inkwell-editor-wrapper`. Visibility:
+```tsx
+import { createCharacterLimitPlugin, InkwellEditor } from "@railway/inkwell";
 
-- `characterCount > characterLimit` → shows `"Over limit by N"`.
-- `enforceCharacterLimit && characterCount >= characterLimit` → shows
-  `"Character limit reached"` so users hitting the wall under enforce mode
-  still get feedback.
-- Exactly at the limit but not enforced → hidden.
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  characterLimit={280}
+  plugins={[createCharacterLimitPlugin()]}
+/>;
+```
 
-The toast is `pointer-events: none` so it never blocks typing or selection,
-and uses `role="status"` + `aria-live="polite"` for screen readers. Style
-it via `.inkwell-editor-limit-toast` (and
-`.inkwell-editor-limit-toast-icon`) in your stylesheet.
-
-Pass `limitToast={false}` to opt out and render your own indicator via
-`onCharacterCount`.
+The toast uses `.inkwell-editor-limit-toast` and
+`.inkwell-editor-limit-toast-icon` classes for styling.

@@ -11,7 +11,11 @@ import { unified } from "unified";
 import { SKIP, visit } from "unist-util-visit";
 import remarkFlattenBlockquotes from "../lib/remark-flatten-blockquotes";
 import remarkNoTables from "../lib/remark-no-tables";
-import type { InkwellComponents, MentionRenderer } from "../types";
+import type {
+  InkwellComponents,
+  MentionRenderer,
+  ParseMarkdownOptions,
+} from "../types";
 
 // biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
 type RehypePlugin = Plugin<any[], any>;
@@ -193,16 +197,10 @@ function escapeBareBq(markdown: string): string {
  * Parse a markdown string into React elements synchronously
  */
 export function parseMarkdown(
-  markdown: string,
-  components?: InkwellComponents,
-  rehypePlugins?: RehypePluginConfig[],
-  mentions?: MentionRenderer[],
+  content: string,
+  options: ParseMarkdownOptions = {},
 ): ReactNode {
-  const processor = createProcessor({
-    components,
-    rehypePlugins,
-    mentions,
-  });
-  const file = processor.processSync(escapeBareBq(markdown));
+  const processor = createProcessor(options);
+  const file = processor.processSync(escapeBareBq(content));
   return file.result;
 }

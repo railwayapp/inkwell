@@ -2,298 +2,175 @@
 
 ## Project Overview
 
-Inkwell is a WYSIWYG markdown editor for React, built on Slate.js. The editor uses a decoration-based approach where the content IS the Markdown source — visual formatting is computed at render time, never stored in the data model. Supports real-time collaboration via Yjs.
+Inkwell is a WYSIWYG Markdown editor for React, built on Slate.js. The editor
+content model is the Markdown source string. Markdown syntax is part of the
+content; visual formatting is computed at render time and is never stored as a
+separate rich-text model. Supports real-time collaboration via Yjs.
 
 ## Monorepo Structure
 
 pnpm workspaces + Turborepo monorepo. Three packages, all in one workspace:
 
 ```
-inkwell-dev/
-  package.json              (workspace root — name: "inkwell", pnpm + turbo)
-  pnpm-workspace.yaml
-  turbo.json
-  biome.json                (linter/formatter config)
-  packages/
-    inkwell/                (library — @railway/inkwell)
-      package.json          (name: "@railway/inkwell")
-      tsconfig.json
-      vitest.config.ts
-      src/
-        index.ts             Public exports (components, plugins, serializers, types)
-        types.ts             All public TypeScript types
-        editor/
-          inkwell-editor.tsx   Slate.js editor (standalone + collaborative modes)
-          slate/
-            types.ts           Slate custom types (InkwellElement, InkwellText)
-            deserialize.ts     Markdown → Slate elements
-            serialize.ts       Slate elements → Markdown
-            decorations.ts     Inline mark + syntax highlighting decorations
-            with-markdown.ts   Slate plugin: block behaviors + typing triggers
-            with-node-id.ts    Slate plugin: unique element IDs
-            render-element.tsx Block element renderer
-            render-leaf.tsx    Leaf renderer (decoration marks + remote cursors)
-        renderer/
-          inkwell-renderer.tsx Read-only renderer
-          copy-code-block.tsx  Copy button for fenced code blocks
-          html-serializer.ts   HTML → Markdown (unified/rehype pipeline)
-          markdown-parser.ts   Markdown → React elements
-        lib/
-          class-names.ts       editorClass() + pluginClass() CSS helpers
-          render-html.ts       Markdown → HTML pipeline
-          remark-flatten-blockquotes.ts  Custom remark plugin
-          remark-no-tables.ts            Custom remark plugin
-        plugins/
-          plugin-picker.tsx        Shared PluginMenuPrimitive (search
-                                   display, keyboard nav, scoped key
-                                   forwarding, focus) used by every
-                                   picker-style plugin.
-          plugin-picker.test.tsx   Tests for the shared primitive.
-          bubble-menu/             Built-in bubble menu plugin.
-            index.tsx
-            index.test.tsx
-          snippets/                Snippet picker plugin (uses
-                                   PluginMenuPrimitive).
-            index.tsx
-            index.test.tsx
-          emoji/                   Emoji picker plugin (uses
-                                   PluginMenuPrimitive).
-            index.tsx
-            index.test.tsx
-          completions/             Placeholder completion plugin for
-                                   suggested text flows.
-            index.tsx
-            index.test.tsx
-          slash-commands/          Discord-style slash command plugin.
-            index.tsx
-            index.test.tsx
-          mentions/                Mentions picker plugin (uses
-                                   PluginMenuPrimitive). Inserts
-                                   `@<marker>[<id>]` markers.
-            index.tsx
-            index.test.tsx
-          attachments/             Image paste/drop → onUpload → block
-                                   image insertion. Also inserts safe
-                                   copied HTML `<img>` src URLs directly.
-            index.tsx
-            index.test.tsx
-    inkwell-docs/            (docs site — Astro Starlight + React islands)
-      astro.config.mjs       Starlight config (includes /llms.md → /llms.txt redirect)
-      public/
-        llms.txt             LLM context file
-      src/
-        pages/index.astro    Landing page (custom, React demo as Astro island)
-        content/docs/docs/   Docs: quickstart, editor, editor-plugins, renderer, collaboration, styling
-        content.config.ts    Content collection config
-        components/
-          demo.tsx             Interactive editor demo with Edit/Render/Collab tabs
-          install-command.tsx  Install command with npm/pnpm/yarn/bun tabs
-          page-sidebar.astro   Starlight sidebar override (hides sidebar on landing page)
-          empty.astro          Empty component for Starlight slot overrides
-        styles/globals.css   Inkwell editor/renderer CSS
-    inkwell-demo-collab-server/  (y-websocket collab server for demo)
-      server.js              Custom server (5-min doc clearing)
-      package.json           y-websocket + ws deps
-      Dockerfile             Node 22, runs server.js
+packages/
+  inkwell/                     Library package: @railway/inkwell
+    src/
+      index.ts                 Public exports
+      types.ts                 Public TypeScript types
+      editor/inkwell-editor.tsx
+      editor/slate/            Slate model, serialize/deserialize, features
+      renderer/                Read-only renderer + renderer utilities
+      plugins/                 Built-in plugins and tests
+  inkwell-docs/                Astro Starlight docs + React demo island
+  inkwell-demo-collab-server/  y-websocket demo collaboration server
 ```
 
-## Tech Stack
+## Commands
 
-- **Language**: TypeScript (strict mode)
-- **Package Manager**: pnpm
-- **Monorepo**: Turborepo
-- **Linter/Formatter**: Biome (kebab-case file naming)
-- **Framework**: React 19
-- **Editor**: Slate.js (`slate` + `slate-react` + `slate-history` + `@slate-yjs/core`)
-- **Collaboration**: Yjs (`yjs` + `@slate-yjs/core` + `y-protocols`)
-- **Markdown Pipeline**: unified ecosystem (remark-parse, remark-gfm, remark-rehype, rehype-highlight, etc.)
-- **Docs Site**: Astro Starlight (default theme, structural overrides only) + React islands
-- **Collab Server**: custom `server.js` using `y-websocket` (Dockerfile for Railway, clears every 5 min)
-- **Testing**: Vitest + @testing-library/react + jsdom
-
-## Commands (from root)
+Run from the workspace root:
 
 - `pnpm test` — Run all tests via turbo
-- `pnpm dev` — Start docs dev server (Astro)
-- `pnpm build` — Build all packages via turbo
-- `pnpm typecheck` — TypeScript type checking via turbo
+- `pnpm dev` — Start docs dev server
+- `pnpm build` — Build all packages
+- `pnpm typecheck` — TypeScript type checking
 - `pnpm lint` / `pnpm lint:fix` — Biome
-- `pnpm changeset` — Add a changelog entry (commit the generated file with your PR)
-- `pnpm changeset version` — Apply pending changesets: bump `@railway/inkwell` version and write `packages/inkwell/CHANGELOG.md`
+- `pnpm changeset` — Add a changelog entry
 
-## Releasing
+Package-scoped validation used during API work:
 
-Changesets drives versioning and `CHANGELOG.md`. Publish is still tag-triggered via `.github/workflows/publish.yml` (fires on `v*` tags).
+- `pnpm --filter=@railway/inkwell typecheck`
+- `pnpm --filter=@railway/inkwell test`
+- `pnpm --filter=@railway/inkwell build`
+- `pnpm --filter=inkwell-docs typecheck`
+- `pnpm --filter=inkwell-docs build`
 
-Per-PR: run `pnpm changeset`, pick the bump type, write a user-facing summary, commit the generated `.changeset/*.md` alongside your code.
+## Public API
 
-To cut a release from `main`:
+`<InkwellEditor />` is the primary editor API.
 
-1. `pnpm changeset version` — bumps `packages/inkwell/package.json` and updates `packages/inkwell/CHANGELOG.md`, consuming the pending changesets.
-2. Commit the result (`release: vX.Y.Z`).
-3. `git tag vX.Y.Z && git push --follow-tags` — the publish workflow picks it up.
+```tsx
+import { InkwellEditor } from "@railway/inkwell";
+import { useState } from "react";
 
-Only `@railway/inkwell` is published; `inkwell-docs` and `inkwell-demo-collab-server` are `private: true` so changesets ignores them. `CHANGELOG.md` is auto-included in the published tarball by npm (not in the `files` allowlist, but npm always includes it).
+function App() {
+  const [content, setContent] = useState("# Hello **world**");
 
-## Architecture
+  return <InkwellEditor content={content} onChange={setContent} />;
+}
+```
 
-### API — Hook and Components
+Use `ref={useRef<InkwellEditorHandle>(null)}` for imperative actions:
 
-The recommended editor API is `useInkwell(options)`, which returns `{ state, EditorInstance, editor }`. Render `<EditorInstance />` and use the grouped `editor` controller for focus, clearing, content replacement, insertion, and state inspection.
+- `getState()`
+- `focus({ at?: "start" | "end" })`
+- `clear({ select?: "start" | "end" | "preserve" })`
+- `setContent(content, { select?: "start" | "end" | "preserve" })`
+- `insertContent(content)`
 
-The library also exports components directly for lower-level integrations. Most application code should prefer `useInkwell`; use `<InkwellEditor />` only when building a custom abstraction that needs to own component rendering directly.
+`setContent()` and `clear()` do not call `onChange`. `insertContent()` behaves
+like a normal edit and flows through change handling.
 
-- `<InkwellEditor />` — low-level WYSIWYG editor component (`InkwellEditorProps`)
-- `<InkwellRenderer />` — Read-only markdown renderer (`InkwellRendererProps`). Has built-in copy button on code blocks (opt-out via `copyButton={false}`).
+The root package exports the component APIs, built-in plugin factories, renderer
+utilities (`parseMarkdown(content, options)`, `htmlToMarkdown(html)`), and public
+types. Do not export internal Slate helpers or shared plugin primitives from the
+root API.
 
-### Public Exports (`index.ts`)
+## Editor Rendering Model
 
-- **Hooks**: `useInkwell`
-- **Components**: `InkwellEditor`, `InkwellRenderer`
-- **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createCompletionsPlugin`, `createEmojiPlugin`, `createMentionsPlugin`, `createSlashCommandsPlugin`, `createSnippetsPlugin`
-- **Plugin utilities**: `defaultBubbleMenuItems`, `defaultEmojis`, `pluginClass`, `PluginMenuPrimitive`, `pluginPickerClass`
-- **Serialization**: `serializeToMarkdown`, `parseMarkdown`, `deserialize`
-- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetContentOptions`, `InkwellRendererProps`, `InkwellPlugin`, `InkwellPluginPlaceholder`, `AttachmentsPluginOptions`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `CompletionPluginOptions`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`, `SubscribeForwardedKey`
+Formatting is feature-based. The public prop is `features`.
+All features are enabled by default:
 
-### Editor Rendering Model (Slate.js)
+- `headings` with optional `h1`–`h6` overrides
+- `lists`
+- `blockquotes`
+- `codeBlocks`
+- `images`
 
-Decoration-based: content IS the Markdown source. Visual formatting computed at render time.
+Inline Markdown styling is still implemented internally with Slate decoration
+ranges. Public docs should call the configurable behavior “features.”
 
-**Block elements** (configurable via `decorations` prop, all enabled by default):
+Use slot styling:
 
-- `paragraph`, `heading`, `code-fence`, `code-line`, `blockquote`, `list-item`, `image`
-- Headings, blockquotes, lists, and code fences have typing triggers (e.g., `## ` → heading, `> ` → blockquote, `- ` / `1. ` → list-item, ` ``` ` → code-fence). Block images are recognized when Markdown is loaded, pasted, or inserted.
+- `className` aliases `classNames.root`
+- `classNames.root`, `classNames.editor`
+- `styles.root`, `styles.editor`
 
-**Decoration marks**: bold, italic, strikethrough, inlineCode, hljs, remoteCursor, remoteCursorCaret. Also marker spans for syntax dimming: boldMarker, italicMarker, strikeMarker, codeMarker.
+Do not add a public top-level `style` prop.
 
-**Built-in plugins**:
+## Built-in Plugins
 
-- **Bubble menu** — enabled by default via `bubbleMenu` prop, customizable
-  via `BubbleMenuItem[]`. Pass `bubbleMenu={false}` to disable. Default
-  items: bold/italic/strike. Each item is a React component receiving
-  `{ wrapSelection }`.
-- **Snippets** — picker plugin for inserting content templates.
-- **Emoji** — searchable picker opened by `:` at token boundaries, backed by
-  `defaultEmojis` by default and customizable with `emojis`, async `search`,
-  `renderItem`, `trigger`, and `emptyMessage`.
-- **Mentions** — generic trigger-based searchable picker, inserts
-  `@<marker>[<id>]` (or the string returned by `onSelect`). Renderer
-  hydrates markers into custom React nodes via the `mentions` prop.
-- **Attachments** — image paste / drop → `onUpload` → block-image
-  insertion. Also inserts safe copied HTML `<img>` `src` URLs directly as
-  image blocks; HTML image URLs are not uploaded through `onUpload`.
-- **Completions** — generic placeholder completions for suggested text flows.
-  Host code owns completion state via `getCompletion`; the plugin prefixes the
-  editor placeholder with `[tab ↹]`, accepts with Tab, dismisses with Escape or
-  normal typing, and can call `onRestore` when undo returns an accepted
-  completion to an empty document. Uses `onEditorChange` instead of `setup`, so
-  plugin objects can be created inline without stale closure refs. While active,
-  empty non-paragraph Slate blocks are canonicalized to a plain paragraph so
-  placeholder typography is stable across clears.
-- **Slash commands** — Discord-style `/` command menu. The menu opens
-  when `/` is typed with no prose between the start of the current line
-  and the caret (blank line, after a newline, or at the very start of a
-  non-empty line). `/` after prose does not trigger. Typing after `/` filters without a dedicated
-  search input. Selecting a command/argument stages execution; Enter calls
-  `onExecute({ name, args, raw })` with string-only arguments and clears only
-  the introduced slash-command line, while Escape in the execute phase cancels
-  and clears that line. The plugin uses `ctx.setActivePlugin` from
-  `PluginKeyDownContext` to claim editor activation (no character trigger),
-  and writes the slash line directly through the captured editor — no content
-  round-trip is required from the host.
+Built-in plugin factories:
 
-All picker-style plugins (snippets, emoji, mentions, anything custom) render
-through the shared `PluginMenuPrimitive` so the menu UI, keyboard nav,
-focus, and class namespace (`.inkwell-plugin-picker-*`) are identical.
+- `createAttachmentsPlugin`
+- `createBubbleMenuPlugin`
+- `createCharacterLimitPlugin`
+- `createCompletionsPlugin`
+- `createEmojiPlugin`
+- `createMentionsPlugin`
+- `createSlashCommandsPlugin`
+- `createSnippetsPlugin`
 
-**Character-limit toast**. When `characterLimit` is set, the editor
-renders a built-in toast inside `.inkwell-editor-wrapper` at top-right when
-`characterCount > characterLimit`. If `enforceCharacterLimit` is true, it also
-renders at `characterCount === characterLimit` because further typing is
-blocked. Opt out with `limitToast={false}`. Styled by
-`.inkwell-editor-limit-toast`.
+Character-limit toast UI lives in `createCharacterLimitPlugin()`. The editor
+still owns `characterLimit`, `enforceCharacterLimit`, and `onCharacterCount` for
+counting/enforcement.
 
-User plugins merged after built-ins. If a user plugin shares a name
-with a built-in (for example a custom `bubble-menu`), the user plugin
-replaces the built-in to keep React keys stable.
+Completions are generic placeholder completions. Do not frame them as AI,
+support, or Central Station behavior in package docs.
 
-**Plugin activation model**. The editor tracks a single `activePlugin`
-at a time. A plugin participates in activation either by declaring a
-`trigger` character (mentions, emoji, snippets) or by setting
-`activatable: true` and calling `ctx.setActivePlugin({ name })` from
-`onKeyDown` (slash commands). Always-on plugins (bubble menu,
-attachments, completions) leave both undefined and receive
-`active: true` every render.
+## Plugin API
 
-**Editor-scoped key forwarding**. While a plugin is active, the editor
-forwards navigation and printable keystrokes to subscribers via
-`subscribeForwardedKey(listener)` on `PluginRenderProps`. The channel
-is scoped per editor instance, so two editors on the same page do not
-cross-talk. The shared `PluginMenuPrimitive` subscribes through this
-prop — there is no module- or window-scoped event bus.
+Plugins use explicit activation:
 
-**wrapSelection toggle**: Wrapping already-formatted text removes the formatting instead of double-wrapping. Detects markers in the selection or surrounding the selection.
+```ts
+type InkwellPluginActivation =
+  | { type: "always" }
+  | { type: "trigger"; key: string }
+  | { type: "manual" };
+```
 
-### Collaboration (Yjs)
+- Omitted activation defaults to `{ type: "always" }`.
+- Trigger activation inserts/uses the trigger key and tracks the query after it.
+- Manual activation is claimed with `ctx.activate({ query? })` and released with
+  `ctx.dismiss()`.
 
-Two modes: standalone (`withHistory`) vs collab (`withYjs` + `withCursors` + `withYHistory`). Consumer provides `CollaborationConfig` with `sharedType`, `awareness`, `user`.
+Plugin callbacks receive a narrow `InkwellPluginEditor` controller. Do not expose
+raw Slate editor instances in public plugin callbacks.
 
-### Key Design Decisions
+```ts
+interface PluginKeyDownContext {
+  editor: InkwellPluginEditor;
+  wrapSelection: (before: string, after: string) => void;
+  activate: (options?: { query?: string }) => void;
+  dismiss: () => void;
+}
+```
 
-- **`decorations` prop** (was `elements`) — all decorations enabled by default. Users only pass it to disable something.
-- **Bubble menu is built-in and customizable** — `createBubbleMenuPlugin({ items })` accepts custom `BubbleMenuItem[]` where each item is a React component. `defaultBubbleMenuItems` exported for extending. Items receive `{ wrapSelection }` as props.
-- **`editorElRef`** — stable React ref for the Slate DOM node, kept current via useEffect after mount. Fixes stale ref issues with plugin event handlers.
-- **Plugins are co-located** — live in `packages/inkwell/src/plugins/`, each in its own directory with co-located tests. Not a separate package.
-- **Shared picker primitive** — `plugins/plugin-picker.tsx` exposes
-  `PluginMenuPrimitive` and the `pluginPickerClass` namespace map. Any new
-  picker-style plugin should render through it so it inherits the keyboard,
-  focus, forwarded-key, and CSS-class contract that snippets, emoji, and
-  mentions rely on. Direct unit tests live in `plugin-picker.test.tsx`.
-- **Docs site: vanilla Starlight** — no custom theming. Previous attempts at custom purple themes were rejected as "horrid". Keep it default. Has minor structural overrides (PageSidebar, custom CSS for inkwell component styling) but no theme changes.
-- **Landing page is separate** — custom Astro page with React demo island, NOT Starlight-themed.
+Picker-style built-ins may share internal primitives, but those primitives are
+not part of the root public API.
 
-## Design System Colors
+## Collaboration
 
-**Scope:** these tokens are for the **docs site / demo** only, not the
-published package. `@railway/inkwell/styles.css` ships a neutral,
-theme-aware baseline (light by default, dark via `prefers-color-scheme`,
-wired up via `--inkwell-*` CSS variables). The purple palette below is
-layered on top of those defaults inside
-`packages/inkwell-docs/src/styles/globals.css`, scoped under
-`[data-demo-style="custom"]` so the demo can flip between the docs theme
-and the unstyled package defaults.
+Standalone mode uses Slate history. Collaboration mode uses Yjs via
+`CollaborationConfig` with `sharedType`, `awareness`, and `user`.
 
-All docs-site colors are on the hsl(270) hue. Use these values (and tweaks of them) for all docs/demo UI work:
-
-| Token    | Value              | Usage                           |
-| -------- | ------------------ | ------------------------------- |
-| pink-50  | hsl(270, 38%, 12%) | Darkest background              |
-| pink-100 | hsl(270, 40%, 16%) | Elevated surfaces               |
-| pink-200 | hsl(270, 45%, 24%) | Borders, subtle grid lines      |
-| pink-300 | hsl(270, 50%, 32%) | Muted accents, hover borders    |
-| pink-400 | hsl(270, 55%, 43%) | Secondary interactive           |
-| pink-500 | hsl(270, 60%, 52%) | Primary accent (buttons, links) |
-| pink-600 | hsl(270, 70%, 65%) | Highlights, glows               |
-| pink-700 | hsl(270, 70%, 75%) | Light accents                   |
-| pink-800 | hsl(270, 70%, 85%) | Light text on dark              |
-| pink-900 | hsl(270, 70%, 95%) | Primary text on dark            |
-| pink-950 | hsl(270, 70%, 98%) | Brightest text                  |
+When collaboration is enabled, the optional `content` prop seeds an empty shared
+document. After that, the Yjs shared type is the source of truth.
 
 ## Code Conventions
 
 - TypeScript strict mode, kebab-case file names (Biome enforced)
-- Editor CSS classes prefixed with `inkwell-editor-` via `editorClass()` helper in `lib/class-names.ts`
-- Plugin CSS classes use `inkwell-plugin-{plugin-name}-{component}` format via `pluginClass()` helper in `lib/class-names.ts`
-- Plugin code lives in `packages/inkwell/src/plugins/`, each plugin in its own directory with co-located tests
-- `useInkwell` is the primary editor API; `InkwellEditor` and `InkwellRenderer` remain primary component exports
-- Exports go through `packages/inkwell/src/index.ts`
-- Package scope: `@railway/inkwell`
-- Every implementation file must have a corresponding `.test.ts`/`.test.tsx` file. Every new function, behavior, or code path must have corresponding tests.
-- After any code change that affects public API, types, CSS classes, props, exports, or behavior, update all documentation surfaces to match: this file, the docs pages (`packages/inkwell-docs/src/content/docs/docs/`), and `packages/inkwell-docs/public/llms.txt`. The code is always the source of truth.
+- No `any` unless required by third-party generic types and locally justified
+- Keep imports at the top
+- Tests live beside implementation files
+- Every public API, type, CSS class, prop, export, or behavior change must update:
+  - package docs under `packages/inkwell-docs/src/content/docs/docs/`
+  - `packages/inkwell-docs/public/llms.txt`
+  - this file when architecture/API guidance changes
 
 ## Known Issues / Pitfalls
 
-- `parseHljsRanges` must handle hex/decimal HTML entities (`&#x3C;`) — highlight.js uses these for JSX angle brackets
+- `parseHljsRanges` must handle hex/decimal HTML entities (`&#x3C;`)
 - `parseHljsRanges` uses a class stack for nested hljs spans
-- `computeInlineDecorations` assumes single text node per element
-- `yjs` and `@slate-yjs/core` are direct deps — consumers who don't use collaboration still bundle them
+- `computeInlineFeatures` assumes a single text node per element
+- `yjs` and `@slate-yjs/core` are direct deps; consumers who do not use
+  collaboration still bundle them

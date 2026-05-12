@@ -6,7 +6,36 @@
  * plugin's public surface and the helpers that aren't covered there.
  */
 import { describe, expect, it, vi } from "vitest";
+import type { InkwellPluginEditor } from "../../types";
 import { createSlashCommandsPlugin } from ".";
+
+function createPluginEditor(): InkwellPluginEditor {
+  return {
+    getState: () => ({
+      content: "",
+      isEmpty: true,
+      isFocused: false,
+      isEditable: true,
+      characterCount: 0,
+      overLimit: false,
+      isEnforcingCharacterLimit: false,
+    }),
+    isEmpty: () => true,
+    focus: () => {},
+    clear: () => {},
+    setContent: () => {},
+    insertContent: () => {},
+    getContentBeforeCursor: () => "",
+    getCurrentBlockContent: () => "",
+    getCurrentBlockContentBeforeCursor: () => "",
+    replaceCurrentBlockContent: () => {},
+    clearCurrentBlock: () => {},
+    wrapSelection: () => {},
+    insertImage: () => "image-id",
+    updateImage: () => {},
+    removeImage: () => {},
+  };
+}
 
 describe("createSlashCommandsPlugin", () => {
   describe("plugin shape", () => {
@@ -26,36 +55,23 @@ describe("createSlashCommandsPlugin", () => {
 
     it("has no character trigger (claims activation imperatively)", () => {
       const plugin = createSlashCommandsPlugin({ commands: [] });
-      expect(plugin.trigger).toBeUndefined();
+      expect(plugin.activation).toEqual({ type: "manual" });
     });
 
-    it("is `activatable` so the editor only renders the menu while active", () => {
+    it("uses manual activation so the editor only renders the menu while active", () => {
       // Without this flag, the editor would render the slash menu by
       // default (since there is no trigger character) and surface the
       // command list before the user types `/`.
       const plugin = createSlashCommandsPlugin({ commands: [] });
-      expect(plugin.activatable).toBe(true);
+      expect(plugin.activation).toEqual({ type: "manual" });
     });
 
     it("exposes the keydown handlers the editor expects", () => {
       const plugin = createSlashCommandsPlugin({ commands: [] });
       expect(typeof plugin.onKeyDown).toBe("function");
       expect(typeof plugin.onActiveKeyDown).toBe("function");
-      expect(typeof plugin.setup).toBe("function");
+      expect(plugin.setup).toBeUndefined();
       expect(typeof plugin.render).toBe("function");
-    });
-  });
-
-  describe("setup", () => {
-    it("registers a teardown that clears the captured editor reference", () => {
-      const plugin = createSlashCommandsPlugin({ commands: [] });
-      // Cast — we only exercise the lifecycle, not Slate behavior.
-      const editor = {} as Parameters<NonNullable<typeof plugin.setup>>[0];
-      const cleanup = plugin.setup?.(editor);
-      expect(typeof cleanup).toBe("function");
-      // Cleanup should not throw and should be idempotent.
-      cleanup?.();
-      expect(() => cleanup?.()).not.toThrow();
     });
   });
 
@@ -64,13 +80,14 @@ describe("createSlashCommandsPlugin", () => {
       const plugin = createSlashCommandsPlugin({
         commands: [{ name: "status", description: "" }],
       });
-      const rendered = plugin.render({
+      const rendered = plugin.render?.({
         active: false,
         query: "",
         onSelect: vi.fn(),
         onDismiss: vi.fn(),
         position: { top: 0, left: 0 },
         editorRef: { current: null },
+        editor: createPluginEditor(),
         wrapSelection: vi.fn(),
         subscribeForwardedKey: () => () => {},
       });

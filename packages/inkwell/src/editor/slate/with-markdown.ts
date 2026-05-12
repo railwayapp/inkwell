@@ -1,5 +1,5 @@
 import { Editor, Element, Node, Path, Transforms } from "slate";
-import type { InkwellDecorations } from "../../types";
+import type { ResolvedInkwellFeatures } from "../../types";
 import { deserialize } from "./deserialize";
 import type { InkwellEditor, InkwellElement } from "./types";
 import { generateId } from "./with-node-id";
@@ -31,12 +31,12 @@ const LIST_MARKER_RE = /^(\s*)(\d+\.|[-*+]) /;
  * - Enter on image → insert a paragraph after the void image block
  * - Paste → parse as markdown, insert structured nodes (including images)
  *
- * The `decorationsRef` allows the latest element config to be read
+ * The `featuresRef` allows the latest element config to be read
  * from within closures that outlive the initial call.
  */
 export function withMarkdown(
   editor: InkwellEditor,
-  decorationsRef: { current: Required<InkwellDecorations> },
+  featuresRef: { current: ResolvedInkwellFeatures },
 ): InkwellEditor {
   const { insertBreak, insertData, insertText, isVoid } = editor;
 
@@ -57,7 +57,7 @@ export function withMarkdown(
     const [node, path] = match;
     const element = node as InkwellElement;
     const text = Node.string(node);
-    const deco = decorationsRef.current;
+    const deco = featuresRef.current;
 
     // Paragraph starting with ``` → convert to code-fence, insert code-line
     if (
@@ -294,7 +294,7 @@ export function withMarkdown(
     const [node, path] = match;
     const element = node as InkwellElement;
     const currentText = Node.string(node);
-    const deco = decorationsRef.current;
+    const deco = featuresRef.current;
 
     // Code-line with ``` and user types more → close fence, overflow to paragraph
     if (
@@ -395,7 +395,7 @@ export function withMarkdown(
   editor.insertData = (data: DataTransfer) => {
     const text = data.getData("text/plain");
     if (text) {
-      const nodes = deserialize(text, decorationsRef.current);
+      const nodes = deserialize(text, featuresRef.current);
       Transforms.insertNodes(editor, nodes);
       return;
     }

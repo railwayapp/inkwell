@@ -1,829 +1,192 @@
 # Inkwell
 
-> Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration support.
+Inkwell is a Markdown editor and renderer for React. The editor content model is
+the Markdown source string; Markdown syntax is part of the content.
 
-Inkwell gives you a visual editing experience where the underlying content is always the Markdown source string. The Markdown source is the text. It includes an extensible plugin system and optional real-time collaboration via Yjs.
+## Install
 
-- Package: `@railway/inkwell`
-- Peer dependency: React 19+
+```sh
+pnpm add @railway/inkwell
+```
 
-## Docs
+Import styles once:
 
-- [Getting Started](/docs/quickstart): Installation and basic usage
-- [Editor](/docs/editor): Hook API, formatting, and options reference
-- [Renderer](/docs/renderer): Rendering Markdown as React elements
-- [Plugins](/docs/editor-plugins): Built-in and custom editor plugins
-- [Collaboration](/docs/collaboration): Real-time multi-user editing via Yjs
-- [Styling](/docs/styling): CSS classes and example stylesheet
-
----
-
-## Installation
-
-```bash
-npm install @railway/inkwell
+```tsx
+import "@railway/inkwell/styles.css";
 ```
 
 ## Editor
 
-`useInkwell` is the recommended editor API. Give it a content string and an `onChange` handler, render the returned `EditorInstance`, and use the grouped `editor` controller for imperative actions.
+Use the component API:
 
 ```tsx
-import { useInkwell } from "@railway/inkwell";
+import { InkwellEditor } from "@railway/inkwell";
 import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello **world**");
-  const { state, EditorInstance, editor } = useInkwell({ content, onChange: setContent });
 
-  return (
-    <>
-      <EditorInstance />
-      <button onClick={() => editor.focus({ at: "end" })}>Focus</button>
-      <p>{state.characterCount} characters</p>
-    </>
-  );
+  return <InkwellEditor content={content} onChange={setContent} />;
 }
 ```
 
-Most applications should use `useInkwell`. The lower-level `InkwellEditor` component is exported for custom abstractions and integrations that need to own component rendering directly. Prefer the hook unless you have a specific reason not to use it.
+`onChange` receives the updated Markdown source string.
 
-### Editor Options
-
-- `content: string` — Markdown source content. Drives the editor unless collaboration is enabled.
-- `onChange?: (content: string) => void` — Called on every document change with the updated content.
-- `onStateChange?: (state: InkwellEditorState) => void` — Called with `{ content, isEmpty, isFocused, isEditable, characterCount, characterLimit, overLimit }` when editor state changes.
-- `placeholder?: string` — Text shown when the editor is empty.
-- `className?: string` — CSS class applied to the outer wrapper element.
-- `style?: React.CSSProperties` — Inline styles applied to the editable surface. Use for sizing such as `height`, `minHeight`, or `width`.
-- `editable?: boolean` (default: `true`) — Whether users can edit the document.
-- `decorations?: InkwellDecorations` — Controls which block-level formatting the editor recognizes. All enabled by default.
-- `plugins?: InkwellPlugin[]` — Additional plugins to load.
-- `bubbleMenu?: boolean` (default: `true`) — Whether to include the built-in floating toolbar.
-- `collaboration?: CollaborationConfig` — Enable real-time collaborative editing via Yjs.
-- `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for code block highlighting.
-- `characterLimit?: number` — Tracks character count and adds `inkwell-editor-over-limit` when exceeded.
-- `enforceCharacterLimit?: boolean` (default: `false`) — Blocks text input, pasted content, plugin insertions, and `editor.insertContent()` past `characterLimit`; overlong text is truncated to remaining capacity.
-- `onCharacterCount?: (count: number, limit?: number) => void` — Called when character count changes.
-- `submitOnEnter?: boolean` (default: `false`) — When true, Enter calls `onSubmit(content)` instead of inserting a newline; Shift+Enter still inserts a newline.
-- `onSubmit?: (content: string) => void` — Called when `submitOnEnter` handles Enter.
-- `limitToast?: boolean` (default: `true`) — Renders a built-in toast (`.inkwell-editor-limit-toast`) at the top-right of `.inkwell-editor-wrapper` when `characterCount > characterLimit`, and also at `characterCount === characterLimit` when `enforceCharacterLimit` blocks further typing. Set to `false` to render your own indicator instead.
-
-### Editor Controller
-
-`useInkwell` returns `editor`. If you are building a custom abstraction around the low-level `InkwellEditor` component, its `ref={useRef<InkwellEditorHandle>(null)}` exposes the same methods:
-
-- `getState(): InkwellEditorState`
-- `getState().content: string`
-- `focus(options?: { at?: "start" | "end" }): void`
-- `clear(options?: { select?: "start" | "end" | "preserve" }): void`
-- `setContent(content: string, options?: { select?: "start" | "end" | "preserve" }): void`
-- `insertContent(content: string): void`
-
-`setContent()` and `clear()` replace editor content without calling `onChange`. `insertContent()` behaves like an edit at the current selection and flows through normal change handling.
-
-### Formatting
-
-The editor renders Markdown visually as you type. All formatting is enabled by default.
-
-Block formatting (use at the start of a line; headings, lists, blockquotes, and code fences also have typing triggers):
-- `# ` through `###### ` → Headings (h1–h6)
-- `- `, `* `, `+ `, or `1. ` → List items (ordered markers auto-increment; two-space indents are preserved)
-- `> ` → Blockquotes
-- ` ``` ` → Fenced code blocks
-- `![alt](url)` on its own line → Block image (recognized when Markdown is loaded, pasted, or inserted)
-
-Inline formatting (wrap text):
-- `**text**` → Bold
-- `_text_` → Italic
-- `~~text~~` → Strikethrough
-- `` `text` `` → Inline code
-
-Keyboard shortcuts:
-- `⌘B` / `Ctrl+B` → Toggle bold
-- `⌘I` / `Ctrl+I` → Toggle italic
-- `⌘D` / `Ctrl+D` → Toggle strikethrough
-
-### Decorations
-
-Use the `decorations` prop to disable specific block-level formatting:
+Use a ref for imperative actions:
 
 ```tsx
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  decorations: { codeBlocks: false, heading4: false, heading5: false, heading6: false },
-});
+import { type InkwellEditorHandle, InkwellEditor } from "@railway/inkwell";
+import { useRef } from "react";
 
-return <EditorInstance />;
+const editorRef = useRef<InkwellEditorHandle>(null);
+
+<InkwellEditor ref={editorRef} content={content} onChange={setContent} />;
+
+editorRef.current?.getState().content;
+editorRef.current?.focus({ at: "end" });
+editorRef.current?.setContent("Replacement");
+editorRef.current?.insertContent(" **more**");
+editorRef.current?.clear();
 ```
+
+`setContent()` and `clear()` do not call `onChange`. `insertContent()` behaves
+like an edit and flows through normal change handling.
+
+## Styling
+
+Use slot styling:
 
 ```tsx
-interface InkwellDecorations {
-  heading1?: boolean;    // default: true
-  heading2?: boolean;    // default: true
-  heading3?: boolean;    // default: true
-  heading4?: boolean;    // default: true
-  heading5?: boolean;    // default: true
-  heading6?: boolean;    // default: true
-  lists?: boolean;       // default: true (unordered, ordered, indented)
-  blockquotes?: boolean; // default: true
-  codeBlocks?: boolean;  // default: true
-  images?: boolean;      // default: true
-}
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  className="composer"
+  classNames={{ editor: "composer-editor" }}
+  styles={{ editor: { minHeight: 180 } }}
+/>;
 ```
 
-### Syntax Highlighting
+`className` is an alias for `classNames.root`. Do not use a top-level `style`
+prop; use `styles.root` or `styles.editor`.
 
-Fenced code blocks use highlight.js by default. Import a theme CSS file:
+## Features
+
+Use `features` to disable Markdown recognition:
 
 ```tsx
-import "highlight.js/styles/github-dark.css";
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  features={{
+    codeBlocks: false,
+    headings: { h4: false, h5: false, h6: false },
+  }}
+/>;
 ```
 
-Swap the highlighter via `rehypePlugins`:
-
-```tsx
-import rehypeShiki from "@shikijs/rehype";
-
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  rehypePlugins: [[rehypeShiki, { theme: "github-dark" }]],
-});
-
-return <EditorInstance />;
-```
+Supported features are `headings`, `lists`, `blockquotes`, `codeBlocks`, and
+`images`.
 
 ## Renderer
-
-`InkwellRenderer` converts Markdown to React elements. Produces semantic HTML, no browser dependencies, works with SSR. It supports CommonMark plus GFM strikethrough, task lists, and autolinks; GFM table syntax is rendered as source text and does not emit `<table>` elements by default.
 
 ```tsx
 import { InkwellRenderer } from "@railway/inkwell";
 
-<InkwellRenderer content="# Hello **world**" />
+<InkwellRenderer content="# Hello **world**" />;
 ```
 
-### Renderer Props
-
-- `content: string` — The Markdown source string to render.
-- `components?: InkwellComponents` — Override how specific HTML elements render.
-- `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for the rendering pipeline.
-- `copyButton?: boolean` (default: `true`) — Show a copy button on fenced code blocks.
-- `mentions?: MentionRenderer[]` — Text patterns to hydrate into React nodes during rendering.
-- `className?: string` — CSS class applied to the wrapper div.
-
-### Custom Components
-
-Override HTML element rendering:
+Renderer utilities:
 
 ```tsx
-<InkwellRenderer
-  content={content}
-  components={{
-    a: ({ children, ...props }) => (
-      <a {...props} target="_blank" rel="noopener noreferrer">
-        {children}
-      </a>
-    ),
-    pre: ({ children, ...props }) => (
-      <pre {...props} className="my-code-block">
-        {children}
-      </pre>
-    ),
-  }}
-/>
-```
+import { htmlToMarkdown, parseMarkdown } from "@railway/inkwell";
 
-You can override any HTML element: `h1`–`h6`, `p`, `a`, `img`, `blockquote`, `pre`, `code`, `ul`, `ol`, `li`, `strong`, `em`, `del`, and more.
+const reactNodes = parseMarkdown(content, { rehypePlugins: [] });
+const markdown = htmlToMarkdown(html);
+```
 
 ## Plugins
 
-Plugins extend the editor with custom UI and behavior. Built-ins include bubble menu, snippets, emoji, mentions, completions, slash commands, and attachments.
+Built-in plugin factories include:
 
-### Plugin Interface
-
-```tsx
-interface InkwellPlugin {
-  name: string;
-  trigger?: { key: string };
-  // When true, the plugin only renders while it is the editor's active
-  // plugin. Plugins with a trigger are activatable by default; non-trigger
-  // plugins that claim activation via ctx.setActivePlugin (e.g. slash
-  // commands) must opt in explicitly.
-  activatable?: boolean;
-  render: (props: PluginRenderProps) => ReactNode;
-  getPlaceholder?: (editor: Editor) => string | InkwellPluginPlaceholder | null;
-  onEditorChange?: (editor: Editor) => void;
-  shouldTrigger?: (event: React.KeyboardEvent, editor: Editor) => boolean;
-  onKeyDown?: (
-    event: React.KeyboardEvent,
-    ctx: PluginKeyDownContext,
-    editor: Editor,
-  ) => void;
-  onActiveKeyDown?: (
-    event: React.KeyboardEvent,
-    ctx: PluginKeyDownContext & { dismiss: () => void },
-    editor: Editor,
-  ) => false | void;
-  setup?: (editor: Editor) => void | (() => void);
-}
-
-interface PluginKeyDownContext {
-  wrapSelection: (before: string, after: string) => void;
-  // Claim or release editor activation imperatively. Used by plugins
-  // (e.g. slash commands) that activate from context rather than a
-  // dedicated character trigger.
-  setActivePlugin: (
-    plugin: { name: string; query?: string } | null,
-  ) => void;
-}
-
-interface InkwellPluginPlaceholder {
-  text: string;
-  hint?: string;
-}
-```
-
-### Render Props
-
-```tsx
-interface PluginRenderProps {
-  active: boolean;
-  query: string;
-  onSelect: (text: string) => void;
-  onDismiss: () => void;
-  position: { top: number; left: number };
-  editorRef: RefObject<HTMLDivElement | null>;
-  wrapSelection: (before: string, after: string) => void;
-  // Subscribe to editor-forwarded keystrokes for this plugin. Returns an
-  // unsubscribe function. Scoped per editor instance — two editors on the
-  // same page do not cross-talk.
-  subscribeForwardedKey: (listener: (key: string) => void) => () => void;
-}
-```
-
-### Triggers
-
-- **Modifier combos** (`"Control+/"`, `"Meta+k"`): Prevents default browser action. Good for command palettes.
-- **Single characters** (`"["`, `":"`, `"@"`): Character typed into editor first, removed on `onSelect`. Good for inline pickers such as snippets, emoji, and mentions.
-- **No trigger** (omit the field and leave `activatable` undefined): Plugin always renders with `active: true`. Good for persistent UI. Non-trigger plugins that call `setActivePlugin` should set `activatable: true`.
-
-### Built-in: Bubble Menu
-
-Floating toolbar on text selection. Default items: Bold (⌘B), Italic (⌘I), Strikethrough (⌘D).
-
-Customize items:
-
-```tsx
-import {
-  createBubbleMenuPlugin,
-  defaultBubbleMenuItems,
-  useInkwell,
-} from "@railway/inkwell";
-
-const customBubbleMenu = createBubbleMenuPlugin({
-  items: [
-    ...defaultBubbleMenuItems,
-    {
-      key: "code",
-      shortcut: "e",
-      onShortcut: (wrap) => wrap("`", "`"),
-      render: ({ wrapSelection }) => (
-        <button onClick={() => wrapSelection("`", "`")}>&lt;/&gt;</button>
-      ),
-    },
-  ],
-});
-
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  bubbleMenu: false,
-  plugins: [customBubbleMenu],
-});
-
-return <EditorInstance />;
-```
-
-Bubble menu item shape:
-
-```tsx
-interface BubbleMenuItem {
-  key: string;
-  shortcut?: string;
-  onShortcut?: (wrapSelection: (before: string, after: string) => void) => void;
-  render: (props: { wrapSelection: (before: string, after: string) => void }) => ReactNode;
-}
-```
-
-### Built-in: Snippets
-
-Searchable picker for inserting content templates:
-
-```tsx
-import { createSnippetsPlugin, useInkwell } from "@railway/inkwell";
-
-const snippets = createSnippetsPlugin({
-  snippets: [
-    { title: "Bug Report", content: "## Bug Report\n\n**Steps:**\n1. " },
-    { title: "Meeting Notes", content: "## Notes\n\n### Agenda\n\n1. " },
-  ],
-  key: "[", // trigger key (default)
-});
-
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  plugins: [snippets],
-});
-
-return <EditorInstance />;
-```
-
-Snippet shape:
-
-```tsx
-interface Snippet {
-  title: string;
-  content: string;
-}
-```
-
-### Built-in: Emoji
-
-Searchable emoji picker. By default it opens when `:` is typed at a token boundary (start of the document, after whitespace, or after an opening bracket/parenthesis) and intentionally stays closed for emoticons, URLs, and prose such as `foo:bar`. The default list is exported as `defaultEmojis`.
-
-```tsx
-import { createEmojiPlugin, useInkwell } from "@railway/inkwell";
-
-const emoji = createEmojiPlugin();
-
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  plugins: [emoji],
-});
-```
-
-```tsx
-interface EmojiItem {
-  emoji: string;
-  name: string;
-  shortcodes?: string[];
-  tags?: string[];
-}
-
-interface EmojiPluginOptions<T extends EmojiItem = EmojiItem> {
-  name?: string;
-  trigger?: string;
-  emojis?: T[];
-  search?: (query: string) => Promise<T[]> | T[];
-  renderItem?: (item: T, active: boolean) => ReactNode;
-  emptyMessage?: string;
-}
-```
-
-### Built-in: Mentions
-
-Generic searchable picker for any list-of-things. Inserts `@<marker>[<id>]` markers into the document by default, or a custom string returned by `onSelect`.
-
-```tsx
-import {
-  createMentionsPlugin,
-  type MentionItem,
-  useInkwell,
-} from "@railway/inkwell";
-
-const USERS: MentionItem[] = [
-  { id: "alice", title: "Alice Anderson" },
-  { id: "bob",   title: "Bob Brown" },
-];
-
-const mentions = createMentionsPlugin<MentionItem>({
-  name: "mentions",        // unique per editor instance
-  trigger: "@",            // single character that opens the picker
-  marker: "user",          // produces `@user[<id>]` in the document
-  search: (query) =>
-    USERS.filter((u) =>
-      u.title.toLowerCase().includes(query.toLowerCase()),
-    ),
-  renderItem: (item, active) => (
-    <div data-active={active}>{item.title}</div>
-  ),
-  emptyMessage: "No matching users",
-});
-
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  plugins: [mentions],
-});
-```
-
-Mentions options:
-
-```tsx
-interface MentionItem {
-  id: string;
-  title: string;
-}
-
-interface MentionsPluginOptions<T extends MentionItem = MentionItem> {
-  name: string;
-  trigger: string;
-  marker: string;
-  search: (query: string) => Promise<T[]> | T[];
-  renderItem: (item: T, active: boolean) => ReactNode;
-  /** Override the inserted text. When omitted, inserts `@<marker>[<id>]`. */
-  onSelect?: (item: T) => string;
-  emptyMessage?: string;
-}
-```
-
-Render side: hydrate the persisted `@<marker>[<id>]` markers via `InkwellRenderer`'s `mentions` prop:
-
-```tsx
-import { InkwellRenderer, type MentionRenderer } from "@railway/inkwell";
-
-const mentionRenderers: MentionRenderer[] = [
-  {
-    pattern: /@user\[([a-z0-9-]+)\]/g,
-    resolve: (match) => {
-      const id = match[1];
-      const user = USERS.find((u) => u.id === id);
-      return <Chip>@{user?.title ?? id}</Chip>;
-    },
-  },
-];
-
-<InkwellRenderer content={markdown} mentions={mentionRenderers} />;
-```
-
-### Built-in: Completions
-
-Generic placeholder completions for suggested text flows. The host owns completion fetching/state; Inkwell shows the current completion through the editor placeholder while the document is empty, prefixes it with an accept hint (default `[tab ↹]`), accepts with Tab, dismisses with Escape or normal typing, and can restore an accepted completion after undo returns the document to empty. While active, an otherwise empty editor is normalized to a single plain paragraph so placeholder typography stays stable after clears.
-
-```tsx
-import { createCompletionsPlugin, useInkwell } from "@railway/inkwell";
-
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  plugins: [
-    createCompletionsPlugin({
-      getCompletion: () => completion,
-      isLoading: () => loading,
-      loadingText: "Drafting a suggestion…",
-      onAccept: () => setCompletion(null),
-      onDismiss: () => setCompletion(null),
-      onRestore: restored => setCompletion(restored),
-    }),
-  ],
-});
-```
-
-```tsx
-interface CompletionPluginOptions {
-  name?: string;
-  getCompletion: () => string | null;
-  isLoading?: () => boolean;
-  loadingText?: string;
-  acceptHint?: string;
-  onAccept?: (completion: string) => void;
-  onDismiss?: (completion: string) => void;
-  onRestore?: (completion: string) => void;
-  restoreOnUndo?: boolean;
-  rehypePlugins?: RehypePluginConfig[];
-}
-```
-
-### Built-in: Slash Commands
-
-Discord-style slash command picker for chat composers. `/` opens only on an
-empty or whitespace-only line. It does not open before existing text in the
-same block, so command cleanup cannot touch unrelated prose. Query text is
-typed directly in the editor, not in a separate search input. Selecting a
-command/argument stages it; Enter executes and clears only the slash-command
-line, while Escape in the execute phase cancels and clears that line.
-
-```tsx
-import { createSlashCommandsPlugin, useInkwell } from "@railway/inkwell";
-
-const slashCommands = createSlashCommandsPlugin({
-  commands: [
-    {
-      name: "label",
-      description: "Apply a document label",
-      args: [
-        {
-          name: "label",
-          description: "Label to apply",
-          required: true,
-          choices: [
-            { value: "idea", label: "Idea" },
-            { value: "bug", label: "Bug" },
-          ],
-        },
-      ],
-    },
-  ],
-  onExecute: command => {
-    // { name: "label", args: { label: "idea" }, raw: "/label Idea" }
-  },
-});
-```
-
-```tsx
-interface SlashCommandExecution {
-  name: string;
-  args: Record<string, string>;
-  raw: string;
-}
-```
-
-### Built-in: Attachments
-
-Paste or drop image files into the editor. The plugin runs each matching file through your `onUpload` and inserts a block image at the cursor. Returned upload URLs are validated before being stored; unsafe results remove the placeholder and call `onError`. It also handles copied HTML `<img>` elements by inserting a block image for each safe decoded `src` directly; those HTML URLs are not uploaded through `onUpload`. Safe image URLs are `http:`, `https:`, protocol-relative, relative paths, `blob:`, or raster `data:image/png|jpeg|jpg|gif|webp`; missing or unsafe values such as `javascript:`, `file:`, `data:text/html`, or `data:image/svg+xml` are ignored.
-
-```tsx
-import { createAttachmentsPlugin, useInkwell } from "@railway/inkwell";
-
-const attachments = createAttachmentsPlugin({
-  accept: "image/*",
-  onUpload: async (file) => uploadToS3(file), // returns a URL
-  onError: (err, file) => console.error(err, file.name),
-  uploadingPlaceholder: file => `Uploading ${file.name}…`, // optional
-});
-
-const { EditorInstance } = useInkwell({
-  content,
-  onChange: setContent,
-  plugins: [attachments],
-});
-```
-
-```tsx
-interface AttachmentsPluginOptions {
-  onUpload: (file: File) => Promise<string>;
-  accept?: string;
-  uploadingPlaceholder?: (file: File) => string;
-  onError?: (error: unknown, file: File) => void;
-}
-```
-
-### Shared Plugin Picker Primitive
-
-Snippets, emoji, mentions, and any custom picker-style plugin all render through `PluginMenuPrimitive` (re-exported as a building block). It provides:
-
-- inline query display driven by characters typed after the trigger; focus stays in the editor
-- sync `items` filtering or async `search` callback
-- keyboard navigation (`ArrowUp`/`ArrowDown` with wrap, `Enter` to select, `Escape` to dismiss, `Backspace` to shrink the query, typed chars extend the query)
-- forwarded editor keys through `subscribeForwardedKey` from `PluginRenderProps`; the channel is scoped per editor instance and uses no window/global event bus
-- mouse hover/click selection
-- a single CSS namespace (`.inkwell-plugin-picker-*`) so styling carries across plugins
-
-### Custom Plugin Example
-
-```tsx
-import type { InkwellPlugin } from "@railway/inkwell";
-
-const commandPalette: InkwellPlugin = {
-  name: "command-palette",
-  trigger: { key: "Control+k" },
-  render: ({ active, query, onSelect, onDismiss, position }) => {
-    if (!active) return null;
-
-    const commands = [
-      { label: "Heading", md: "## " },
-      { label: "Bullet list", md: "- " },
-      { label: "Code block", md: "```\n\n```" },
-    ].filter((c) => c.label.toLowerCase().includes(query.toLowerCase()));
-
-    return (
-      <div style={{ position: "absolute", top: position.top + 24, left: position.left }}>
-        {commands.map((cmd) => (
-          <button key={cmd.label} onClick={() => onSelect(cmd.md)}>
-            {cmd.label}
-          </button>
-        ))}
-        <button onClick={onDismiss}>Cancel</button>
-      </div>
-    );
-  },
-};
-```
-
-### Keyboard Shortcuts via Plugins
-
-```tsx
-const highlightShortcut: InkwellPlugin = {
-  name: "highlight-shortcut",
-  render: () => null,
-  onKeyDown: (event, { wrapSelection }) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "h") {
-      event.preventDefault();
-      wrapSelection("==", "==");
-    }
-  },
-};
-```
-
-## Collaboration
-
-Real-time collaborative editing via Yjs. Multiple users edit simultaneously with automatic conflict resolution.
-
-Features:
-- Live sync across all connected users
-- Remote cursors with per-user colors
-- Scoped undo (⌘Z only undoes your own changes)
-- Works with any Yjs provider
-
-### Setup
-
-```tsx
-import * as Y from "yjs";
-import { useInkwell } from "@railway/inkwell";
-import { WebsocketProvider } from "y-websocket";
-
-const doc = new Y.Doc();
-const sharedType = doc.get("content", Y.XmlText);
-const provider = new WebsocketProvider("wss://your-server.com", "room-id", doc);
-
-function CollabEditor() {
-  const { EditorInstance } = useInkwell({
-    content: "",
-    collaboration: {
-      sharedType,
-      awareness: provider.awareness,
-      user: { name: "Alice", color: "#e06c75" },
-    },
-    onChange: (md) => saveToDatabase(md),
-  });
-
-  return <EditorInstance />;
-}
-```
-
-### Collaboration Config
-
-```tsx
-interface CollaborationConfig {
-  sharedType: Y.XmlText;
-  awareness: Awareness;
-  user: { name: string; color: string };
-}
-```
-
-When `collaboration` is provided, the Yjs document becomes the source of truth. The `content` prop only seeds an empty document. The `collaboration` object is mount-only; remount the editor with a React `key` to change collaboration mode, document, or user metadata.
-
-### Providers
-
-- y-websocket — WebSocket sync (self-hosted)
-- y-webrtc — Peer-to-peer (no server)
-- Liveblocks — Managed infrastructure
-
-## Styling
-
-Inkwell ships a neutral, theme-aware default stylesheet at `@railway/inkwell/styles.css`:
-
-```ts
-import "@railway/inkwell/styles.css";
-```
-
-The defaults are light by default and switch to dark via `prefers-color-scheme: dark`. Theming is driven by CSS variables (declared on `.inkwell-editor`, `.inkwell-renderer`, `.inkwell-plugin-bubble-menu-container`, `.inkwell-plugin-picker-popup`):
-
-- `--inkwell-bg`, `--inkwell-bg-elevated`, `--inkwell-bg-subtle`
-- `--inkwell-border`, `--inkwell-border-strong`
-- `--inkwell-text`, `--inkwell-text-muted`, `--inkwell-text-dim`
-- `--inkwell-accent`, `--inkwell-accent-soft`, `--inkwell-danger`
-- `--inkwell-code-bg`, `--inkwell-code-fg`
-- `--inkwell-font-mono`, `--inkwell-radius`
-
-Override any token to retheme without rewriting selectors. Selectors below let you override or extend specific elements.
-
-### Editor CSS Classes
-
-Container:
-- `.inkwell-editor-wrapper` — Outer wrapper
-- `.inkwell-editor` — Contenteditable area
-
-Block elements:
-- `.inkwell-editor-heading` + `.inkwell-editor-heading-1` through `-heading-6`
-- `.inkwell-editor-blockquote`
-- `.inkwell-editor-list-item` — includes `data-list`, `data-ordered="true"` for ordered markers, and `data-indent` for two-space indent levels
-- `.inkwell-editor-image` — block image wrapper; `data-selected` when selected
-- `.inkwell-editor-code-fence`
-- `.inkwell-editor-code-line`
-
-Syntax markers:
-- `.inkwell-editor-marker`
-- `.inkwell-editor-backtick`
-
-Remote cursors:
-- `.inkwell-editor-remote-cursor` — Selection highlight
-- `.inkwell-editor-remote-caret` — Cursor position
-
-Character limit:
-- `.inkwell-editor-wrapper.inkwell-editor-over-limit` — Wrapper while `characterCount > characterLimit`
-- `.inkwell-editor-limit-toast` — Built-in toast shown when over limit, or exactly at the limit when `enforceCharacterLimit` blocks more typing (opt out via `limitToast={false}`)
-- `.inkwell-editor-limit-toast-icon` — Icon inside the toast
-
-### Renderer CSS Classes
-
-- `.inkwell-renderer` — Wrapper div
-- `.inkwell-renderer-code-block` — Wrapper around each `<pre>` (when `copyButton` enabled)
-- `.inkwell-renderer-copy-btn` — Copy button on code blocks (appears on hover)
-- Standard HTML elements inside: `h1`–`h6`, `p`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `img`; GFM table syntax is rendered as source text instead of `<table>`
-
-### Plugin CSS Classes
-
-Bubble menu:
-- `.inkwell-plugin-bubble-menu-container`
-- `.inkwell-plugin-bubble-menu-inner`
-- `.inkwell-plugin-bubble-menu-btn`
-- `.inkwell-plugin-bubble-menu-item-bold`
-- `.inkwell-plugin-bubble-menu-item-italic`
-- `.inkwell-plugin-bubble-menu-item-strike`
-
-Completions use the editor's native placeholder. Style completion text with `.inkwell-editor [data-slate-placeholder="true"]`. The accept hint is part of the placeholder text itself, for example `[tab ↹] Suggested text`; there is no separate completion hint element.
-
-Plugin picker (shared by snippets, emoji, mentions, and any custom picker plugin built on `PluginMenuPrimitive`):
-- `.inkwell-plugin-picker-popup`
-- `.inkwell-plugin-picker`
-- `.inkwell-plugin-picker-search`
-- `.inkwell-plugin-picker-item`
-- `.inkwell-plugin-picker-item-active`
-- `.inkwell-plugin-picker-title`
-- `.inkwell-plugin-picker-subtitle`
-- `.inkwell-plugin-picker-preview`
-- `.inkwell-plugin-picker-empty`
-
-## Exports
-
-All public exports from `@railway/inkwell`:
-
-Hooks:
-- `useInkwell`
-
-Components:
-- `InkwellEditor`
-- `InkwellRenderer`
-
-Plugin creators:
 - `createAttachmentsPlugin`
 - `createBubbleMenuPlugin`
+- `createCharacterLimitPlugin`
 - `createCompletionsPlugin`
 - `createEmojiPlugin`
 - `createMentionsPlugin`
 - `createSlashCommandsPlugin`
 - `createSnippetsPlugin`
 
-Plugin utilities:
-- `defaultBubbleMenuItems`
-- `defaultEmojis`
-- `pluginClass`
-- `PluginMenuPrimitive` — shared picker primitive used by `createSnippetsPlugin`, `createEmojiPlugin`, and `createMentionsPlugin`. Query is driven by editor text after the trigger; use it to build your own picker plugins with the same keyboard, focus, and class-namespace contract.
-- `pluginPickerClass` — the `.inkwell-plugin-picker-*` class-name map produced by `PluginMenuPrimitive`.
+Example:
 
-Serialization:
-- `serializeToMarkdown(html: string): string`
-- `parseMarkdown(markdown: string, components?, rehypePlugins?, mentions?): ReactNode`
-- `deserialize(content: string, decorations?): InkwellElement[]`
+```tsx
+const snippets = createSnippetsPlugin({
+  trigger: "[",
+  snippets: [{ title: "Greeting", content: "Hello **world**" }],
+});
 
-Types:
-- `UseInkwellOptions`
-- `UseInkwellResult`
-- `InkwellEditorController`
-- `InkwellEditorFocusOptions`
-- `InkwellEditorHandle`
-- `InkwellEditorProps`
-- `InkwellEditorState`
-- `InkwellSetContentOptions`
-- `InkwellRendererProps`
-- `InkwellPlugin`
-- `InkwellPluginPlaceholder`
-- `InkwellDecorations`
-- `InkwellComponents`
-- `BubbleMenuItem`
-- `BubbleMenuItemProps`
-- `CollaborationConfig`
-- `AttachmentsPluginOptions`
-- `CompletionPluginOptions`
-- `EmojiItem`
-- `EmojiPluginOptions`
-- `MentionItem`
-- `MentionRenderer`
-- `MentionsPluginOptions`
-- `PluginKeyDownContext`
-- `PluginRenderProps`
-- `PluginTrigger`
-- `RehypePluginConfig`
-- `SlashCommandArg`
-- `SlashCommandChoice`
-- `SlashCommandExecution`
-- `SlashCommandItem`
-- `SlashCommandsPluginOptions`
-- `Snippet`
-- `SubscribeForwardedKey`
+<InkwellEditor content={content} onChange={setContent} plugins={[snippets]} />;
+```
+
+Character-limit toast UI is a plugin:
+
+```tsx
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  characterLimit={280}
+  plugins={[createCharacterLimitPlugin()]}
+/>;
+```
+
+## Custom plugin shape
+
+```tsx
+interface InkwellPlugin {
+  name: string;
+  activation?:
+    | { type: "always" }
+    | { type: "trigger"; key: string }
+    | { type: "manual" };
+  render?: (props: PluginRenderProps) => ReactNode;
+  getPlaceholder?: (
+    editor: InkwellPluginEditor,
+  ) => string | InkwellPluginPlaceholder | null;
+  onEditorChange?: (editor: InkwellPluginEditor) => void;
+  shouldTrigger?: (
+    event: React.KeyboardEvent,
+    ctx: PluginKeyDownContext,
+  ) => boolean;
+  onKeyDown?: (event: React.KeyboardEvent, ctx: PluginKeyDownContext) => void;
+  onActiveKeyDown?: (
+    event: React.KeyboardEvent,
+    ctx: PluginKeyDownContext,
+  ) => false | void;
+  onInsertData?: (
+    data: DataTransfer,
+    ctx: PluginInsertDataContext,
+  ) => boolean | void;
+  setup?: (editor: InkwellPluginEditor) => void | (() => void);
+}
+```
+
+Use `ctx.activate()` and `ctx.dismiss()` for manual activation. Plugins receive a
+narrow `InkwellPluginEditor` controller for editor actions.
+
+## Collaboration
+
+Pass a Yjs shared type and awareness instance:
+
+```tsx
+<InkwellEditor
+  content="# Seed content"
+  collaboration={{
+    sharedType,
+    awareness: provider.awareness,
+    user: { name: "Alice", color: "#e06c75" },
+  }}
+/>;
+```
+
+When collaboration is enabled, `content` seeds an empty shared document. The
+Yjs shared type is the source of truth after that.

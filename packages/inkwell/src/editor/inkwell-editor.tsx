@@ -3,6 +3,7 @@
 import {
   CursorEditor,
   relativePositionToSlatePoint,
+  slateNodesToInsertDelta,
   withCursors,
   withYHistory,
   withYjs,
@@ -32,19 +33,20 @@ import { HistoryEditor, withHistory } from "slate-history";
 import { Editable, ReactEditor, Slate, withReact } from "slate-react";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import type {
-  InkwellDecorations,
   InkwellEditorFocusOptions,
   InkwellEditorHandle,
   InkwellEditorProps,
   InkwellEditorState,
   InkwellPlugin,
+  InkwellPluginEditor,
   InkwellPluginPlaceholder,
-  InkwellSetContentOptions,
   PluginKeyDownContext,
+  ResolvedInkwellFeatures,
   SubscribeForwardedKey,
 } from "../types";
 import { computeDecorations } from "./slate/decorations";
 import { deserialize } from "./slate/deserialize";
+import { resolveFeatures } from "./slate/features";
 import { RenderElement } from "./slate/render-element";
 import { RenderLeaf } from "./slate/render-leaf";
 import { serialize } from "./slate/serialize";
@@ -59,63 +61,6 @@ import { generateId, withNodeId } from "./slate/with-node-id";
 
 const IS_SERVER = typeof window === "undefined";
 const EMPTY_PLUGINS: InkwellPlugin[] = [];
-
-/**
- * Built-in toast surfaced at the top-right of the editor when the document
- * meets or exceeds `characterLimit`. Styled via `.inkwell-editor-limit-toast`
- * in the package stylesheet. Pointer-events are disabled so the toast
- * never intercepts typing or selection.
- */
-function LimitToast({
-  count,
-  limit,
-}: {
-  count: number;
-  limit: number;
-  enforced: boolean;
-}) {
-  const over = count > limit;
-  return (
-    <div
-      className="inkwell-editor-limit-toast"
-      role="status"
-      aria-live="polite"
-    >
-      <svg
-        className="inkwell-editor-limit-toast-icon"
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 8v4" />
-        <path d="M12 16h.01" />
-      </svg>
-      <span>
-        {over ? `Over limit by ${count - limit}` : "Character limit reached"}
-      </span>
-    </div>
-  );
-}
-
-const DEFAULT_DECORATIONS: Required<InkwellDecorations> = {
-  heading1: true,
-  heading2: true,
-  heading3: true,
-  heading4: true,
-  heading5: true,
-  heading6: true,
-  lists: true,
-  blockquotes: true,
-  codeBlocks: true,
-  images: true,
-};
 
 function replaceEditorChildren(
   editor: InkwellSlateEditor,
@@ -154,33 +99,33 @@ export const InkwellEditor = forwardRef<
 const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
   function InkwellEditorClient(
     {
-      content,
+      content = "",
       onChange,
       onStateChange,
       className,
-      style,
+      classNames,
+      styles,
       placeholder,
       editable = true,
       plugins: userPlugins = EMPTY_PLUGINS,
       rehypePlugins,
-      decorations,
+      features,
       collaboration,
       bubbleMenu = true,
       characterLimit,
       enforceCharacterLimit = false,
       onCharacterCount,
-      limitToast = true,
       submitOnEnter = false,
       onSubmit,
     },
     ref,
   ) {
-    const resolvedDecorations = useMemo(
-      () => ({ ...DEFAULT_DECORATIONS, ...decorations }),
-      [decorations],
+    const resolvedFeatures = useMemo(
+      () => resolveFeatures(features),
+      [features],
     );
-    const decorationsRef = useRef(resolvedDecorations);
-    decorationsRef.current = resolvedDecorations;
+    const featuresRef = useRef<ResolvedInkwellFeatures>(resolvedFeatures);
+    featuresRef.current = resolvedFeatures;
 
     const plugins = useMemo(() => {
       const builtIn = bubbleMenu ? [createBubbleMenuPlugin()] : [];
@@ -208,19 +153,24 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
 
       if (collaboration) {
         const { sharedType, awareness, user } = collaboration;
+        if (content && sharedType.length === 0) {
+          sharedType.applyDelta(
+            slateNodesToInsertDelta(deserialize(content, resolvedFeatures)),
+          );
+        }
         const yjsEditor = withYjs(base, sharedType, { autoConnect: false });
         const cursorEditor = withCursors(yjsEditor, awareness, {
           data: user,
         });
         const historyEditor = withYHistory(cursorEditor);
         return withCharacterLimit(
-          withMarkdown(historyEditor, decorationsRef),
+          withMarkdown(historyEditor, featuresRef),
           characterLimitRef,
         );
       }
 
       return withCharacterLimit(
-        withMarkdown(withHistory(base), decorationsRef),
+        withMarkdown(withHistory(base), featuresRef),
         characterLimitRef,
       );
     }, []);
@@ -233,22 +183,6 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         );
       }
     }, [collaboration]);
-
-    useEffect(() => {
-      const cleanups: Array<() => void> = [];
-      for (const plugin of plugins) {
-        if (!plugin.setup) continue;
-        const cleanup = plugin.setup(editor);
-        if (typeof cleanup === "function") cleanups.push(cleanup);
-      }
-      return () => {
-        // Run cleanups in reverse order so plugins that wrap editor
-        // methods (e.g. `editor.insertData`) unwrap in the inverse order
-        // they were stacked — each cleanup restores the editor to the
-        // state the next-outer plugin captured.
-        for (let i = cleanups.length - 1; i >= 0; i--) cleanups[i]();
-      };
-    }, [editor, plugins]);
 
     useEffect(() => {
       if (!collaboration || !YjsEditor.isYjsEditor(editor)) return;
@@ -328,12 +262,13 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
                 children: [{ text: "" }],
               },
             ]
-          : deserialize(content, resolvedDecorations),
+          : deserialize(content, resolvedFeatures),
       [],
     );
 
     const lastContent = useRef<string>(content);
     const isInternalChange = useRef(false);
+    const suppressImperativeOnChange = useRef(false);
     const [characterCount, setCharacterCount] = useState(
       () => serialize(initialValue as InkwellElement[]).length,
     );
@@ -379,6 +314,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       () => serialize(editor.children as InkwellElement[]),
       [editor],
     );
+    const pluginEditorRef = useRef<InkwellPluginEditor | null>(null);
 
     const handleChange = useCallback(
       (value: Descendant[]) => {
@@ -391,13 +327,16 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         updateCharacterCount();
         bumpStateVersion();
 
-        for (const plugin of plugins) {
-          plugin.onEditorChange?.(editor);
+        const currentPluginEditor = pluginEditorRef.current;
+        if (currentPluginEditor) {
+          for (const plugin of plugins) {
+            plugin.onEditorChange?.(currentPluginEditor);
+          }
         }
 
         const nextContent = serialize(value as InkwellElement[]);
         if (collaboration) {
-          // In collab mode, always fire onChange (no echo prevention needed)
+          if (suppressImperativeOnChange.current) return;
           onChange?.(nextContent);
         } else {
           // In standalone mode, prevent echo loops
@@ -431,11 +370,13 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         characterCount,
         characterLimit,
         overLimit,
+        isEnforcingCharacterLimit: enforceCharacterLimit,
       };
     }, [
       characterCount,
       characterLimit,
       editable,
+      enforceCharacterLimit,
       editor,
       isFocused,
       overLimit,
@@ -451,7 +392,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       }
       if (content === lastContent.current) return;
 
-      const newValue = deserialize(content, resolvedDecorations);
+      const newValue = deserialize(content, resolvedFeatures);
       replaceEditorChildren(editor, newValue, true);
 
       // Reset selection to start to avoid stale selection errors
@@ -465,7 +406,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       collaboration,
       content,
       editor,
-      resolvedDecorations,
+      resolvedFeatures,
       updateCharacterCount,
     ]);
 
@@ -512,7 +453,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     //    character or modifier combo and stores the matched plugin in
     //    `activePlugin`.
     // 2. Self-claimed (e.g. slash commands): the plugin's `onKeyDown` calls
-    //    `setActivePlugin` from the keydown context. This is necessary for
+    //    `activate` from the keydown context. This is necessary for
     //    plugins that conditionally activate based on context (only at the
     //    start of a blank line, etc.) without consuming a single global
     //    trigger character.
@@ -616,10 +557,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     );
 
     const replaceContent = useCallback(
-      (content: string, options?: InkwellSetContentOptions) => {
+      (
+        content: string,
+        options?: { select?: "start" | "end" | "preserve" },
+      ) => {
         const select = options?.select ?? "start";
-        const newValue = deserialize(content, resolvedDecorations);
+        const newValue = deserialize(content, resolvedFeatures);
 
+        suppressImperativeOnChange.current = true;
         replaceEditorChildren(editor, newValue, true);
         updateCharacterCount();
         bumpStateVersion();
@@ -628,11 +573,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         const nextContent = serializeContent();
         lastContent.current = nextContent;
         editor.onChange();
+        queueMicrotask(() => {
+          suppressImperativeOnChange.current = false;
+        });
       },
       [
         bumpStateVersion,
         editor,
-        resolvedDecorations,
+        resolvedFeatures,
         selectEditor,
         serializeContent,
         updateCharacterCount,
@@ -648,7 +596,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         setContent: replaceContent,
         insertContent: content => {
           focusEditor();
-          const nodes = deserialize(content, resolvedDecorations);
+          const nodes = deserialize(content, resolvedFeatures);
           Transforms.insertFragment(editor, nodes);
         },
       }),
@@ -657,7 +605,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         focusEditor,
         getEditorState,
         replaceContent,
-        resolvedDecorations,
+        resolvedFeatures,
         serializeContent,
       ],
     );
@@ -751,55 +699,244 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     const insertTextAtCursor = useCallback(
       (text: string) => {
         ReactEditor.focus(editor);
-        const nodes = deserialize(text);
+        const nodes = deserialize(text, resolvedFeatures);
         // Use insertFragment to merge the first node into the current block
         // instead of splitting and creating a blank line
         Transforms.insertFragment(editor, nodes);
       },
+      [editor, resolvedFeatures],
+    );
+
+    const getCurrentBlockPath = useCallback(() => {
+      const { selection } = editor;
+      if (!selection || !Range.isCollapsed(selection)) return null;
+      return selection.anchor.path.slice(0, 1);
+    }, [editor]);
+
+    const getRangeContent = useCallback(
+      (range: Range) => {
+        try {
+          return Editor.string(editor, range);
+        } catch {
+          return null;
+        }
+      },
       [editor],
     );
 
+    const getCurrentBlockContent = useCallback(() => {
+      const path = getCurrentBlockPath();
+      if (!path) return null;
+      try {
+        return Editor.string(editor, path);
+      } catch {
+        return null;
+      }
+    }, [editor, getCurrentBlockPath]);
+
+    const getCurrentBlockContentBeforeCursor = useCallback(() => {
+      const { selection } = editor;
+      if (!selection || !Range.isCollapsed(selection)) return null;
+      const anchor = selection.anchor;
+      return getRangeContent({
+        anchor: { path: anchor.path, offset: 0 },
+        focus: anchor,
+      });
+    }, [editor, getRangeContent]);
+
+    const replaceCurrentBlockContent = useCallback(
+      (nextContent: string) => {
+        const path = getCurrentBlockPath();
+        if (!path) return;
+        const start = Editor.start(editor, path);
+        const end = Editor.end(editor, path);
+        Transforms.select(editor, { anchor: start, focus: end });
+        Transforms.insertText(editor, nextContent);
+        Transforms.select(editor, Editor.end(editor, path));
+      },
+      [editor, getCurrentBlockPath],
+    );
+
+    const clearCurrentBlock = useCallback(() => {
+      const path = getCurrentBlockPath();
+      if (!path) return;
+      try {
+        const start = Editor.start(editor, path);
+        const end = Editor.end(editor, path);
+        Transforms.select(editor, { anchor: start, focus: end });
+        Transforms.delete(editor);
+        editor.onChange();
+      } catch {
+        // The block may have already been removed by an external edit.
+      }
+    }, [editor, getCurrentBlockPath]);
+
+    const insertImage = useCallback(
+      (image: { id?: string; url: string; alt: string }) => {
+        const id = image.id ?? generateId();
+        Transforms.insertNodes(editor, {
+          type: "image",
+          id,
+          url: image.url,
+          alt: image.alt,
+          children: [{ text: "" }],
+        } satisfies InkwellElement);
+        return id;
+      },
+      [editor],
+    );
+
+    const updateImage = useCallback(
+      (id: string, image: { url?: string; alt?: string }) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (
+            Editor.isEditor(node) ||
+            !("type" in node) ||
+            node.type !== "image" ||
+            node.id !== id
+          ) {
+            continue;
+          }
+          Transforms.setNodes(editor, image, { at: path });
+          break;
+        }
+      },
+      [editor],
+    );
+
+    const removeImage = useCallback(
+      (id: string) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (
+            Editor.isEditor(node) ||
+            !("type" in node) ||
+            node.type !== "image" ||
+            node.id !== id
+          ) {
+            continue;
+          }
+          Transforms.removeNodes(editor, { at: path });
+          break;
+        }
+      },
+      [editor],
+    );
+
+    const pluginEditorImplRef = useRef<InkwellPluginEditor | null>(null);
+    const getPluginEditorImpl = useCallback(() => {
+      const impl = pluginEditorImplRef.current;
+      if (!impl) throw new Error("Inkwell plugin editor is not ready");
+      return impl;
+    }, []);
+    const pluginEditor = useMemo<InkwellPluginEditor>(
+      () => ({
+        getState: () => getPluginEditorImpl().getState(),
+        isEmpty: () => getPluginEditorImpl().isEmpty(),
+        focus: options => getPluginEditorImpl().focus(options),
+        clear: options => getPluginEditorImpl().clear(options),
+        setContent: (content, options) =>
+          getPluginEditorImpl().setContent(content, options),
+        insertContent: content => getPluginEditorImpl().insertContent(content),
+        getContentBeforeCursor: () =>
+          getPluginEditorImpl().getContentBeforeCursor(),
+        getCurrentBlockContent: () =>
+          getPluginEditorImpl().getCurrentBlockContent(),
+        getCurrentBlockContentBeforeCursor: () =>
+          getPluginEditorImpl().getCurrentBlockContentBeforeCursor(),
+        replaceCurrentBlockContent: content =>
+          getPluginEditorImpl().replaceCurrentBlockContent(content),
+        clearCurrentBlock: () => getPluginEditorImpl().clearCurrentBlock(),
+        wrapSelection: (before, after) =>
+          getPluginEditorImpl().wrapSelection(before, after),
+        insertImage: image => getPluginEditorImpl().insertImage(image),
+        updateImage: (id, image) =>
+          getPluginEditorImpl().updateImage(id, image),
+        removeImage: id => getPluginEditorImpl().removeImage(id),
+      }),
+      [getPluginEditorImpl],
+    );
+
+    pluginEditorImplRef.current = {
+      getState: getEditorState,
+      isEmpty: () => serializeContent().trim().length === 0,
+      focus: focusEditor,
+      clear: options => replaceContent("", options),
+      setContent: replaceContent,
+      insertContent: insertTextAtCursor,
+      getContentBeforeCursor: () => {
+        const { selection } = editor;
+        if (!selection || !Range.isCollapsed(selection)) return null;
+        return getRangeContent({
+          anchor: Editor.start(editor, []),
+          focus: selection.anchor,
+        });
+      },
+      getCurrentBlockContent,
+      getCurrentBlockContentBeforeCursor,
+      replaceCurrentBlockContent,
+      clearCurrentBlock,
+      wrapSelection,
+      insertImage,
+      updateImage,
+      removeImage,
+    };
+
+    useEffect(() => {
+      const { insertData } = editor;
+      editor.insertData = (data: DataTransfer) => {
+        const baseContext = {
+          editor: pluginEditor,
+          insertData,
+        };
+
+        for (const plugin of plugins) {
+          if (plugin.onInsertData?.(data, baseContext)) return;
+        }
+
+        insertData(data);
+      };
+
+      const cleanups: Array<() => void> = [];
+      for (const plugin of plugins) {
+        if (!plugin.setup) continue;
+        const cleanup = plugin.setup(pluginEditor);
+        if (typeof cleanup === "function") cleanups.push(cleanup);
+      }
+
+      return () => {
+        editor.insertData = insertData;
+        for (let i = cleanups.length - 1; i >= 0; i--) cleanups[i]();
+      };
+    }, [editor, plugins, pluginEditor, wrapSelection]);
+
+    pluginEditorRef.current = pluginEditor;
+
     const dismissPlugin = useCallback(() => {
+      activePluginRef.current = null;
       setActivePluginState(null);
       activePluginQueryRef.current = "";
       setActivePluginQuery("");
       ReactEditor.focus(editor);
     }, [editor]);
 
-    // `setActivePlugin` is exposed through `PluginKeyDownContext` so plugins
-    // (e.g. slash commands) can claim activation without a global trigger.
-    // The ref is updated synchronously so the keydown loop can short-circuit
-    // trigger matching as soon as a plugin claims activation in the same
-    // event tick.
-    const setActivePluginFromCtx = useCallback<
-      PluginKeyDownContext["setActivePlugin"]
-    >(
-      descriptor => {
-        if (!descriptor) {
-          activePluginRef.current = null;
-          dismissPlugin();
-          return;
-        }
-        const plugin = plugins.find(p => p.name === descriptor.name);
-        if (!plugin) return;
-        const initialQuery = descriptor.query ?? "";
+    const activatePlugin = useCallback(
+      (plugin: InkwellPlugin, options?: { query?: string }) => {
+        const initialQuery = options?.query ?? "";
         activePluginQueryRef.current = initialQuery;
         setActivePluginQuery(initialQuery);
         pluginPositionRef.current = getCursorPosition();
         activePluginRef.current = plugin;
         setActivePluginState(plugin);
       },
-      [dismissPlugin, getCursorPosition, plugins],
+      [getCursorPosition],
     );
 
     const handlePluginSelect = useCallback(
       (text: string) => {
-        const triggerKey = activePlugin?.trigger?.key;
+        const activation = activePlugin?.activation;
+        const triggerKey =
+          activation?.type === "trigger" ? activation.key : undefined;
         const isCharTrigger = triggerKey && !triggerKey.includes("+");
-        // Capture the query length *before* dismissing — dismiss clears
-        // the ref, and the rAF-deferred delete below needs to remove the
-        // trigger plus every query character the user typed into the
-        // editor while the picker was open.
         const queryLength = activePluginQueryRef.current.length;
         dismissPlugin();
         requestAnimationFrame(() => {
@@ -817,13 +954,8 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       [dismissPlugin, insertTextAtCursor, activePlugin, editor],
     );
 
-    // A plugin's `active` flag is true when the plugin is the current
-    // editor-active plugin. Plugins with a `trigger` (mentions, emoji,
-    // snippets) or that opt in with `activatable: true` (slash commands)
-    // only render while active. Always-on plugins (bubble menu, attachments,
-    // completions) leave both undefined and receive `active: true`.
     const isActivatablePlugin = (plugin: InkwellPlugin) =>
-      Boolean(plugin.trigger || plugin.activatable);
+      (plugin.activation?.type ?? "always") !== "always";
     const makePluginProps = (plugin: InkwellPlugin) => ({
       active: isActivatablePlugin(plugin) ? activePlugin === plugin : true,
       query: activePlugin === plugin ? activePluginQuery : "",
@@ -831,16 +963,19 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       onDismiss: dismissPlugin,
       position: pluginPositionRef.current,
       editorRef: editorElRef,
+      editor: pluginEditor,
       wrapSelection,
       subscribeForwardedKey: subscribeForwardedKeyFor(plugin.name),
     });
 
-    const keyDownContext = useMemo<PluginKeyDownContext>(
-      () => ({
+    const makeKeyDownContext = useCallback(
+      (plugin: InkwellPlugin): PluginKeyDownContext => ({
+        editor: pluginEditor,
         wrapSelection,
-        setActivePlugin: setActivePluginFromCtx,
+        activate: options => activatePlugin(plugin, options),
+        dismiss: dismissPlugin,
       }),
-      [wrapSelection, setActivePluginFromCtx],
+      [activatePlugin, dismissPlugin, pluginEditor, wrapSelection],
     );
 
     const handleKeyDown = useCallback(
@@ -857,8 +992,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           // Calling `event.preventDefault()` consumes the key entirely.
           const activeResult = activePlugin.onActiveKeyDown?.(
             event,
-            { ...keyDownContext, dismiss: dismissPlugin },
-            editor,
+            makeKeyDownContext(activePlugin),
           );
           if (activeResult === false) {
             dismissPlugin();
@@ -913,11 +1047,11 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
 
         // Dispatch to plugin onKeyDown handlers. Short-circuit if a plugin
         // calls preventDefault so trigger matching doesn't run for the same event.
-        // A plugin that calls `ctx.setActivePlugin(...)` here claims activation;
+        // A plugin that calls `ctx.activate(...)` here claims activation;
         // subsequent plugins still get a chance to run unless preventDefault was
         // called.
         for (const plugin of plugins) {
-          plugin.onKeyDown?.(event, keyDownContext, editor);
+          plugin.onKeyDown?.(event, makeKeyDownContext(plugin));
           if (event.defaultPrevented) return;
           // If the keydown handler claimed activation, stop further matching
           // so the same event doesn't also fire a trigger.
@@ -932,10 +1066,10 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
 
         // Check plugin triggers
         for (const plugin of plugins) {
-          const t = plugin.trigger;
-          if (!t) continue;
+          const activation = plugin.activation;
+          if (activation?.type !== "trigger") continue;
 
-          const parts = t.key
+          const parts = activation.key
             .toLowerCase()
             .split("+")
             .map(s => s.trim());
@@ -957,14 +1091,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
             : !event.ctrlKey && !event.metaKey;
 
           if (keyMatch && modMatch) {
-            if (plugin.shouldTrigger && !plugin.shouldTrigger(event, editor)) {
+            if (
+              plugin.shouldTrigger &&
+              !plugin.shouldTrigger(event, makeKeyDownContext(plugin))
+            ) {
               continue;
             }
             if (hasModifiers) event.preventDefault();
-            activePluginQueryRef.current = "";
-            setActivePluginQuery("");
-            pluginPositionRef.current = getCursorPosition();
-            setActivePluginState(plugin);
+            activatePlugin(plugin);
             return;
           }
         }
@@ -985,7 +1119,8 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         editor,
         getCursorPosition,
         dismissPlugin,
-        keyDownContext,
+        makeKeyDownContext,
+        activatePlugin,
         emitForwardedKey,
         submitOnEnter,
         onSubmit,
@@ -993,21 +1128,10 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       ],
     );
 
-    // The toast is visible whenever the document has hit the limit. With
-    // `enforceCharacterLimit` the count never exceeds the limit, so we also
-    // surface the toast at exactly the limit so the user gets feedback when
-    // their typing is being blocked. Without enforcement we only show it
-    // once the user has actually gone over.
-    const showLimitToast =
-      limitToast !== false &&
-      characterLimit !== undefined &&
-      (overLimit ||
-        (enforceCharacterLimit && characterCount >= characterLimit));
-
     const pluginPlaceholder = plugins.reduce<InkwellPluginPlaceholder | null>(
       (value, plugin) => {
         if (value) return value;
-        const nextPlaceholder = plugin.getPlaceholder?.(editor) ?? null;
+        const nextPlaceholder = plugin.getPlaceholder?.(pluginEditor) ?? null;
         if (!nextPlaceholder) return null;
         return typeof nextPlaceholder === "string"
           ? { text: nextPlaceholder }
@@ -1038,15 +1162,9 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     return (
       <div
         ref={wrapperRef}
-        className={`inkwell-editor-wrapper${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}`}
+        className={`inkwell-editor-wrapper${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}${classNames?.root ? ` ${classNames.root}` : ""}`}
+        style={styles?.root}
       >
-        {showLimitToast && characterLimit !== undefined && (
-          <LimitToast
-            count={characterCount}
-            limit={characterLimit}
-            enforced={enforceCharacterLimit}
-          />
-        )}
         {activePlugin && (
           <div
             className="inkwell-plugin-backdrop"
@@ -1061,7 +1179,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         )}
         {plugins.map(plugin => {
           const props = makePluginProps(plugin);
-          if (!props.active) return null;
+          if (!props.active || !plugin.render) return null;
           return <Fragment key={plugin.name}>{plugin.render(props)}</Fragment>;
         })}
         <Slate
@@ -1071,8 +1189,8 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         >
           <Editable
             ref={editorElRef}
-            className="inkwell-editor"
-            style={style}
+            className={`inkwell-editor${classNames?.editor ? ` ${classNames.editor}` : ""}`}
+            style={styles?.editor}
             renderElement={RenderElement}
             renderLeaf={RenderLeaf}
             decorate={decorate}

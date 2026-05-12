@@ -12,7 +12,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginRenderProps, SubscribeForwardedKey } from "../types";
+import type {
+  InkwellPluginEditor,
+  PluginRenderProps,
+  SubscribeForwardedKey,
+} from "../types";
 import { PluginMenuPrimitive, pluginPickerClass } from "./plugin-picker";
 
 interface Item {
@@ -30,6 +34,35 @@ const ITEMS: Item[] = [
  * Build a controllable forwarded-key channel for tests. The picker
  * subscribes through props — tests drive keys by calling `emit`.
  */
+
+function createPluginEditor(): InkwellPluginEditor {
+  return {
+    getState: () => ({
+      content: "",
+      isEmpty: true,
+      isFocused: false,
+      isEditable: true,
+      characterCount: 0,
+      overLimit: false,
+      isEnforcingCharacterLimit: false,
+    }),
+    isEmpty: () => true,
+    focus: () => {},
+    clear: () => {},
+    setContent: () => {},
+    insertContent: () => {},
+    getContentBeforeCursor: () => "",
+    getCurrentBlockContent: () => "",
+    getCurrentBlockContentBeforeCursor: () => "",
+    replaceCurrentBlockContent: () => {},
+    clearCurrentBlock: () => {},
+    wrapSelection: () => {},
+    insertImage: () => "image-id",
+    updateImage: () => {},
+    removeImage: () => {},
+  };
+}
+
 function createForwardedKeyChannel(): {
   subscribe: SubscribeForwardedKey;
   emit: (key: string) => void;
@@ -59,6 +92,7 @@ function baseProps(
     wrapSelection: vi.fn(),
     subscribeForwardedKey: () => () => {},
     ...overrides,
+    editor: overrides.editor ?? createPluginEditor(),
   };
 }
 

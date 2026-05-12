@@ -6,14 +6,12 @@ import {
   createMentionsPlugin,
   createSlashCommandsPlugin,
   createSnippetsPlugin,
-  deserialize,
+  InkwellEditor,
   type InkwellPlugin,
   InkwellRenderer,
   type MentionItem,
   type MentionRenderer,
-  useInkwell,
 } from "@railway/inkwell";
-import { slateNodesToInsertDelta } from "@slate-yjs/core";
 import {
   Component,
   type ErrorInfo,
@@ -904,17 +902,12 @@ Inkwell is a Markdown editor and renderer for React with an extensible plugin sy
 ## Example
 
 \`\`\`typescript
-import { useInkwell } from "@railway/inkwell";
+import { InkwellEditor } from "@railway/inkwell";
 import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello");
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-  });
-
-  return <EditorInstance />;
+  return <InkwellEditor content={content} onChange={setContent} />;
 }
 \`\`\``;
 
@@ -986,13 +979,7 @@ function useCollab(name: string, color: string) {
       setStatus(s as "connecting" | "connected" | "disconnected");
     });
 
-    provider.on("sync", (synced: boolean) => {
-      if (synced && sharedType.length === 0) {
-        const nodes = deserialize(COLLAB_INITIAL_CONTENT);
-        const delta = slateNodesToInsertDelta(nodes);
-        sharedType.applyDelta(delta);
-      }
-    });
+    provider.on("sync", () => {});
 
     // Track connected peers via awareness
     const updatePeerCount = () => {
@@ -1108,15 +1095,15 @@ function ConnectedCollabEditor({
   collaboration: CollaborationConfig;
   bubbleMenu: boolean;
 }) {
-  const { EditorInstance } = useInkwell({
-    content: INITIAL_MARKDOWN,
-    collaboration,
-    placeholder: "Start collaborating...",
-    bubbleMenu,
-    style: { minHeight: "100%", width: "100%" },
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content={COLLAB_INITIAL_CONTENT}
+      collaboration={collaboration}
+      placeholder="Start collaborating..."
+      bubbleMenu={bubbleMenu}
+      styles={{ editor: { minHeight: "100%", width: "100%" } }}
+    />
+  );
 }
 
 type Tab = "editor" | "preview" | "collab";
@@ -1249,17 +1236,19 @@ export function Demo() {
       ),
     [enabledPluginIds],
   );
-  const { EditorInstance } = useInkwell({
-    content: editorContent,
-    onChange: setEditorContent,
-    placeholder: "Start writing Markdown...",
-    plugins: selectedPlugins,
-    bubbleMenu: bubbleMenuEnabled,
-    characterLimit,
-    enforceCharacterLimit,
-    onCharacterCount: setCharacterCount,
-    style: { minHeight: "100%", width: "100%" },
-  });
+  const editor = (
+    <InkwellEditor
+      content={editorContent}
+      onChange={setEditorContent}
+      placeholder="Start writing Markdown..."
+      plugins={selectedPlugins}
+      bubbleMenu={bubbleMenuEnabled}
+      characterLimit={characterLimit}
+      enforceCharacterLimit={enforceCharacterLimit}
+      onCharacterCount={setCharacterCount}
+      styles={{ editor: { minHeight: "100%", width: "100%" } }}
+    />
+  );
 
   return (
     <ErrorBoundary>
@@ -1347,7 +1336,7 @@ export function Demo() {
             overflowY: "auto",
           }}
         >
-          {activeTab === "editor" && <EditorInstance />}
+          {activeTab === "editor" && editor}
           {activeTab === "preview" && (
             <div style={{ padding: "1.5rem" }}>
               <InkwellRenderer

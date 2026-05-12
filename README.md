@@ -20,14 +20,13 @@ pnpm add @railway/inkwell
 
 ```tsx
 import "@railway/inkwell/styles.css";
-import { useInkwell } from "@railway/inkwell";
+import { InkwellEditor } from "@railway/inkwell";
 import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello **world**");
-  const { EditorInstance } = useInkwell({ content, onChange: setContent });
 
-  return <EditorInstance />;
+  return <InkwellEditor content={content} onChange={setContent} />;
 }
 ```
 

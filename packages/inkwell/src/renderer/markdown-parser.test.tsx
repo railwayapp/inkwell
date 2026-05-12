@@ -193,8 +193,10 @@ describe("parseMarkdown", () => {
 
   it("accepts custom component overrides", () => {
     const result = parseMarkdown("# Test", {
-      h1: (props: { children?: ReactNode }) => {
-        return `custom:${props.children}` as unknown as ReactNode;
+      components: {
+        h1: (props: { children?: ReactNode }) => {
+          return `custom:${props.children}` as unknown as ReactNode;
+        },
       },
     });
     // The custom component should be used in place of the default h1
@@ -267,12 +269,14 @@ describe("parseMarkdown", () => {
     it("replaces matching text with the resolved node", () => {
       const { container } = render(
         <>
-          {parseMarkdown("hello @snippet[123] world", undefined, undefined, [
-            {
-              pattern: /@snippet\[([^\]]+)\]/,
-              resolve: match => `<snippet ${match[1]}>`,
-            },
-          ])}
+          {parseMarkdown("hello @snippet[123] world", {
+            mentions: [
+              {
+                pattern: /@snippet\[([^\]]+)\]/,
+                resolve: match => `<snippet ${match[1]}>`,
+              },
+            ],
+          })}
         </>,
       );
       expect(container.textContent).toBe("hello <snippet 123> world");
@@ -281,12 +285,14 @@ describe("parseMarkdown", () => {
     it("resolves multiple matches in a single text node", () => {
       const { container } = render(
         <>
-          {parseMarkdown("a @u[1] b @u[2] c", undefined, undefined, [
-            {
-              pattern: /@u\[(\d+)\]/,
-              resolve: match => `U${match[1]}`,
-            },
-          ])}
+          {parseMarkdown("a @u[1] b @u[2] c", {
+            mentions: [
+              {
+                pattern: /@u\[(\d+)\]/,
+                resolve: match => `U${match[1]}`,
+              },
+            ],
+          })}
         </>,
       );
       expect(container.textContent).toBe("a U1 b U2 c");
@@ -295,12 +301,14 @@ describe("parseMarkdown", () => {
     it("leaves text without matches unchanged", () => {
       const { container } = render(
         <>
-          {parseMarkdown("no mentions here", undefined, undefined, [
-            {
-              pattern: /@x\[(\d+)\]/,
-              resolve: () => "MATCH",
-            },
-          ])}
+          {parseMarkdown("no mentions here", {
+            mentions: [
+              {
+                pattern: /@x\[(\d+)\]/,
+                resolve: () => "MATCH",
+              },
+            ],
+          })}
         </>,
       );
       expect(container.textContent).toBe("no mentions here");
@@ -309,12 +317,14 @@ describe("parseMarkdown", () => {
     it("resolves matches inside inline code (documents current behavior)", () => {
       const { container } = render(
         <>
-          {parseMarkdown("before `@snippet[9]` after", undefined, undefined, [
-            {
-              pattern: /@snippet\[(\d+)\]/,
-              resolve: match => `[S${match[1]}]`,
-            },
-          ])}
+          {parseMarkdown("before `@snippet[9]` after", {
+            mentions: [
+              {
+                pattern: /@snippet\[(\d+)\]/,
+                resolve: match => `[S${match[1]}]`,
+              },
+            ],
+          })}
         </>,
       );
       expect(container.textContent).toBe("before [S9] after");
@@ -323,14 +333,16 @@ describe("parseMarkdown", () => {
     it("supports resolvers that return JSX nodes", () => {
       const { container } = render(
         <>
-          {parseMarkdown("hi @u[42] there", undefined, undefined, [
-            {
-              pattern: /@u\[(\d+)\]/,
-              resolve: match => (
-                <strong data-testid="mention">user-{match[1]}</strong>
-              ),
-            },
-          ])}
+          {parseMarkdown("hi @u[42] there", {
+            mentions: [
+              {
+                pattern: /@u\[(\d+)\]/,
+                resolve: match => (
+                  <strong data-testid="mention">user-{match[1]}</strong>
+                ),
+              },
+            ],
+          })}
         </>,
       );
       const mention = container.querySelector("[data-testid=mention]");
@@ -341,16 +353,18 @@ describe("parseMarkdown", () => {
     it("handles overlapping patterns by preferring the first registered", () => {
       const { container } = render(
         <>
-          {parseMarkdown("@x[1]", undefined, undefined, [
-            {
-              pattern: /@x\[1\]/,
-              resolve: () => "A",
-            },
-            {
-              pattern: /@x\[1\]/,
-              resolve: () => "B",
-            },
-          ])}
+          {parseMarkdown("@x[1]", {
+            mentions: [
+              {
+                pattern: /@x\[1\]/,
+                resolve: () => "A",
+              },
+              {
+                pattern: /@x\[1\]/,
+                resolve: () => "B",
+              },
+            ],
+          })}
         </>,
       );
       expect(container.textContent).toBe("A");

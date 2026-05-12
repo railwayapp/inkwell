@@ -1,5 +1,4 @@
 import type {
-  ComponentType,
   CSSProperties,
   JSX,
   KeyboardEvent as ReactKeyboardEvent,
@@ -9,7 +8,6 @@ import type {
 import type { Plugin } from "unified";
 import type { Awareness } from "y-protocols/awareness";
 import type { XmlText as YXmlText } from "yjs";
-import type { InkwellEditor } from "./editor/slate/types";
 
 // biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
 type RehypePlugin = Plugin<any[], any>;
@@ -18,9 +16,6 @@ export type RehypePluginConfig =
   | RehypePlugin
   | [RehypePlugin, Record<string, unknown>];
 
-/**
- * Props for the InkwellEditor component.
- */
 export interface InkwellEditorState {
   /** Current source content. Markdown syntax is part of the content. */
   content: string;
@@ -36,16 +31,13 @@ export interface InkwellEditorState {
   characterLimit?: number;
   /** True when characterCount exceeds characterLimit. */
   overLimit: boolean;
+  /** True when input past characterLimit is blocked. */
+  isEnforcingCharacterLimit: boolean;
 }
 
 export interface InkwellEditorFocusOptions {
   /** Where to place the caret after focusing. Defaults to preserving selection. */
   at?: "start" | "end";
-}
-
-export interface InkwellSetContentOptions {
-  /** Where to place the caret after replacing content. Defaults to "start". */
-  select?: "start" | "end" | "preserve";
 }
 
 export interface InkwellPluginPlaceholder {
@@ -55,153 +47,136 @@ export interface InkwellPluginPlaceholder {
   hint?: string;
 }
 
+type InkwellContentSelectionOptions = {
+  select?: "start" | "end" | "preserve";
+};
+
 export interface InkwellEditorHandle {
   /** Return a snapshot of current editor state. */
   getState: () => InkwellEditorState;
   /** Focus the editor and optionally move the caret. */
   focus: (options?: InkwellEditorFocusOptions) => void;
-  /** Replace the document with empty content. */
-  clear: (options?: InkwellSetContentOptions) => void;
-  /** Replace the current document content. */
-  setContent: (content: string, options?: InkwellSetContentOptions) => void;
+  /** Replace the document with empty content without calling onChange. */
+  clear: (options?: InkwellContentSelectionOptions) => void;
+  /** Replace the current document content without calling onChange. */
+  setContent: (
+    content: string,
+    options?: InkwellContentSelectionOptions,
+  ) => void;
   /** Insert content at the current selection. */
   insertContent: (content: string) => void;
 }
 
-export type InkwellEditorController = InkwellEditorHandle;
+export interface InkwellEditorClassNames {
+  /** Class added to the root wrapper. */
+  root?: string;
+  /** Class added to the editable surface. */
+  editor?: string;
+}
+
+export interface InkwellEditorStyles {
+  /** Inline styles applied to the root wrapper. */
+  root?: CSSProperties;
+  /** Inline styles applied to the editable surface. */
+  editor?: CSSProperties;
+}
+
+export interface InkwellHeadingFeatures {
+  h1?: boolean;
+  h2?: boolean;
+  h3?: boolean;
+  h4?: boolean;
+  h5?: boolean;
+  h6?: boolean;
+}
+
+/** Controls which Markdown features the editor recognizes. */
+export interface InkwellFeatures {
+  /** Recognize heading markers. Pass per-level overrides for granular control. */
+  headings?: boolean | InkwellHeadingFeatures;
+  /** Recognize unordered, ordered, and indented list items. */
+  lists?: boolean;
+  /** Recognize `> ` as blockquotes. */
+  blockquotes?: boolean;
+  /** Recognize fenced code blocks. */
+  codeBlocks?: boolean;
+  /** Recognize standalone image syntax as block images. */
+  images?: boolean;
+}
+
+export interface ResolvedInkwellFeatures {
+  heading1: boolean;
+  heading2: boolean;
+  heading3: boolean;
+  heading4: boolean;
+  heading5: boolean;
+  heading6: boolean;
+  lists: boolean;
+  blockquotes: boolean;
+  codeBlocks: boolean;
+  images: boolean;
+}
 
 export interface InkwellEditorProps {
-  /**
-   * Source content string. Markdown syntax is part of the content.
-   */
-  content: string;
-  /**
-   * Called with source content on every document change.
-   */
+  /** Source content string. Markdown syntax is part of the content. */
+  content?: string;
+  /** Called with source content on every document change. */
   onChange?: (content: string) => void;
-  /**
-   * Called with a full editor state snapshot whenever content, focus, or editability changes.
-   */
+  /** Called with a full editor state snapshot whenever content, focus, or editability changes. */
   onStateChange?: (state: InkwellEditorState) => void;
-  /**
-   * Additional CSS class for the wrapper element
-   */
+  /** Additional CSS class for the root wrapper. Alias for `classNames.root`. */
   className?: string;
-  /**
-   * Inline styles applied to the editable surface.
-   */
-  style?: CSSProperties;
-  /**
-   * Placeholder text shown when editor is empty
-   */
+  /** Additional CSS classes for editor slots. */
+  classNames?: InkwellEditorClassNames;
+  /** Inline styles for editor slots. */
+  styles?: InkwellEditorStyles;
+  /** Placeholder text shown when editor is empty. */
   placeholder?: string;
-  /**
-   * Whether users can edit the document. Defaults to true.
-   */
+  /** Whether users can edit the document. Defaults to true. */
   editable?: boolean;
-  /**
-   * Editor plugins (bubble toolbar, snippets, custom)
-   */
+  /** Editor plugins. */
   plugins?: InkwellPlugin[];
-  /**
-   * Custom rehype plugins for the syntax highlighting pipeline
-   */
+  /** Custom rehype plugins for the syntax highlighting pipeline. */
   rehypePlugins?: RehypePluginConfig[];
-  /**
-   * Configure which block-level decorations the editor recognizes. All enabled by default.
-   */
-  decorations?: InkwellDecorations;
-  /**
-   * Enable real-time collaborative editing via Yjs
-   */
+  /** Configure which Markdown features the editor recognizes. */
+  features?: InkwellFeatures;
+  /** Enable real-time collaborative editing via Yjs. */
   collaboration?: CollaborationConfig;
-  /**
-   * Include the built-in bubble menu plugin (default: true). Pass `false` to
-   * disable the built-in toolbar; consumers can still add their own via `plugins`.
-   */
+  /** Include the built-in bubble menu plugin. Defaults to true. */
   bubbleMenu?: boolean;
-  /**
-   * Maximum number of characters the editor should track. When set, the
-   * wrapper receives `.inkwell-editor-over-limit` whenever the document
-   * length exceeds the limit.
-   */
+  /** Maximum number of characters the editor should track. */
   characterLimit?: number;
-  /**
-   * When true and a `characterLimit` is set, the editor blocks text input
-   * past the limit (default: false — the library only reports counts).
-   */
+  /** When true and a characterLimit is set, the editor blocks input past the limit. */
   enforceCharacterLimit?: boolean;
-  /**
-   * Called on every document change with the current character count and
-   * the configured limit (if any).
-   */
+  /** Called on every document change with the current character count and configured limit. */
   onCharacterCount?: (count: number, limit?: number) => void;
-  /**
-   * Show the built-in toast at the top-right of the editor when
-   * `characterCount > characterLimit`. When `enforceCharacterLimit` is true,
-   * the toast also shows at exactly the limit because further typing is
-   * blocked. Has no effect unless `characterLimit` is set. Default: `true`.
-   *
-   * Set to `false` to render your own indicator instead (e.g. via
-   * `onCharacterCount`). The toast is styled by `.inkwell-editor-limit-toast`.
-   */
-  limitToast?: boolean;
-  /**
-   * When true, Enter submits the editor instead of inserting a newline.
-   * Shift+Enter still inserts a newline. Default: false.
-   */
+  /** When true, Enter submits the editor instead of inserting a newline. */
   submitOnEnter?: boolean;
-  /**
-   * Called when submitOnEnter handles Enter.
-   */
+  /** Called when submitOnEnter handles Enter. */
   onSubmit?: (content: string) => void;
 }
 
-export type UseInkwellOptions = InkwellEditorProps;
-
-export interface UseInkwellResult {
-  /** Current editor state snapshot. */
-  state: InkwellEditorState;
-  /** Grouped editor controller for focus, content replacement, insertion, and inspection. */
-  editor: InkwellEditorController;
-  /** Stable component that renders the configured editor. Render once per hook call. */
-  EditorInstance: ComponentType;
-}
-
-/**
- * Props for the InkwellRenderer component.
- */
 export interface InkwellRendererProps {
-  /**
-   * Markdown content string
-   */
+  /** Markdown source content string. */
   content: string;
-  /**
-   * Additional CSS class for the wrapper element
-   */
+  /** Additional CSS class for the wrapper element. */
   className?: string;
-  /**
-   * Custom component overrides for rendered markdown elements
-   */
+  /** Custom component overrides for rendered markdown elements. */
   components?: InkwellComponents;
-  /**
-   * Custom rehype plugins for the markdown pipeline
-   */
+  /** Custom rehype plugins for the markdown pipeline. */
   rehypePlugins?: RehypePluginConfig[];
-  /**
-   * Show a copy button on fenced code blocks (default: true)
-   */
+  /** Show a copy button on fenced code blocks (default: true). */
   copyButton?: boolean;
-  /**
-   * Mention patterns to expand in rendered text. Each entry splits text nodes
-   * on the pattern and replaces each match with the result of `resolve`.
-   */
+  /** Mention patterns to expand in rendered text. */
   mentions?: MentionRenderer[];
 }
 
-/**
- * Text-level mention replacement used by InkwellRenderer.
- */
+export interface ParseMarkdownOptions {
+  components?: InkwellComponents;
+  rehypePlugins?: RehypePluginConfig[];
+  mentions?: MentionRenderer[];
+}
+
 export interface MentionRenderer {
   /** Regular expression applied to text-node content. */
   pattern: RegExp;
@@ -209,288 +184,137 @@ export interface MentionRenderer {
   resolve: (match: RegExpExecArray) => ReactNode;
 }
 
-/**
- * Map of HTML element names to custom React components
- */
 export type InkwellComponents = Partial<{
   [K in keyof JSX.IntrinsicElements]: (
     props: JSX.IntrinsicElements[K] & { children?: ReactNode },
   ) => ReactNode;
 }>;
 
-/**
- * Keyboard trigger for a plugin.
- *
- * Uses tinykeys-style key strings:
- * - `"Control+/"` — modifier combo, prevents default
- * - `"@"` — single character, typed into editor (e.g. for mentions)
- */
-export interface PluginTrigger {
-  /**
-   * Key combo (tinykeys format)
-   */
-  key: string;
-}
+export type InkwellPluginActivation =
+  | { type: "always" }
+  | { type: "trigger"; key: string }
+  | { type: "manual" };
 
-/**
- * Editor-scoped key-forwarding hook. Plugins subscribe to receive
- * keystrokes that the editor forwarded while the plugin was active (used
- * by picker UIs that don't own DOM focus while the Slate editable does).
- *
- * Returns an unsubscribe function. Listeners are scoped to the current
- * editor instance — multiple editors on the same page do not cross-talk.
- */
 export type SubscribeForwardedKey = (
   listener: (key: string) => void,
 ) => () => void;
 
-/**
- * Props passed to every plugin's render function on every render
- */
-export interface PluginRenderProps {
-  /**
-   * Whether this plugin is active. Always-on plugins receive `true` every render.
-   */
-  active: boolean;
-  /**
-   * Text typed after the trigger fired
-   */
-  query: string;
-  /**
-   * Insert text into the editor at the current cursor position
-   */
-  onSelect: (text: string) => void;
-  /**
-   * Deactivate this plugin (resets `active` to false)
-   */
-  onDismiss: () => void;
-  /**
-   * Cursor position when the trigger fired
-   */
-  position: { top: number; left: number };
-  /**
-   * Ref to the editor's contenteditable element
-   */
-  editorRef: RefObject<HTMLDivElement | null>;
-  /**
-   * Wrap the current selection with markdown markers
-   */
+export interface InkwellPluginEditor {
+  getState: () => InkwellEditorState;
+  isEmpty: () => boolean;
+  focus: (options?: InkwellEditorFocusOptions) => void;
+  clear: (options?: InkwellContentSelectionOptions) => void;
+  setContent: (
+    content: string,
+    options?: InkwellContentSelectionOptions,
+  ) => void;
+  insertContent: (content: string) => void;
+  getContentBeforeCursor: () => string | null;
+  getCurrentBlockContent: () => string | null;
+  getCurrentBlockContentBeforeCursor: () => string | null;
+  replaceCurrentBlockContent: (content: string) => void;
+  clearCurrentBlock: () => void;
   wrapSelection: (before: string, after: string) => void;
-  /**
-   * Subscribe to editor-forwarded keystrokes for this plugin. Returns an
-   * unsubscribe function. Forwarded keys include navigation keys
-   * (ArrowUp/Down, Enter, Backspace) and typed query characters that the
-   * editor delivered while this plugin was active.
-   */
+  insertImage: (image: { id?: string; url: string; alt: string }) => string;
+  updateImage: (id: string, image: { url?: string; alt?: string }) => void;
+  removeImage: (id: string) => void;
+}
+
+export interface PluginRenderProps {
+  /** Whether this plugin is active. Always-on plugins receive true every render. */
+  active: boolean;
+  /** Content typed after the trigger fired. */
+  query: string;
+  /** Insert content into the editor at the current cursor position. */
+  onSelect: (content: string) => void;
+  /** Deactivate this plugin. */
+  onDismiss: () => void;
+  /** Cursor position when the trigger fired. */
+  position: { top: number; left: number };
+  /** Ref to the editable DOM element. */
+  editorRef: RefObject<HTMLDivElement | null>;
+  /** Narrow editor controller for plugin actions. */
+  editor: InkwellPluginEditor;
+  /** Wrap the current selection with markdown markers. */
+  wrapSelection: (before: string, after: string) => void;
+  /** Subscribe to editor-forwarded keystrokes while this plugin is active. */
   subscribeForwardedKey: SubscribeForwardedKey;
 }
 
-/**
- * Context passed to a plugin's `onKeyDown` handler.
- */
-export interface PluginKeyDownContext {
-  /**
-   * Wrap the current selection with markdown markers
-   */
-  wrapSelection: (before: string, after: string) => void;
-  /**
-   * Claim editor focus for this plugin. Use when a plugin needs to behave
-   * as the "active" plugin without relying on a single-character trigger
-   * (e.g. slash commands). Forwarded editor keystrokes, escape handling,
-   * and trigger-suppression all key off the active plugin.
-   *
-   * Pass the plugin's own name and an empty initial query to activate.
-   * Pass `null` to deactivate.
-   */
-  setActivePlugin: (plugin: { name: string; query?: string } | null) => void;
+export interface PluginInsertDataContext {
+  /** Narrow editor controller for plugin actions. */
+  editor: InkwellPluginEditor;
+  /** Continue with the editor's default paste/drop handling. */
+  insertData: (data: DataTransfer) => void;
 }
 
-/**
- * An Inkwell editor plugin.
- *
- * Always-on plugins are rendered every frame with `active: true`. Plugins with
- * a `trigger`, or plugins that set `activatable: true`, render with
- * `active: true` only while they are the editor's active plugin.
- */
+export interface PluginKeyDownContext {
+  /** Narrow editor controller for plugin actions. */
+  editor: InkwellPluginEditor;
+  /** Wrap the current selection with markdown markers. */
+  wrapSelection: (before: string, after: string) => void;
+  /** Activate the current plugin. */
+  activate: (options?: { query?: string }) => void;
+  /** Dismiss the active plugin. */
+  dismiss: () => void;
+}
+
 export interface InkwellPlugin {
-  /**
-   * Unique plugin name
-   */
+  /** Unique plugin name. */
   name: string;
-  /**
-   * Optional keyboard trigger
-   */
-  trigger?: PluginTrigger;
-  /**
-   * When true, the plugin is only rendered (`props.active === true`) while
-   * it is the editor's active plugin. Plugins with a `trigger` are
-   * activatable by default; non-trigger plugins that claim activation via
-   * `ctx.setActivePlugin` (e.g. slash commands) must opt in explicitly.
-   *
-   * Always-on plugins (bubble menu, attachments, completions) leave this
-   * undefined so they continue to render every frame.
-   */
-  activatable?: boolean;
-  /**
-   * Render the plugin UI. Return `null` when inactive.
-   */
-  render: (props: PluginRenderProps) => ReactNode;
-  /**
-   * Optional dynamic placeholder. The first plugin that returns a value
-   * overrides the editor placeholder.
-   */
+  /** Activation behavior. Defaults to `{ type: "always" }`. */
+  activation?: InkwellPluginActivation;
+  /** Render the plugin UI. Omit for headless plugins. */
+  render?: (props: PluginRenderProps) => ReactNode;
+  /** Optional dynamic placeholder. */
   getPlaceholder?: (
-    editor: InkwellEditor,
+    editor: InkwellPluginEditor,
   ) => string | InkwellPluginPlaceholder | null;
-  /**
-   * Optional guard for character triggers. Return false to let the key type
-   * normally without activating the plugin.
-   */
-  shouldTrigger?: (event: ReactKeyboardEvent, editor: InkwellEditor) => boolean;
-  /**
-   * Optional document-change hook. Runs after Slate document changes are
-   * serialized and editor state is updated.
-   */
-  onEditorChange?: (editor: InkwellEditor) => void;
-  /**
-   * Optional keydown handler. Runs for events on the editor before trigger
-   * matching, and is skipped while another plugin is active. Call
-   * `event.preventDefault()` to stop further dispatch for this event.
-   */
-  onKeyDown?: (
+  /** Optional guard for trigger activation. */
+  shouldTrigger?: (
     event: ReactKeyboardEvent,
     ctx: PluginKeyDownContext,
-    editor: InkwellEditor,
-  ) => void;
-  /**
-   * Optional keydown handler while this plugin is active. Return `false` to
-   * dismiss the plugin and let the key continue into the editor normally.
-   */
+  ) => boolean;
+  /** Optional document-change hook. */
+  onEditorChange?: (editor: InkwellPluginEditor) => void;
+  /** Optional keydown handler. */
+  onKeyDown?: (event: ReactKeyboardEvent, ctx: PluginKeyDownContext) => void;
+  /** Optional keydown handler while this plugin is active. */
   onActiveKeyDown?: (
     event: ReactKeyboardEvent,
-    ctx: PluginKeyDownContext & { dismiss: () => void },
-    editor: InkwellEditor,
+    ctx: PluginKeyDownContext,
   ) => false | void;
-  /**
-   * Optional one-time editor setup. Runs once after the editor is created
-   * so plugins can override editor methods (e.g. `insertData`) or register
-   * DOM listeners. The returned function, if any, runs when the editor
-   * unmounts or the plugin list changes.
-   */
-  setup?: (editor: InkwellEditor) => void | (() => void);
+  /** Optional paste/drop hook. Return true when the data was handled. */
+  onInsertData?: (
+    data: DataTransfer,
+    ctx: PluginInsertDataContext,
+  ) => boolean | void;
+  /** Optional one-time setup. */
+  setup?: (editor: InkwellPluginEditor) => void | (() => void);
 }
 
-/**
- * Props passed to each bubble menu item component.
- */
 export interface BubbleMenuItemProps {
-  /**
-   * Wrap or unwrap the current selection with markdown markers. Toggles if already wrapped.
-   */
+  /** Wrap or unwrap the current selection with markdown markers. */
   wrapSelection: (before: string, after: string) => void;
 }
 
-/**
- * An item in the bubble menu.
- */
 export interface BubbleMenuItem {
-  /**
-   * Unique key for React reconciliation
-   */
   key: string;
-  /**
-   * Optional keyboard shortcut (single key, used with Cmd/Ctrl).
-   */
   shortcut?: string;
-  /**
-   * Action to run when the shortcut fires. Receives wrapSelection.
-   */
   onShortcut?: (wrapSelection: (before: string, after: string) => void) => void;
-  /**
-   * React component to render in the menu. Receives `wrapSelection`.
-   */
   render: (props: BubbleMenuItemProps) => ReactNode;
 }
 
-/**
- * Snippet item for the snippets plugin
- */
 export interface Snippet {
-  /**
-   * Display title (searchable)
-   */
   title: string;
-  /**
-   * Markdown content to insert
-   */
   content: string;
 }
 
-/**
- * Controls which markdown block elements the editor recognizes.
- * All decorations are enabled by default. Pass `false` to disable.
- */
-export interface InkwellDecorations {
-  /**
-   * Recognize `# ` as h1 (default: true)
-   */
-  heading1?: boolean;
-  /**
-   * Recognize `## ` as h2 (default: true)
-   */
-  heading2?: boolean;
-  /**
-   * Recognize `### ` as h3 (default: true)
-   */
-  heading3?: boolean;
-  /**
-   * Recognize `#### ` as h4 (default: true)
-   */
-  heading4?: boolean;
-  /**
-   * Recognize `##### ` as h5 (default: true)
-   */
-  heading5?: boolean;
-  /**
-   * Recognize `###### ` as h6 (default: true)
-   */
-  heading6?: boolean;
-  /**
-   * Recognize unordered, ordered, and indented list items (default: true)
-   */
-  lists?: boolean;
-  /**
-   * Recognize `> ` as blockquotes (default: true)
-   */
-  blockquotes?: boolean;
-  /**
-   * Recognize ``` fences as code blocks (default: true)
-   */
-  codeBlocks?: boolean;
-  /**
-   * Recognize `![alt](url)` on its own line as a block image (default: true)
-   */
-  images?: boolean;
-}
-
-/**
- * Configuration for real-time collaborative editing via Yjs.
- *
- * The consumer owns the Yjs document and provider (WebSocket,
- * WebRTC, Hocuspocus, etc.). Inkwell only needs the shared type
- * and awareness instance.
- */
 export interface CollaborationConfig {
-  /**
-   * Yjs shared type for the document. Create via `doc.get("content", Y.XmlText)`.
-   */
+  /** Yjs shared type for the document. Create via `doc.get("content", Y.XmlText)`. */
   sharedType: YXmlText;
-  /**
-   * Awareness instance for remote cursor/presence sharing.
-   */
+  /** Awareness instance for remote cursor/presence sharing. */
   awareness: Awareness;
-  /**
-   * Local user metadata, displayed on remote cursors.
-   */
+  /** Local user metadata, displayed on remote cursors. */
   user: { name: string; color: string };
 }

@@ -50,18 +50,16 @@ Requires React 19 or later as a peer dependency.
 
 ## Your first editor
 
-Use `useInkwell` with a content string and an `onChange` handler, then
-render the returned `EditorInstance` component.
+Render `InkwellEditor` with a content string and an `onChange` handler.
 
 ```tsx
-import { useInkwell } from "@railway/inkwell";
+import { InkwellEditor } from "@railway/inkwell";
 import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello **world**");
-  const { EditorInstance } = useInkwell({ content, onChange: setContent });
 
-  return <EditorInstance />;
+  return <InkwellEditor content={content} onChange={setContent} />;
 }
 ```
 
@@ -93,18 +91,15 @@ function Preview({ content }: { content: string }) {
 Pair them together for a live preview:
 
 ```tsx
-import { InkwellRenderer, useInkwell } from "@railway/inkwell";
+import { InkwellRenderer, InkwellEditor } from "@railway/inkwell";
 import { useState } from "react";
 
 function EditorWithPreview() {
   const [content, setContent] = useState("# Hello **world**");
-  const { EditorInstance } = useInkwell({ content, onChange: setContent });
 
   return (
-    <div
-      style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}
-    >
-      <EditorInstance />
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+      <InkwellEditor content={content} onChange={setContent} />
       <InkwellRenderer content={content} />
     </div>
   );

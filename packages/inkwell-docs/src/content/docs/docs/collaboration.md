@@ -41,19 +41,19 @@ const provider = new WebsocketProvider("wss://your-server.com", "room-id", doc);
 ### 3. Pass the collaboration config
 
 ```tsx
-import { useInkwell } from "@railway/inkwell";
+import { InkwellEditor } from "@railway/inkwell";
 
 function CollabEditor() {
-  const { EditorInstance } = useInkwell({
-    content: "",
-    collaboration: {
-      sharedType,
-      awareness: provider.awareness,
-      user: { name: "Alice", color: "#e06c75" },
-    },
-  });
-
-  return <EditorInstance />;
+  return (
+    <InkwellEditor
+      content=""
+      collaboration={{
+        sharedType,
+        awareness: provider.awareness,
+        user: { name: "Alice", color: "#e06c75" },
+      }}
+    />
+  );
 }
 ```
 
@@ -71,13 +71,13 @@ remount the editor with a React `key` tied to that identity.
 for persistence:
 
 ```tsx
-const { EditorInstance } = useInkwell({
-  content: "",
-  collaboration: config,
-  onChange: (md) => saveToDatabase(md),
-});
-
-return <EditorInstance />;
+return (
+  <InkwellEditor
+    content=""
+    collaboration={config}
+    onChange={md => saveToDatabase(md)}
+  />
+);
 ```
 
 ## Providers

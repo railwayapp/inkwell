@@ -2,14 +2,14 @@ import { createEditor, Node, type NodeEntry } from "slate";
 import { withHistory } from "slate-history";
 import { withReact } from "slate-react";
 import { describe, expect, it } from "vitest";
-import type { InkwellDecorations } from "../../types";
+import type { ResolvedInkwellFeatures } from "../../types";
 import { computeDecorations } from "./decorations";
 import { deserialize } from "./deserialize";
 import type { InkwellElement, InkwellText } from "./types";
 import { withMarkdown } from "./with-markdown";
 import { generateId, withNodeId } from "./with-node-id";
 
-function createTestEditor(decorations?: InkwellDecorations) {
+function createTestEditor(decorations?: Partial<ResolvedInkwellFeatures>) {
   const decorationsRef = {
     current: {
       heading1: decorations?.heading1 ?? false,

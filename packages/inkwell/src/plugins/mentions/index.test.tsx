@@ -6,7 +6,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginRenderProps, SubscribeForwardedKey } from "../../types";
+import type {
+  InkwellPluginEditor,
+  PluginRenderProps,
+  SubscribeForwardedKey,
+} from "../../types";
 import { createMentionsPlugin, type MentionItem } from ".";
 
 const USERS: MentionItem[] = [
@@ -19,6 +23,35 @@ const USERS: MentionItem[] = [
  * Build a controllable forwarded-key channel for tests. The picker
  * subscribes through props — tests drive keys by calling `emit`.
  */
+
+function createPluginEditor(): InkwellPluginEditor {
+  return {
+    getState: () => ({
+      content: "",
+      isEmpty: true,
+      isFocused: false,
+      isEditable: true,
+      characterCount: 0,
+      overLimit: false,
+      isEnforcingCharacterLimit: false,
+    }),
+    isEmpty: () => true,
+    focus: () => {},
+    clear: () => {},
+    setContent: () => {},
+    insertContent: () => {},
+    getContentBeforeCursor: () => "",
+    getCurrentBlockContent: () => "",
+    getCurrentBlockContentBeforeCursor: () => "",
+    replaceCurrentBlockContent: () => {},
+    clearCurrentBlock: () => {},
+    wrapSelection: () => {},
+    insertImage: () => "image-id",
+    updateImage: () => {},
+    removeImage: () => {},
+  };
+}
+
 function createForwardedKeyChannel(): {
   subscribe: SubscribeForwardedKey;
   emit: (key: string) => void;
@@ -47,6 +80,7 @@ const makeDefaultRenderProps = (
   wrapSelection: vi.fn(),
   subscribeForwardedKey: () => () => {},
   ...overrides,
+  editor: overrides.editor ?? createPluginEditor(),
 });
 
 const defaultRenderProps = makeDefaultRenderProps();
@@ -61,7 +95,9 @@ describe("createMentionsPlugin", () => {
       renderItem: item => <span>{item.title}</span>,
     });
     expect(plugin.name).toBe("users");
-    expect(plugin.trigger?.key).toBe("@");
+    expect(
+      plugin.activation?.type === "trigger" ? plugin.activation.key : undefined,
+    ).toBe("@");
   });
 
   it("inserts default marker form when no onSelect is provided", async () => {
@@ -74,7 +110,7 @@ describe("createMentionsPlugin", () => {
       renderItem: item => <span>{item.title}</span>,
     });
 
-    render(<div>{plugin.render({ ...defaultRenderProps, onSelect })}</div>);
+    render(<div>{plugin.render?.({ ...defaultRenderProps, onSelect })}</div>);
 
     await waitFor(() => expect(screen.getByText("Alice")).toBeInTheDocument());
 
@@ -96,7 +132,7 @@ describe("createMentionsPlugin", () => {
 
     render(
       <div>
-        {plugin.render({ ...defaultRenderProps, onSelect: parentOnSelect })}
+        {plugin.render?.({ ...defaultRenderProps, onSelect: parentOnSelect })}
       </div>,
     );
 
@@ -122,7 +158,7 @@ describe("createMentionsPlugin", () => {
 
     render(
       <div>
-        {plugin.render(
+        {plugin.render?.(
           makeDefaultRenderProps({ subscribeForwardedKey: channel.subscribe }),
         )}
       </div>,
@@ -157,7 +193,7 @@ describe("createMentionsPlugin", () => {
 
     render(
       <div>
-        {plugin.render(
+        {plugin.render?.(
           makeDefaultRenderProps({
             onSelect,
             subscribeForwardedKey: channel.subscribe,
@@ -190,7 +226,7 @@ describe("createMentionsPlugin", () => {
 
     render(
       <div>
-        {plugin.render(
+        {plugin.render?.(
           makeDefaultRenderProps({
             onSelect,
             subscribeForwardedKey: channel.subscribe,
@@ -219,7 +255,7 @@ describe("createMentionsPlugin", () => {
       emptyMessage: "No users found",
     });
 
-    render(<div>{plugin.render(defaultRenderProps)}</div>);
+    render(<div>{plugin.render?.(defaultRenderProps)}</div>);
 
     await waitFor(() =>
       expect(screen.getByText("No users found")).toBeInTheDocument(),

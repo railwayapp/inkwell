@@ -4,6 +4,12 @@ import type { ReactNode } from "react";
 import type { InkwellPlugin, PluginRenderProps, Snippet } from "../../types";
 import { PluginMenuPrimitive, pluginPickerClass } from "../plugin-picker";
 
+export interface SnippetsPluginOptions {
+  name?: string;
+  trigger?: string;
+  snippets: Snippet[];
+}
+
 function renderSnippet(snippet: Snippet): ReactNode {
   return (
     <>
@@ -17,16 +23,14 @@ function renderSnippet(snippet: Snippet): ReactNode {
   );
 }
 
-export function createSnippetsPlugin(options: {
-  snippets: Snippet[];
-  key?: string;
-}): InkwellPlugin {
-  const { snippets, key = "[" } = options;
-  const name = "snippets";
-
+export function createSnippetsPlugin({
+  snippets,
+  name = "snippets",
+  trigger = "[",
+}: SnippetsPluginOptions): InkwellPlugin {
   return {
     name,
-    trigger: { key },
+    activation: { type: "trigger", key: trigger },
     render: (props: PluginRenderProps) => (
       <PluginMenuPrimitive<Snippet>
         pluginName={name}

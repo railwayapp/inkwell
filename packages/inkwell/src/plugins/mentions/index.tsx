@@ -14,15 +14,15 @@ export interface MentionItem {
 }
 
 export interface MentionsPluginOptions<T extends MentionItem = MentionItem> {
-  /** Unique plugin name (must be unique per editor instance). */
-  name: string;
-  /** Key that opens the picker (e.g. "@", "["). */
-  trigger: string;
+  /** Unique plugin name. Defaults to `mentions`. */
+  name?: string;
+  /** Key that opens the picker. Defaults to `@`. */
+  trigger?: string;
   /**
    * Persisted marker name used when `onSelect` is not provided. Produces
-   * `@<marker>[<id>]` in the document.
+   * `@<marker>[<id>]` in the document. Defaults to `mention`.
    */
-  marker: string;
+  marker?: string;
   /** Async search callback. Return items matching the query. */
   search: (query: string) => Promise<T[]> | T[];
   /** Render a single item row in the picker. */
@@ -43,14 +43,15 @@ export interface MentionsPluginOptions<T extends MentionItem = MentionItem> {
 export function createMentionsPlugin<T extends MentionItem = MentionItem>(
   options: MentionsPluginOptions<T>,
 ): InkwellPlugin {
+  const name = options.name ?? "mentions";
+  const trigger = options.trigger ?? "@";
+  const marker = options.marker ?? "mention";
   const itemToText = (item: T): string =>
-    options.onSelect
-      ? options.onSelect(item)
-      : `@${options.marker}[${item.id}]`;
+    options.onSelect ? options.onSelect(item) : `@${marker}[${item.id}]`;
 
   return {
-    name: options.name,
-    trigger: { key: options.trigger },
+    name,
+    activation: { type: "trigger", key: trigger },
     // Dismiss the picker when the user types whitespace or punctuation —
     // matches the emoji plugin so `@john<space>` flows back into the
     // document instead of growing the query indefinitely.
@@ -61,7 +62,7 @@ export function createMentionsPlugin<T extends MentionItem = MentionItem>(
     },
     render: (props: PluginRenderProps) => (
       <PluginMenuPrimitive<T>
-        pluginName={options.name}
+        pluginName={name}
         placeholder="Search..."
         search={options.search}
         getKey={item => item.id}

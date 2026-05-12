@@ -1,10 +1,7 @@
 "use client";
 
-import { type Editor, Node, Element as SlateElement, Transforms } from "slate";
-import type { InkwellElement } from "../../editor/slate/types";
-import { generateId } from "../../editor/slate/with-node-id";
 import { sanitizeImageUrl } from "../../lib/safe-url";
-import type { InkwellPlugin } from "../../types";
+import type { InkwellPlugin, InkwellPluginEditor } from "../../types";
 
 export interface AttachmentsPluginOptions {
   /**
@@ -30,9 +27,6 @@ export interface AttachmentsPluginOptions {
   onError?: (error: unknown, file: File) => void;
 }
 
-/**
- * Handle a MIME pattern like `image/*` or `image/png`.
- */
 function mimeMatches(mime: string, accept: string): boolean {
   if (!mime) return false;
   const patterns = accept
@@ -60,13 +54,6 @@ function extractFiles(data: DataTransfer): File[] {
   return files;
 }
 
-/**
- * Build a synthetic `DataTransfer` carrying only the supplied files (no
- * text/html or text/plain payload). Used to forward non-matching files
- * back into the editor's base `insertData` so they aren't silently
- * dropped. We avoid `new DataTransfer()` because it isn't constructable
- * in jsdom (and is only partially constructable in real browsers).
- */
 function filesOnlyDataTransfer(files: File[]): DataTransfer {
   return {
     types: files.length > 0 ? ["Files"] : [],
@@ -93,59 +80,36 @@ function extractHtmlImages(
   const images: Array<{ url: string; alt: string }> = [];
   for (const img of Array.from(template.content.querySelectorAll("img"))) {
     const url = sanitizeImageUrl(img.getAttribute("src"));
-    // Drop tags with a missing or unsafe src — we don't want to write
-    // `javascript:`, `data:text/html`, or `data:image/svg+xml` (script
-    // execution surface) into the document.
     if (!url) continue;
     images.push({ url, alt: img.getAttribute("alt") ?? "" });
   }
   return images;
 }
 
-function removeImageById(editor: Editor, id: string): void {
-  for (const [node, path] of Node.nodes(editor)) {
-    if (
-      SlateElement.isElement(node) &&
-      node.id === id &&
-      node.type === "image"
-    ) {
-      Transforms.removeNodes(editor, { at: path });
-      break;
-    }
-  }
-}
+const insertUploadedImage = (
+  editor: InkwellPluginEditor,
+  file: File,
+  options: AttachmentsPluginOptions,
+): void => {
+  const placeholder = options.uploadingPlaceholder?.(file) ?? "Uploading…";
+  const id = editor.insertImage({ url: "", alt: placeholder });
 
-function setUploadedImageUrl(
-  editor: Editor,
-  id: string,
-  url: string,
-  alt: string,
-): void {
-  for (const [node, path] of Node.nodes(editor)) {
-    if (
-      SlateElement.isElement(node) &&
-      node.id === id &&
-      node.type === "image"
-    ) {
-      Transforms.setNodes(editor, { url, alt }, { at: path });
-      break;
-    }
-  }
-}
-
-function insertImage(
-  editor: Editor,
-  image: { url: string; alt: string },
-): void {
-  const imageEl: InkwellElement = {
-    type: "image",
-    id: generateId(),
-    url: image.url,
-    alt: image.alt,
-    children: [{ text: "" }],
-  };
-  Transforms.insertNodes(editor, imageEl);
-}
+  Promise.resolve()
+    .then(() => options.onUpload(file))
+    .then(url => {
+      const safeUrl = sanitizeImageUrl(url);
+      if (!safeUrl) {
+        editor.removeImage(id);
+        options.onError?.(new Error("Unsafe upload URL"), file);
+        return;
+      }
+      editor.updateImage(id, { url: safeUrl, alt: file.name });
+    })
+    .catch(err => {
+      editor.removeImage(id);
+      options.onError?.(err, file);
+    });
+};
 
 /**
  * Intercepts file paste/drop, uploads via `onUpload`, and inserts an image
@@ -155,74 +119,36 @@ function insertImage(
 export function createAttachmentsPlugin(
   options: AttachmentsPluginOptions,
 ): InkwellPlugin {
-  const { onUpload, accept, onError, uploadingPlaceholder } = options;
+  const { accept } = options;
 
   return {
     name: "attachments",
-    render: () => null,
-    setup(editor) {
-      const { insertData } = editor;
-      let disposed = false;
-      editor.insertData = (data: DataTransfer) => {
-        const files = extractFiles(data);
-        const matching = accept
-          ? files.filter(f => mimeMatches(f.type, accept))
-          : files;
-        if (matching.length === 0) {
-          const htmlImages = extractHtmlImages(data);
-          if (htmlImages.length === 0) return insertData(data);
+    onInsertData(data, { editor, insertData }) {
+      const files = extractFiles(data);
+      const matching = accept
+        ? files.filter(f => mimeMatches(f.type, accept))
+        : files;
 
-          for (const image of htmlImages) {
-            insertImage(editor, image);
-          }
-          return;
+      if (matching.length === 0) {
+        const htmlImages = extractHtmlImages(data);
+        if (htmlImages.length === 0) return false;
+
+        for (const image of htmlImages) {
+          editor.insertImage(image);
         }
+        return true;
+      }
 
-        // Pass non-matching files through to the editor's base
-        // `insertData` so they aren't silently dropped — the docstring
-        // for `accept` promises files that don't match flow through
-        // untouched. We strip text/html and text/plain so any pasted
-        // markup describing the same files isn't double-handled.
-        const unmatched = files.filter(f => !matching.includes(f));
-        if (unmatched.length > 0) {
-          insertData(filesOnlyDataTransfer(unmatched));
-        }
+      const unmatched = files.filter(f => !matching.includes(f));
+      if (unmatched.length > 0) {
+        insertData(filesOnlyDataTransfer(unmatched));
+      }
 
-        for (const file of matching) {
-          const id = generateId();
-          const placeholder = uploadingPlaceholder?.(file) ?? "Uploading…";
-          const imageEl: InkwellElement = {
-            type: "image",
-            id,
-            url: "",
-            alt: placeholder,
-            children: [{ text: "" }],
-          };
-          Transforms.insertNodes(editor, imageEl);
+      for (const file of matching) {
+        insertUploadedImage(editor, file, options);
+      }
 
-          Promise.resolve()
-            .then(() => onUpload(file))
-            .then(url => {
-              if (disposed) return;
-              const safeUrl = sanitizeImageUrl(url);
-              if (!safeUrl) {
-                removeImageById(editor, id);
-                onError?.(new Error("Unsafe upload URL"), file);
-                return;
-              }
-              setUploadedImageUrl(editor, id, safeUrl, file.name);
-            })
-            .catch(err => {
-              if (disposed) return;
-              removeImageById(editor, id);
-              onError?.(err, file);
-            });
-        }
-      };
-      return () => {
-        disposed = true;
-        editor.insertData = insertData;
-      };
+      return true;
     },
   };
 }

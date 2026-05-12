@@ -74,7 +74,7 @@ import rehypeShiki from "@shikijs/rehype";
 ```
 
 The same `rehypePlugins` option is available in
-[`useInkwell`](/docs/editor#syntax-highlighting).
+[`InkwellEditor`](/docs/editor#syntax-highlighting).
 
 ## Props reference
 

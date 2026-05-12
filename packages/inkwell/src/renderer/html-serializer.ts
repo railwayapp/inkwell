@@ -31,6 +31,6 @@ const processor = unified()
 /**
  * Convert an HTML string to a markdown string
  */
-export function serializeToMarkdown(html: string): string {
+export function htmlToMarkdown(html: string): string {
   return String(processor.processSync(html)).trim();
 }

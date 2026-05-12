@@ -10,10 +10,9 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Editor, type Path, Range, Transforms } from "slate";
-import type { InkwellEditor } from "../../editor/slate/types";
 import type {
   InkwellPlugin,
+  InkwellPluginEditor,
   PluginKeyDownContext,
   PluginRenderProps,
 } from "../../types";
@@ -96,66 +95,13 @@ const fuzzyMatch = (query: string, text: string): boolean => {
   return t.includes(q) || t.startsWith(q);
 };
 
-/** Replace the content of the block at `path` with `text`. */
-const setBlockText = (editor: InkwellEditor, path: Path, text: string) => {
-  const start = Editor.start(editor, path);
-  const end = Editor.end(editor, path);
-  Transforms.select(editor, { anchor: start, focus: end });
-  Transforms.insertText(editor, text);
-  Transforms.select(editor, Editor.end(editor, path));
-};
-
-/** Clear the content of the block at `path` to an empty string. */
-const clearBlockAtPath = (editor: InkwellEditor, path: Path) => {
-  try {
-    const start = Editor.start(editor, path);
-    const end = Editor.end(editor, path);
-    Transforms.select(editor, { anchor: start, focus: end });
-    Transforms.delete(editor);
-    editor.onChange();
-  } catch {
-    // The block may have already been removed by an external edit.
-  }
-};
-
-const getCurrentBlockPath = (editor: InkwellEditor): Path | null => {
-  const { selection } = editor;
-  if (!selection || !Range.isCollapsed(selection)) return null;
-  // The first segment of the path is the block index at the root.
-  return selection.anchor.path.slice(0, 1) as Path;
-};
-
-const getCurrentBlockText = (editor: InkwellEditor): string => {
-  const path = getCurrentBlockPath(editor);
-  if (!path) return "";
-  try {
-    return Editor.string(editor, path);
-  } catch {
-    return "";
-  }
-};
-
-const getContentBeforeCursorInBlock = (
-  editor: InkwellEditor,
-): string | null => {
-  const { selection } = editor;
-  if (!selection || !Range.isCollapsed(selection)) return null;
-  const anchor = selection.anchor;
-  const blockStart = { path: anchor.path, offset: 0 };
-  try {
-    return Editor.string(editor, { anchor: blockStart, focus: anchor });
-  } catch {
-    return null;
-  }
-};
-
 interface SlashCommandMenuProps<T extends SlashCommandItem>
   extends PluginRenderProps {
   commands: T[];
   emptyMessage: string;
   onReadyChange?: (ready: boolean) => void;
   onExecute?: (command: SlashCommandExecution) => void;
-  getEditor: () => InkwellEditor | null;
+  getEditor: () => InkwellPluginEditor | null;
 }
 
 const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
@@ -287,14 +233,7 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
     (line: string) => {
       const editor = getEditor();
       if (!editor) return;
-      const path = getCurrentBlockPath(editor);
-      if (!path) return;
-      try {
-        setBlockText(editor, path, line);
-        editor.onChange();
-      } catch {
-        // Block may have been removed by an external edit.
-      }
+      editor.replaceCurrentBlockContent(line);
     },
     [getEditor],
   );
@@ -353,9 +292,8 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
       execute: () => {
         if (!selectedCommand) return;
         const editor = getEditor();
-        const raw = editor
-          ? (getCurrentBlockText(editor) ?? `/${selectedCommand.name}`)
-          : `/${selectedCommand.name}`;
+        const raw =
+          editor?.getCurrentBlockContent() ?? `/${selectedCommand.name}`;
         onExecute?.({
           name: selectedCommand.name,
           args: selectedArg ? { [selectedArg.name]: selectedArg.value } : {},
@@ -471,41 +409,29 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
   onExecute,
   emptyMessage = "No commands found",
 }: SlashCommandsPluginOptions<T>): InkwellPlugin => {
-  // Captured once via `setup` and again on every keydown — the latter
-  // covers tests that re-create plugin instances per render.
-  let editorRef: InkwellEditor | null = null;
+  // Captured through setup and refreshed on every keydown so recreated plugin
+  // instances still operate on the current editor controller.
+  let editorRef: InkwellPluginEditor | null = null;
   // The rendered menu component publishes its imperative surface here so
   // the editor-side keydown handler can drive it without writing to refs
   // during render.
   const menuRef: RefObject<SlashMenuHandle | null> = { current: null };
 
   const enterReadyOrExecuteCleanup = (
-    editor: InkwellEditor,
+    editor: InkwellPluginEditor,
     ctx: PluginKeyDownContext,
     action: () => void,
   ) => {
-    const path = getCurrentBlockPath(editor);
     action();
-    ctx.setActivePlugin(null);
-    if (!path) return;
+    ctx.dismiss();
     // Defer the block clear so the action's final selection/state has a
     // chance to settle before we remove the slash line.
-    requestAnimationFrame(() => clearBlockAtPath(editor, path));
+    requestAnimationFrame(() => editor.clearCurrentBlock());
   };
 
   return {
     name,
-    // Slash commands has no trigger character — it activates from
-    // `onKeyDown` once `/` is typed with no prose between the start of
-    // the current line and the caret. Without this flag the editor would
-    // render the menu by default (since there is no trigger).
-    activatable: true,
-    setup: editor => {
-      editorRef = editor;
-      return () => {
-        editorRef = null;
-      };
-    },
+    activation: { type: "manual" },
     render: (props: PluginRenderProps) => {
       if (!props.active) return null;
       return (
@@ -520,8 +446,8 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
         />
       );
     },
-    onKeyDown: (event, ctx, editor) => {
-      editorRef = editor;
+    onKeyDown: (event, ctx) => {
+      editorRef = ctx.editor;
       // Opening: `/` typed on an empty or whitespace-only line. This avoids
       // rewriting/deleting unrelated suffix text when the caret is before
       // existing prose in the same block.
@@ -531,23 +457,24 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
         !event.ctrlKey &&
         !event.altKey
       ) {
-        const beforeCursor = getContentBeforeCursorInBlock(editor);
-        const blockText = getCurrentBlockText(editor);
+        const beforeCursor = ctx.editor.getCurrentBlockContentBeforeCursor();
+        const blockText = ctx.editor.getCurrentBlockContent();
         if (
           beforeCursor !== null &&
           beforeCursor.trim() === "" &&
+          blockText !== null &&
           blockText.trim() === ""
         ) {
           event.preventDefault();
-          Transforms.insertText(editor, "/");
-          ctx.setActivePlugin({ name });
+          ctx.editor.insertContent("/");
+          ctx.activate();
           // Reset state machine on (re)open.
           menuRef.current?.reset();
         }
       }
     },
-    onActiveKeyDown: (event, ctx, editor) => {
-      editorRef = editor;
+    onActiveKeyDown: (event, ctx) => {
+      editorRef = ctx.editor;
       const menu = menuRef.current;
       if (!menu) return;
 
@@ -557,11 +484,11 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
         // the commands/args phases Escape just closes the menu and leaves
         // the user's typed text intact (matching the test contract).
         if (menu.isReady()) {
-          enterReadyOrExecuteCleanup(editor, ctx, () => {
+          enterReadyOrExecuteCleanup(ctx.editor, ctx, () => {
             // No execute on escape — just clear.
           });
         } else {
-          ctx.setActivePlugin(null);
+          ctx.dismiss();
           menu.reset();
         }
         return;
@@ -569,7 +496,7 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
 
       if (menu.isReady() && event.key === "Enter") {
         event.preventDefault();
-        enterReadyOrExecuteCleanup(editor, ctx, () => {
+        enterReadyOrExecuteCleanup(ctx.editor, ctx, () => {
           menu.execute();
         });
         return;
@@ -594,10 +521,10 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
       }
 
       if (event.key === "Backspace") {
-        const beforeCursor = getContentBeforeCursorInBlock(editor);
+        const beforeCursor = ctx.editor.getCurrentBlockContentBeforeCursor();
         if (beforeCursor === "/") {
           // The user backspaced over the trigger — close the menu.
-          ctx.setActivePlugin(null);
+          ctx.dismiss();
           menu.reset();
           return;
         }

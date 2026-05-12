@@ -1,4 +1,5 @@
-import type { InkwellDecorations } from "../../types";
+import type { InkwellFeatures, ResolvedInkwellFeatures } from "../../types";
+import { resolveFeatures } from "./features";
 import type { InkwellElement } from "./types";
 import { generateId } from "./with-node-id";
 
@@ -7,37 +8,31 @@ const LIST_RE = /^(\s*)(\d+\.|[-*+]) /;
 const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
 
 /**
- * Deserialize a markdown string into Slate decorations.
+ * Deserialize a content string into Slate elements.
  *
  * Each line becomes its own element. Block-level patterns (code fences,
  * blockquotes, list items, images, headings) get their own element types based
- * on the `decorations` config. Everything else is a paragraph. Text content
+ * on the `features` config. Everything else is a paragraph. Text content
  * is stored verbatim — visual formatting is handled by decorations at
  * render time, not in the data model.
  */
 export function deserialize(
   content: string,
-  decorations?: InkwellDecorations,
+  features?: InkwellFeatures | Partial<ResolvedInkwellFeatures>,
 ): InkwellElement[] {
   if (!content) {
     return [{ type: "paragraph", id: generateId(), children: [{ text: "" }] }];
   }
 
+  const cfg = resolveFeatures(features);
   const headingEnabled = [
-    decorations?.heading1 ?? true,
-    decorations?.heading2 ?? true,
-    decorations?.heading3 ?? true,
-    decorations?.heading4 ?? true,
-    decorations?.heading5 ?? true,
-    decorations?.heading6 ?? true,
+    cfg.heading1,
+    cfg.heading2,
+    cfg.heading3,
+    cfg.heading4,
+    cfg.heading5,
+    cfg.heading6,
   ];
-
-  const cfg = {
-    lists: decorations?.lists ?? true,
-    blockquotes: decorations?.blockquotes ?? true,
-    codeBlocks: decorations?.codeBlocks ?? true,
-    images: decorations?.images ?? true,
-  };
 
   const lines = content.split("\n");
   const result: InkwellElement[] = [];

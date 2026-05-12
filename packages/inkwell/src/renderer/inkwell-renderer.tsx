@@ -17,7 +17,12 @@ export function InkwellRenderer({
   }, [copyButton, components]);
 
   const rendered = useMemo(
-    () => parseMarkdown(content, mergedComponents, rehypePlugins, mentions),
+    () =>
+      parseMarkdown(content, {
+        components: mergedComponents,
+        rehypePlugins,
+        mentions,
+      }),
     [content, mergedComponents, rehypePlugins, mentions],
   );
 

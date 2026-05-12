@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Editor, Range } from "slate";
 import type { InkwellPlugin } from "../../types";
 import { PluginMenuPrimitive, pluginPickerClass } from "../plugin-picker";
 
@@ -16,12 +15,12 @@ export interface EmojiItem {
   tags?: string[];
 }
 
-export interface EmojiPluginOptions<T extends EmojiItem = EmojiItem> {
+export interface EmojiPluginOptions {
   name?: string;
   trigger?: string;
-  emojis?: T[];
-  search?: (query: string) => Promise<T[]> | T[];
-  renderItem?: (item: T, active: boolean) => ReactNode;
+  emojis?: EmojiItem[];
+  search?: (query: string) => Promise<EmojiItem[]> | EmojiItem[];
+  renderItem?: (item: EmojiItem, active: boolean) => ReactNode;
   emptyMessage?: string;
 }
 
@@ -99,18 +98,18 @@ const DefaultEmojiItem = ({ item }: { item: EmojiItem }) => (
   </>
 );
 
-export const createEmojiPlugin = <T extends EmojiItem = EmojiItem>({
+export function createEmojiPlugin({
   name = "emoji",
   trigger = ":",
   emojis,
   search,
   renderItem,
   emptyMessage = "No emoji found",
-}: EmojiPluginOptions<T> = {}): InkwellPlugin => {
-  const resolvedEmojis = (emojis ?? defaultEmojis) as T[];
+}: EmojiPluginOptions = {}): InkwellPlugin {
+  const resolvedEmojis = emojis ?? defaultEmojis;
   return {
     name,
-    shouldTrigger: (event, editor) => {
+    shouldTrigger: (event, { editor }) => {
       if (
         event.key !== trigger ||
         event.ctrlKey ||
@@ -120,21 +119,15 @@ export const createEmojiPlugin = <T extends EmojiItem = EmojiItem>({
         return false;
       }
 
-      const { selection } = editor;
-      if (!selection || !Range.isCollapsed(selection)) return false;
-
-      const before = Editor.before(editor, selection.anchor, {
-        unit: "character",
-      });
-      const previous = before
-        ? Editor.string(editor, { anchor: before, focus: selection.anchor })
-        : "";
+      const beforeCursor = editor.getContentBeforeCursor();
+      if (beforeCursor === null) return false;
+      const previous = beforeCursor.at(-1) ?? "";
 
       // Open at token boundaries only. This keeps the plugin out of the way
       // for emoticons and punctuation-heavy prose (`:)`, `http://`, `foo:bar`).
       return previous === "" || /\s|[([{]/.test(previous);
     },
-    trigger: { key: trigger },
+    activation: { type: "trigger", key: trigger },
     onActiveKeyDown: event => {
       if (event.key.length !== 1) return;
       if (/[\p{L}\p{N}_+-]/u.test(event.key)) return;
@@ -143,10 +136,10 @@ export const createEmojiPlugin = <T extends EmojiItem = EmojiItem>({
     render: props => {
       if (!props.active) return null;
       return (
-        <PluginMenuPrimitive<T>
+        <PluginMenuPrimitive<EmojiItem>
           {...props}
           pluginName={name}
-          items={search ? undefined : resolvedEmojis}
+          items={search ? undefined : emojis}
           search={search ?? (query => defaultSearch(resolvedEmojis, query))}
           getKey={item => item.name}
           renderItem={
@@ -159,4 +152,4 @@ export const createEmojiPlugin = <T extends EmojiItem = EmojiItem>({
       );
     },
   };
-};
+}

@@ -1,20 +1,18 @@
 "use client";
 
 import type { KeyboardEvent } from "react";
-import { type Editor, Node, Transforms } from "slate";
-import { deserialize } from "../../editor/slate/deserialize";
-import type { InkwellPlugin, RehypePluginConfig } from "../../types";
+import type { InkwellPlugin, InkwellPluginEditor } from "../../types";
 
 export interface CompletionPluginOptions {
   /** Unique plugin name. Defaults to `completions`. */
   name?: string;
-  /** Markdown completion to render as placeholder text. Return null when inactive. */
+  /** Completion content to render as placeholder text. Return null when inactive. */
   getCompletion: () => string | null;
   /** Whether to show a loading placeholder while no completion is available. */
   isLoading?: () => boolean;
   /** Text shown while `isLoading()` is true. */
   loadingText?: string;
-  /** Hint rendered as a pill while the completion placeholder is visible. */
+  /** Hint rendered while the completion placeholder is visible. */
   acceptHint?: string;
   /** Called after Tab accepts and inserts the completion. */
   onAccept?: (completion: string) => void;
@@ -27,8 +25,6 @@ export interface CompletionPluginOptions {
   onRestore?: (completion: string) => void;
   /** Whether undo-to-empty should restore the accepted completion. Defaults to true. */
   restoreOnUndo?: boolean;
-  /** Reserved for API compatibility. Native placeholders are source text. */
-  rehypePlugins?: RehypePluginConfig[];
 }
 
 const isPlainTypingKey = (event: KeyboardEvent): boolean => {
@@ -37,19 +33,33 @@ const isPlainTypingKey = (event: KeyboardEvent): boolean => {
   );
 };
 
-/**
- * Cheap emptiness check that walks the Slate tree once and short-circuits
- * on the first non-whitespace character. `getPlaceholder` is called on
- * every render, so this needs to stay O(text length) and avoid the full
- * unified/remark serialize pipeline.
- */
-const isEditorEmpty = (editor: Editor): boolean => {
-  return Node.string(editor).trim().length === 0;
+const lastAcceptedCompletionByEditor = new WeakMap<
+  InkwellPluginEditor,
+  Map<string, string>
+>();
+
+const setLastAcceptedCompletion = (
+  editor: InkwellPluginEditor,
+  pluginName: string,
+  completion: string,
+) => {
+  const completions = lastAcceptedCompletionByEditor.get(editor) ?? new Map();
+  completions.set(pluginName, completion);
+  lastAcceptedCompletionByEditor.set(editor, completions);
 };
 
-const insertCompletion = (editor: Editor, completion: string): void => {
-  const nodes = deserialize(completion);
-  Transforms.insertFragment(editor, nodes);
+const takeLastAcceptedCompletion = (
+  editor: InkwellPluginEditor,
+  pluginName: string,
+): string | null => {
+  const completions = lastAcceptedCompletionByEditor.get(editor);
+  if (!completions) return null;
+  const completion = completions.get(pluginName) ?? null;
+  completions.delete(pluginName);
+  if (completions.size === 0) {
+    lastAcceptedCompletionByEditor.delete(editor);
+  }
+  return completion;
 };
 
 export function createCompletionsPlugin({
@@ -63,29 +73,23 @@ export function createCompletionsPlugin({
   onRestore,
   restoreOnUndo = true,
 }: CompletionPluginOptions): InkwellPlugin {
-  // Per-plugin-instance map of editors to the most recently accepted
-  // completion. Module scope would mean two `createCompletionsPlugin`
-  // instances on the same editor clobber each other's undo-restore state.
-  const lastAcceptedCompletionByEditor = new WeakMap<Editor, string>();
-
   return {
     name,
-    render: () => null,
-    getPlaceholder: (editor: Editor) => {
-      if (!isEditorEmpty(editor)) return null;
+    getPlaceholder: editor => {
+      if (!editor.isEmpty()) return null;
       const text = getCompletion() ?? (isLoading?.() ? loadingText : null);
       if (!text) return null;
       return { text, hint: acceptHint };
     },
-    onKeyDown: (event, _ctx, editor) => {
+    onKeyDown: (event, { editor }) => {
       const completion = getCompletion();
       if (!completion) return;
-      if (!isEditorEmpty(editor)) return;
+      if (!editor.isEmpty()) return;
 
       if (event.key === "Tab") {
         event.preventDefault();
-        lastAcceptedCompletionByEditor.set(editor, completion);
-        insertCompletion(editor, completion);
+        setLastAcceptedCompletion(editor, name, completion);
+        editor.insertContent(completion);
         onAccept?.(completion);
         return;
       }
@@ -100,13 +104,11 @@ export function createCompletionsPlugin({
         onDismiss?.(completion);
       }
     },
-    onEditorChange: (editor: Editor) => {
+    onEditorChange: editor => {
       if (!restoreOnUndo) return;
-      const lastAcceptedCompletion = lastAcceptedCompletionByEditor.get(editor);
+      if (!editor.isEmpty()) return;
+      const lastAcceptedCompletion = takeLastAcceptedCompletion(editor, name);
       if (!lastAcceptedCompletion) return;
-      if (!isEditorEmpty(editor)) return;
-
-      lastAcceptedCompletionByEditor.delete(editor);
       onRestore?.(lastAcceptedCompletion);
     },
   };

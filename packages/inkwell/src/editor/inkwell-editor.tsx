@@ -11,7 +11,6 @@ import {
 import {
   Fragment,
   forwardRef,
-  type MouseEvent,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -439,6 +438,28 @@ export const InkwellEditor = forwardRef<
   const wrapperRef = useRef<HTMLDivElement>(null);
   const editorElRef = useRef<HTMLDivElement | null>(null);
 
+  const canonicalizeEmptyEditor = useCallback(() => {
+    if (Node.string(editor).trim().length !== 0) return;
+
+    const onlyChild = editor.children[0] as InkwellElement | undefined;
+    const isCanonicalEmptyParagraph =
+      editor.children.length === 1 &&
+      onlyChild?.type === "paragraph" &&
+      Node.string(onlyChild).length === 0;
+    if (isCanonicalEmptyParagraph) return;
+
+    Editor.withoutNormalizing(editor, () => {
+      for (let index = editor.children.length - 1; index >= 0; index--) {
+        Transforms.removeNodes(editor, { at: [index] });
+      }
+      Transforms.insertNodes(editor, {
+        type: "paragraph",
+        id: generateId(),
+        children: [{ text: "" }],
+      } satisfies InkwellElement);
+    });
+  }, [editor]);
+
   const selectEditor = useCallback(
     (at: InkwellEditorFocusOptions["at"] = "end") => {
       try {
@@ -784,39 +805,6 @@ export const InkwellEditor = forwardRef<
     ],
   );
 
-  const handleWrapperMouseDown = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => {
-      if (!editable) return;
-      if (!(event.target instanceof Element)) return;
-
-      const target = event.target;
-      const editorElement = editorElRef.current;
-      const wrapperElement = wrapperRef.current;
-      if (!editorElement || !wrapperElement) return;
-
-      const interactiveTarget = target.closest(
-        "button, input, textarea, select, a, [role='button'], [contenteditable='false'], .inkwell-plugin-picker-popup, .inkwell-plugin-bubble-menu-container",
-      );
-      if (interactiveTarget) return;
-
-      const clickedEditableSurface = target === editorElement;
-      const clickedWrapperSurface = target === wrapperElement;
-      const clickedInsideEditable = editorElement.contains(target);
-      const clickedSlateNode = Boolean(target.closest("[data-slate-node]"));
-
-      if (
-        clickedWrapperSurface ||
-        clickedEditableSurface ||
-        (clickedInsideEditable && !clickedSlateNode)
-      ) {
-        event.preventDefault();
-        ReactEditor.focus(editor);
-        selectEditor("end");
-      }
-    },
-    [editable, editor, selectEditor],
-  );
-
   // The toast is visible whenever the document has hit the limit. With
   // `enforceCharacterLimit` the count never exceeds the limit, so we also
   // surface the toast at exactly the limit so the user gets feedback when
@@ -848,31 +836,20 @@ export const InkwellEditor = forwardRef<
     if (!pluginPlaceholder) return;
     if (Node.string(editor).trim().length !== 0) return;
 
-    const onlyChild = editor.children[0] as InkwellElement | undefined;
-    const isCanonicalEmptyParagraph =
-      editor.children.length === 1 &&
-      onlyChild?.type === "paragraph" &&
-      Node.string(onlyChild).length === 0;
-    if (isCanonicalEmptyParagraph) return;
-
-    Editor.withoutNormalizing(editor, () => {
-      for (let index = editor.children.length - 1; index >= 0; index--) {
-        Transforms.removeNodes(editor, { at: [index] });
-      }
-      Transforms.insertNodes(editor, {
-        type: "paragraph",
-        id: generateId(),
-        children: [{ text: "" }],
-      } satisfies InkwellElement);
-      Transforms.select(editor, Editor.start(editor, [0]));
-    });
-  }, [editor, pluginPlaceholder, stateVersion]);
+    canonicalizeEmptyEditor();
+    selectEditor("start");
+  }, [
+    canonicalizeEmptyEditor,
+    editor,
+    pluginPlaceholder,
+    selectEditor,
+    stateVersion,
+  ]);
 
   return (
     <div
       ref={wrapperRef}
       className={`inkwell-editor-wrapper${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}`}
-      onMouseDownCapture={handleWrapperMouseDown}
     >
       {showLimitToast && characterLimit !== undefined && (
         <LimitToast

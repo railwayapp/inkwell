@@ -304,41 +304,6 @@ describe("InkwellEditor — rendering", () => {
     });
   });
 
-  it("focuses the editor when clicking empty editor space", () => {
-    const focusSpy = vi
-      .spyOn(ReactEditor, "focus")
-      .mockImplementation(() => {});
-    const { container } = render(
-      <InkwellEditor content="hello" onChange={vi.fn()} />,
-    );
-
-    const editor = container.querySelector(".inkwell-editor");
-    expect(editor).toBeInTheDocument();
-    if (!editor) throw new Error("Expected editor element");
-    const prevented = !fireEvent.mouseDown(editor);
-
-    expect(focusSpy).toHaveBeenCalled();
-    expect(prevented).toBe(true);
-  });
-
-  it("focuses the editor when clicking non-Slate whitespace inside the editor", () => {
-    const focusSpy = vi
-      .spyOn(ReactEditor, "focus")
-      .mockImplementation(() => {});
-    const { container } = render(
-      <InkwellEditor content="hello" onChange={vi.fn()} />,
-    );
-
-    const editor = container.querySelector(".inkwell-editor");
-    if (!editor) throw new Error("Expected editor element");
-    const whitespace = document.createElement("div");
-    editor.appendChild(whitespace);
-
-    fireEvent.mouseDown(whitespace);
-
-    expect(focusSpy).toHaveBeenCalled();
-  });
-
   it("accepts onChange prop without errors", () => {
     const onChange = vi.fn();
     expect(() =>

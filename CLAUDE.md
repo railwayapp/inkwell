@@ -5,7 +5,7 @@
 Inkwell is a WYSIWYG Markdown editor for React, built on Slate.js. The editor
 content model is the Markdown source string. Markdown syntax is part of the
 content; visual formatting is computed at render time and is never stored as a
-separate rich-text model. Includes real-time collaboration via Yjs.
+separate rich-text model.
 
 ## Monorepo Structure
 
@@ -22,7 +22,6 @@ packages/
       renderer/                Read-only renderer + renderer utilities
       plugins/                 Built-in plugins and tests
   inkwell-docs/                Astro Starlight docs + React demo island
-  inkwell-demo-collab-server/  y-websocket demo collaboration server
 ```
 
 ## Commands
@@ -151,14 +150,6 @@ interface PluginKeyDownContext {
 Picker-style built-ins may share internal primitives, but those primitives are
 not part of the root public API.
 
-## Collaboration
-
-Standalone mode uses Slate history. Collaboration mode uses Yjs via
-`CollaborationConfig` with `sharedType`, `awareness`, and `user`.
-
-When collaboration is enabled, the optional `content` prop seeds an empty shared
-document. After that, the Yjs shared type is the source of truth.
-
 ## Code Conventions
 
 - TypeScript strict mode, kebab-case file names (Biome enforced)
@@ -175,5 +166,3 @@ document. After that, the Yjs shared type is the source of truth.
 - `parseHljsRanges` must handle hex/decimal HTML entities (`&#x3C;`)
 - `parseHljsRanges` uses a class stack for nested hljs spans
 - `computeInlineFeatures` assumes a single text node per element
-- `yjs` and `@slate-yjs/core` are direct deps; consumers who do not use
-  collaboration still bundle them

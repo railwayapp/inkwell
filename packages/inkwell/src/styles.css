@@ -250,19 +250,6 @@
   word-wrap: break-word;
 }
 
-/* Remote cursors */
-.inkwell-editor-remote-cursor {
-  position: relative;
-}
-.inkwell-editor-remote-caret {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -1px;
-  width: 2px;
-  border-left: 2px solid;
-}
-
 /* ── Bubble menu plugin ──────────────────────────────────────────── */
 
 @keyframes inkwell-fade-in {

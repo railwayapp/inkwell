@@ -27,7 +27,6 @@ export default defineConfig({
             { slug: "docs/editor" },
             { slug: "docs/renderer" },
             { slug: "docs/editor-plugins", label: "Plugins" },
-            { slug: "docs/collaboration" },
             { slug: "docs/styling" },
           ],
         },

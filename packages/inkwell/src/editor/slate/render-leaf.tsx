@@ -36,31 +36,5 @@ export function RenderLeaf({ attributes, children, leaf }: RenderLeafProps) {
     content = <span className={l.hljs}>{content}</span>;
   }
 
-  // Remote cursor highlight (collaboration mode)
-  if (l.remoteCursor) {
-    content = (
-      <span
-        className={editorClass("remote-cursor")}
-        style={{ backgroundColor: `${l.remoteCursor}30` }}
-      >
-        {content}
-      </span>
-    );
-  }
-
-  // Remote cursor caret (collaboration mode)
-  if (l.remoteCursorCaret) {
-    content = (
-      <>
-        <span
-          className={editorClass("remote-caret")}
-          style={{ borderColor: l.remoteCursor }}
-          contentEditable={false}
-        />
-        {content}
-      </>
-    );
-  }
-
   return <span {...attributes}>{content}</span>;
 }

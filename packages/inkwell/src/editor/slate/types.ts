@@ -54,10 +54,6 @@ export interface InkwellText extends BaseText {
   strikeMarker?: true;
   codeMarker?: true;
   hljs?: string;
-
-  // Remote cursor decorations
-  remoteCursor?: string;
-  remoteCursorCaret?: boolean;
 }
 
 /**

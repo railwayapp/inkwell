@@ -6,8 +6,6 @@ import type {
   RefObject,
 } from "react";
 import type { Plugin } from "unified";
-import type { Awareness } from "y-protocols/awareness";
-import type { XmlText as YXmlText } from "yjs";
 
 // biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
 type RehypePlugin = Plugin<any[], any>;
@@ -138,8 +136,6 @@ export interface InkwellEditorProps {
   rehypePlugins?: RehypePluginConfig[];
   /** Configure which Markdown features the editor recognizes. */
   features?: InkwellFeatures;
-  /** Enable real-time collaborative editing via Yjs. */
-  collaboration?: CollaborationConfig;
   /** Include the built-in bubble menu plugin. Defaults to true. */
   bubbleMenu?: boolean;
   /** Maximum number of characters the editor should track. */
@@ -306,13 +302,4 @@ export interface BubbleMenuItem {
 export interface Snippet {
   title: string;
   content: string;
-}
-
-export interface CollaborationConfig {
-  /** Yjs shared type for the document. Create via `doc.get("content", Y.XmlText)`. */
-  sharedType: YXmlText;
-  /** Awareness instance for remote cursor/presence sharing. */
-  awareness: Awareness;
-  /** Local user metadata, displayed on remote cursors. */
-  user: { name: string; color: string };
 }

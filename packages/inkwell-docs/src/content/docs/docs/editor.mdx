@@ -303,7 +303,10 @@ the wrapper when exceeded. When set, the editor can also render a built-in
 
 **Type:** `boolean` — default: `false`
 
-When `true`, blocks text input past `characterLimit`.
+When `true`, blocks text input, pasted plain text, plugin insertions, and
+`editor.insertMarkdown()` past `characterLimit`. Overlong text insertions are
+truncated to the remaining capacity. Structured non-text insertions are blocked
+when no capacity remains.
 
 ### `onCharacterCount`
 

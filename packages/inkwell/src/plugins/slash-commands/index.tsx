@@ -5,6 +5,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useMemo,
   useState,
@@ -268,6 +269,9 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
   );
 
   const items = mode === "args" ? argItems : commandItems;
+  const reactId = useId().replace(/:/g, "");
+  const listboxId = `${pluginPickerClass.picker}-${reactId}-slash-listbox`;
+  const activeOptionId = `${listboxId}-option-${selectedIndex}`;
 
   // Reset selection to the first enabled item whenever items change. Using
   // `items.length`/`mode`/`query` as deps keeps this cheap without
@@ -418,12 +422,19 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
         ) : items.length === 0 ? (
           <div className={pluginPickerClass.empty}>{emptyMessage}</div>
         ) : (
-          <div>
+          <div
+            id={listboxId}
+            role="listbox"
+            aria-activedescendant={activeOptionId}
+          >
             {items.map((item, index) => {
               const active = index === selectedIndex;
               return (
                 <div
                   key={`${item.type}-${item.value}`}
+                  id={`${listboxId}-option-${index}`}
+                  role="option"
+                  aria-selected={active}
                   className={`${pluginPickerClass.item} ${active ? pluginPickerClass.itemActive : ""}`}
                   onMouseDown={event => event.preventDefault()}
                   onMouseEnter={() => {
@@ -509,11 +520,9 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
     },
     onKeyDown: (event, ctx, editor) => {
       editorRef = editor;
-      // Opening: `/` typed with no prose between the start of the
-      // current line and the caret. This permits opening at the start of
-      // an otherwise non-empty line (the typed `/` is inserted ahead of
-      // the existing line content) as long as the user hasn't started
-      // writing prose first.
+      // Opening: `/` typed on an empty or whitespace-only line. This avoids
+      // rewriting/deleting unrelated suffix text when the caret is before
+      // existing prose in the same block.
       if (
         event.key === "/" &&
         !event.metaKey &&
@@ -521,7 +530,12 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
         !event.altKey
       ) {
         const beforeCursor = getTextBeforeCursorInBlock(editor);
-        if (beforeCursor !== null && beforeCursor.trim() === "") {
+        const blockText = getCurrentBlockText(editor);
+        if (
+          beforeCursor !== null &&
+          beforeCursor.trim() === "" &&
+          blockText.trim() === ""
+        ) {
           event.preventDefault();
           Transforms.insertText(editor, "/");
           ctx.setActivePlugin({ name });

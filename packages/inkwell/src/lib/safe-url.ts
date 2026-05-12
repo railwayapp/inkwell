@@ -1,7 +1,7 @@
 /**
  * Allowlist-based URL sanitizer for `<img src>` values that originate
  * from untrusted input — pasted HTML, dropped files, deserialized
- * markdown. Returns `null` for anything that doesn't match the allowed
+ * markdown. Returns `false` for anything that doesn't match the allowed
  * set so callers can choose to drop the image or render a blank.
  *
  * Allowed:
@@ -17,6 +17,14 @@
  */
 export function isSafeImageUrl(rawUrl: string): boolean {
   if (typeof rawUrl !== "string") return false;
+  if (
+    Array.from(rawUrl).some(char => {
+      const code = char.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    })
+  ) {
+    return false;
+  }
   const url = rawUrl.trim();
   if (url.length === 0) return false;
 
@@ -48,7 +56,7 @@ export function isSafeImageUrl(rawUrl: string): boolean {
 }
 
 /**
- * Same allowlist as `isSafeImageUrl` but returns the original string
+ * Same allowlist as `isSafeImageUrl` but returns the trimmed string
  * when safe and `undefined` otherwise. Convenient for `<img src>`:
  * passing `undefined` omits the attribute entirely (which React prefers
  * over an empty string, since `src=""` re-fetches the current page in
@@ -58,5 +66,6 @@ export function sanitizeImageUrl(
   rawUrl: string | undefined | null,
 ): string | undefined {
   if (!rawUrl) return undefined;
-  return isSafeImageUrl(rawUrl) ? rawUrl : undefined;
+  const url = rawUrl.trim();
+  return isSafeImageUrl(rawUrl) ? url : undefined;
 }

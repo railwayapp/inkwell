@@ -34,6 +34,7 @@ describe("isSafeImageUrl", () => {
     it("data URLs for raster image formats", () => {
       expect(isSafeImageUrl("data:image/png;base64,iVBORw0K")).toBe(true);
       expect(isSafeImageUrl("data:image/jpeg;base64,/9j/4")).toBe(true);
+      expect(isSafeImageUrl("data:image/jpg;base64,/9j/4")).toBe(true);
       expect(isSafeImageUrl("data:image/gif;base64,R0lGOD")).toBe(true);
       expect(isSafeImageUrl("data:image/webp;base64,UklGR")).toBe(true);
     });
@@ -50,6 +51,14 @@ describe("isSafeImageUrl", () => {
       expect(isSafeImageUrl("  javascript:alert(1)")).toBe(false);
       // Mixed case.
       expect(isSafeImageUrl("JavaScript:alert(1)")).toBe(false);
+    });
+
+    it("control-character obfuscated URLs", () => {
+      expect(isSafeImageUrl("java\nscript:alert(1)")).toBe(false);
+      expect(isSafeImageUrl("java\tscript:alert(1)")).toBe(false);
+      expect(isSafeImageUrl("data\n:image/svg+xml,<svg onload=alert(1)>")).toBe(
+        false,
+      );
     });
 
     it("vbscript: URLs", () => {
@@ -90,8 +99,8 @@ describe("isSafeImageUrl", () => {
 });
 
 describe("sanitizeImageUrl", () => {
-  it("returns the URL when safe", () => {
-    expect(sanitizeImageUrl("https://example.com/cat.png")).toBe(
+  it("returns the normalized URL when safe", () => {
+    expect(sanitizeImageUrl(" https://example.com/cat.png ")).toBe(
       "https://example.com/cat.png",
     );
   });

@@ -61,6 +61,10 @@ When `collaboration` is provided, the Yjs document becomes the source of
 truth. The `content` option is only used to seed an empty document on first
 load.
 
+The `collaboration` object is mount-only. To switch from standalone editing to
+collaboration, leave collaboration, change documents, or change user metadata,
+remount the editor with a React `key` tied to that identity.
+
 ### 4. Autosave (optional)
 
 `onChange` still fires on local edits with the serialized Markdown. Use it

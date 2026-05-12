@@ -129,6 +129,96 @@ describe("createAttachmentsPlugin", () => {
     expect((onError.mock.calls[0][0] as Error).message).toBe("boom");
   });
 
+  it.each([
+    "javascript:alert(1)",
+    "data:image/svg+xml,<svg onload=alert(1)>",
+  ])("removes the placeholder and calls onError when upload returns unsafe URL %s", async url => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onError = vi.fn();
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => url,
+      onError,
+    });
+    plugin.setup?.(editor);
+
+    const file = new File(["data"], "x.png", { type: "image/png" });
+    editor.insertData(mockDataTransfer([file]));
+
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(
+      (editor.children as InkwellElement[]).some(el => el.type === "image"),
+    ).toBe(false);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][1]).toBe(file);
+  });
+
+  it("does not mutate the editor when upload resolves after cleanup", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    let resolve: ((url: string) => void) | undefined;
+    const plugin = createAttachmentsPlugin({
+      onUpload: () =>
+        new Promise<string>(r => {
+          resolve = r;
+        }),
+    });
+    const cleanup = plugin.setup?.(editor);
+
+    const file = new File(["data"], "cat.png", { type: "image/png" });
+    editor.insertData(mockDataTransfer([file]));
+    const imagesBeforeCleanup = (editor.children as InkwellElement[]).filter(
+      el => el.type === "image",
+    );
+    expect(imagesBeforeCleanup).toHaveLength(1);
+
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+    cleanup?.();
+    resolve?.("https://cdn/cat.png");
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    const imagesAfterCleanup = (editor.children as InkwellElement[]).filter(
+      el => el.type === "image",
+    );
+    expect(imagesAfterCleanup).toHaveLength(1);
+    expect(imagesAfterCleanup[0].url).toBe("");
+    expect(imagesAfterCleanup[0].alt).toBe("Uploading…");
+  });
+
+  it("does not mutate the editor or call onError when upload rejects after cleanup", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    let reject: ((error: Error) => void) | undefined;
+    const onError = vi.fn();
+    const plugin = createAttachmentsPlugin({
+      onUpload: () =>
+        new Promise<string>((_, r) => {
+          reject = r;
+        }),
+      onError,
+    });
+    const cleanup = plugin.setup?.(editor);
+
+    const file = new File(["data"], "cat.png", { type: "image/png" });
+    editor.insertData(mockDataTransfer([file]));
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+    cleanup?.();
+    reject?.(new Error("late"));
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(
+      (editor.children as InkwellElement[]).some(el => el.type === "image"),
+    ).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("filters files by accept pattern", async () => {
     const editor = createTestEditor();
     editor.children = deserialize("");
@@ -231,7 +321,7 @@ describe("createAttachmentsPlugin", () => {
     },
   );
 
-  it("inserts copied HTML images by URL", () => {
+  it("inserts copied HTML images by decoded safe URL", () => {
     const editor = createTestEditor();
     editor.children = deserialize("");
     editor.onChange();
@@ -245,7 +335,7 @@ describe("createAttachmentsPlugin", () => {
 
     editor.insertData(
       mockHtmlDataTransfer(
-        '<div><img src="https://example.com/cat.png" alt="cat"></div>',
+        '<div><img src="https://example.com/cat.png" alt="cat &amp; dog"></div>',
       ),
     );
 
@@ -254,8 +344,32 @@ describe("createAttachmentsPlugin", () => {
     );
     expect(images).toHaveLength(1);
     expect(images[0].url).toBe("https://example.com/cat.png");
-    expect(images[0].alt).toBe("cat");
+    expect(images[0].alt).toBe("cat & dog");
     expect(onUpload).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "java&#x73;cript:alert(1)",
+    "data&#x3a;text/html,<script>alert(1)</script>",
+  ])("drops copied HTML images with unsafe encoded src %s", src => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const baseInsertData = vi.fn();
+    editor.insertData = baseInsertData;
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => "https://cdn/unused.png",
+      accept: "image/*",
+    });
+    plugin.setup?.(editor);
+
+    editor.insertData(mockHtmlDataTransfer(`<img src="${src}" alt="bad">`));
+
+    expect(
+      (editor.children as InkwellElement[]).some(el => el.type === "image"),
+    ).toBe(false);
+    expect(baseInsertData).toHaveBeenCalledTimes(1);
   });
 
   it("setup returns a cleanup that restores insertData", () => {

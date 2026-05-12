@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -192,7 +193,8 @@ export function PluginMenuPrimitive<T>({
     }
   }, []);
 
-  const listboxId = `${pluginPickerClass.picker}-listbox`;
+  const reactId = useId().replace(/:/g, "");
+  const listboxId = `${pluginPickerClass.picker}-${reactId}-listbox`;
   const activeOptionId = `${listboxId}-option-${selectedIndex}`;
   const renderedResults = useMemo(
     () =>

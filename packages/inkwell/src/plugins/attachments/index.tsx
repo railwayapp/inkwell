@@ -1,9 +1,9 @@
 "use client";
 
-import { type Editor, Node, Transforms } from "slate";
+import { type Editor, Node, Element as SlateElement, Transforms } from "slate";
 import type { InkwellElement } from "../../editor/slate/types";
 import { generateId } from "../../editor/slate/with-node-id";
-import { isSafeImageUrl } from "../../lib/safe-url";
+import { sanitizeImageUrl } from "../../lib/safe-url";
 import type { InkwellPlugin } from "../../types";
 
 export interface AttachmentsPluginOptions {
@@ -87,20 +87,50 @@ function extractHtmlImages(
   const html = data.getData("text/html");
   if (!html) return [];
 
+  const template = document.createElement("template");
+  template.innerHTML = html;
+
   const images: Array<{ url: string; alt: string }> = [];
-  const imgRe = /<img\b[^>]*>/gi;
-  const srcRe = /\bsrc=["']([^"']+)["']/i;
-  const altRe = /\balt=["']([^"']*)["']/i;
-  for (const match of html.matchAll(imgRe)) {
-    const tag = match[0];
-    const url = srcRe.exec(tag)?.[1]?.trim();
+  for (const img of Array.from(template.content.querySelectorAll("img"))) {
+    const url = sanitizeImageUrl(img.getAttribute("src"));
     // Drop tags with a missing or unsafe src — we don't want to write
     // `javascript:`, `data:text/html`, or `data:image/svg+xml` (script
     // execution surface) into the document.
-    if (!url || !isSafeImageUrl(url)) continue;
-    images.push({ url, alt: altRe.exec(tag)?.[1] ?? "" });
+    if (!url) continue;
+    images.push({ url, alt: img.getAttribute("alt") ?? "" });
   }
   return images;
+}
+
+function removeImageById(editor: Editor, id: string): void {
+  for (const [node, path] of Node.nodes(editor)) {
+    if (
+      SlateElement.isElement(node) &&
+      node.id === id &&
+      node.type === "image"
+    ) {
+      Transforms.removeNodes(editor, { at: path });
+      break;
+    }
+  }
+}
+
+function setUploadedImageUrl(
+  editor: Editor,
+  id: string,
+  url: string,
+  alt: string,
+): void {
+  for (const [node, path] of Node.nodes(editor)) {
+    if (
+      SlateElement.isElement(node) &&
+      node.id === id &&
+      node.type === "image"
+    ) {
+      Transforms.setNodes(editor, { url, alt }, { at: path });
+      break;
+    }
+  }
 }
 
 function insertImage(
@@ -132,6 +162,7 @@ export function createAttachmentsPlugin(
     render: () => null,
     setup(editor) {
       const { insertData } = editor;
+      let disposed = false;
       editor.insertData = (data: DataTransfer) => {
         const files = extractFiles(data);
         const matching = accept
@@ -172,34 +203,24 @@ export function createAttachmentsPlugin(
           Promise.resolve()
             .then(() => onUpload(file))
             .then(url => {
-              for (const [node, path] of Node.nodes(editor)) {
-                const el = node as InkwellElement;
-                if (el.id === id && el.type === "image") {
-                  Transforms.setNodes(
-                    editor,
-                    { url, alt: file.name } as Partial<InkwellElement>,
-                    {
-                      at: path,
-                      match: n => (n as InkwellElement).id === id,
-                    },
-                  );
-                  break;
-                }
+              if (disposed) return;
+              const safeUrl = sanitizeImageUrl(url);
+              if (!safeUrl) {
+                removeImageById(editor, id);
+                onError?.(new Error("Unsafe upload URL"), file);
+                return;
               }
+              setUploadedImageUrl(editor, id, safeUrl, file.name);
             })
             .catch(err => {
-              for (const [node, path] of Node.nodes(editor)) {
-                const el = node as InkwellElement;
-                if (el.id === id && el.type === "image") {
-                  Transforms.removeNodes(editor, { at: path });
-                  break;
-                }
-              }
+              if (disposed) return;
+              removeImageById(editor, id);
               onError?.(err, file);
             });
         }
       };
       return () => {
+        disposed = true;
         editor.insertData = insertData;
       };
     },

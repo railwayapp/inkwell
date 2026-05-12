@@ -63,7 +63,7 @@ Most applications should use `useInkwell`. The lower-level `InkwellEditor` compo
 - `collaboration?: CollaborationConfig` — Enable real-time collaborative editing via Yjs.
 - `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for code block highlighting.
 - `characterLimit?: number` — Tracks character count and adds `inkwell-editor-over-limit` when exceeded.
-- `enforceCharacterLimit?: boolean` (default: `false`) — Blocks text input past `characterLimit`.
+- `enforceCharacterLimit?: boolean` (default: `false`) — Blocks text input, pasted plain text, plugin insertions, and `editor.insertMarkdown()` past `characterLimit`; overlong text is truncated to remaining capacity.
 - `onCharacterCount?: (count: number, limit?: number) => void` — Called when character count changes.
 - `submitOnEnter?: boolean` (default: `false`) — When true, Enter calls `onSubmit(markdown)` instead of inserting a newline; Shift+Enter still inserts a newline.
 - `onSubmit?: (markdown: string) => void` — Called when `submitOnEnter` handles Enter.
@@ -500,13 +500,12 @@ interface CompletionPluginOptions {
 
 ### Built-in: Slash Commands
 
-Discord-style slash command picker for chat composers. `/` opens only when
-there is no prose between the start of the current line and the caret
-(blank line, after a newline, or at the very start of a non-empty line);
-`/` after prose does not trigger. Query text is typed directly in the
-editor, not in a separate search input. Selecting a command/argument stages it;
-Enter executes and clears only the slash-command line, while Escape in the
-execute phase cancels and clears that line.
+Discord-style slash command picker for chat composers. `/` opens only on an
+empty or whitespace-only line. It does not open before existing text in the
+same block, so command cleanup cannot touch unrelated prose. Query text is
+typed directly in the editor, not in a separate search input. Selecting a
+command/argument stages it; Enter executes and clears only the slash-command
+line, while Escape in the execute phase cancels and clears that line.
 
 ```tsx
 import { createSlashCommandsPlugin, useInkwell } from "@railway/inkwell";
@@ -545,7 +544,7 @@ interface SlashCommandExecution {
 
 ### Built-in: Attachments
 
-Paste or drop image files into the editor. The plugin runs each matching file through your `onUpload` and inserts a block image at the cursor. It also handles copied HTML `<img>` elements by inserting a block image for each safe `src` directly; those HTML URLs are not uploaded through `onUpload`. Safe image URLs are `http:`, `https:`, protocol-relative, relative paths, `blob:`, or raster `data:image/png|jpeg|jpg|gif|webp`; missing or unsafe values such as `javascript:`, `file:`, `data:text/html`, or `data:image/svg+xml` are ignored.
+Paste or drop image files into the editor. The plugin runs each matching file through your `onUpload` and inserts a block image at the cursor. Returned upload URLs are validated before being stored; unsafe results remove the placeholder and call `onError`. It also handles copied HTML `<img>` elements by inserting a block image for each safe decoded `src` directly; those HTML URLs are not uploaded through `onUpload`. Safe image URLs are `http:`, `https:`, protocol-relative, relative paths, `blob:`, or raster `data:image/png|jpeg|jpg|gif|webp`; missing or unsafe values such as `javascript:`, `file:`, `data:text/html`, or `data:image/svg+xml` are ignored.
 
 ```tsx
 import { createAttachmentsPlugin, useInkwell } from "@railway/inkwell";
@@ -676,7 +675,7 @@ interface CollaborationConfig {
 }
 ```
 
-When `collaboration` is provided, the Yjs document becomes the source of truth. The `content` prop only seeds an empty document.
+When `collaboration` is provided, the Yjs document becomes the source of truth. The `content` prop only seeds an empty document. The `collaboration` object is mount-only; remount the editor with a React `key` to change collaboration mode, document, or user metadata.
 
 ### Providers
 

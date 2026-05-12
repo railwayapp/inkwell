@@ -19,6 +19,20 @@ function effectiveLength(editor: InkwellEditor): number {
   }
 }
 
+function remainingCharacters(editor: InkwellEditor, limit: number): number {
+  return Math.max(0, limit - effectiveLength(editor));
+}
+
+function truncateFragment(fragment: Node[], maxChars: number): Node[] {
+  let text = "";
+  for (const node of fragment) {
+    if (text.length >= maxChars) break;
+    text += Node.string(node).slice(0, maxChars - text.length);
+  }
+  if (text.length === 0) return [];
+  return [{ text }];
+}
+
 /**
  * Create a `DataTransfer`-shaped clone of `original` with the
  * `text/plain` payload sliced to `maxChars`. We avoid `new DataTransfer()`
@@ -73,14 +87,14 @@ export function withCharacterLimit(
   editor: InkwellEditor,
   configRef: { current: CharacterLimitConfig },
 ): InkwellEditor {
-  const { insertText, insertData } = editor;
+  const { insertText, insertData, insertFragment } = editor;
 
   editor.insertText = (text: string) => {
     const cfg = configRef.current;
     if (cfg.enforce && cfg.limit !== undefined) {
       const current = effectiveLength(editor);
       if (current + text.length > cfg.limit) {
-        const remaining = Math.max(0, cfg.limit - current);
+        const remaining = remainingCharacters(editor, cfg.limit);
         if (remaining === 0) return;
         return insertText(text.slice(0, remaining));
       }
@@ -94,7 +108,7 @@ export function withCharacterLimit(
       const pasted = data.getData("text/plain");
       const current = effectiveLength(editor);
       if (pasted && current + pasted.length > cfg.limit) {
-        const remaining = Math.max(0, cfg.limit - current);
+        const remaining = remainingCharacters(editor, cfg.limit);
         if (remaining === 0) return;
         // Re-emit the paste through `insertData` with a truncated
         // text/plain payload so downstream paste handling (markdown
@@ -104,6 +118,25 @@ export function withCharacterLimit(
       }
     }
     insertData(data);
+  };
+
+  editor.insertFragment = (fragment: Node[]) => {
+    const cfg = configRef.current;
+    if (cfg.enforce && cfg.limit !== undefined) {
+      const fragmentLength = fragment.reduce(
+        (sum, node) => sum + Node.string(node).length,
+        0,
+      );
+      const current = effectiveLength(editor);
+      if (current + fragmentLength > cfg.limit) {
+        const remaining = remainingCharacters(editor, cfg.limit);
+        if (remaining === 0) return;
+        const truncated = truncateFragment(fragment, remaining);
+        if (truncated.length === 0) return;
+        return insertFragment(truncated);
+      }
+    }
+    insertFragment(fragment);
   };
 
   return editor;

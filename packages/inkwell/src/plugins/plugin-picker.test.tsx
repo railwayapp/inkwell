@@ -185,6 +185,52 @@ describe("PluginMenuPrimitive", () => {
       );
     });
 
+    it("uses unique listbox and option IDs for multiple pickers", () => {
+      render(
+        <>
+          <PluginMenuPrimitive<Item>
+            pluginName="first"
+            items={ITEMS}
+            getKey={item => item.id}
+            renderItem={(item, active) => (
+              <span data-active={active ? "true" : "false"}>{item.label}</span>
+            )}
+            itemToText={item => item.id}
+            {...baseProps()}
+          />
+          <PluginMenuPrimitive<Item>
+            pluginName="second"
+            items={ITEMS}
+            getKey={item => item.id}
+            renderItem={(item, active) => (
+              <span data-active={active ? "true" : "false"}>{item.label}</span>
+            )}
+            itemToText={item => item.id}
+            {...baseProps()}
+          />
+        </>,
+      );
+
+      const comboboxes = screen.getAllByRole("combobox");
+      const firstListboxId = comboboxes[0]?.getAttribute("aria-controls");
+      const secondListboxId = comboboxes[1]?.getAttribute("aria-controls");
+      expect(firstListboxId).toBeTruthy();
+      expect(secondListboxId).toBeTruthy();
+      expect(firstListboxId).not.toBe(secondListboxId);
+      if (!firstListboxId || !secondListboxId) return;
+      expect(document.getElementById(firstListboxId)).toHaveAttribute(
+        "role",
+        "listbox",
+      );
+      expect(document.getElementById(secondListboxId)).toHaveAttribute(
+        "role",
+        "listbox",
+      );
+      expect(comboboxes[0]?.getAttribute("aria-activedescendant")).not.toBe(
+        comboboxes[1]?.getAttribute("aria-activedescendant"),
+      );
+    });
+
     it("renders the empty state as role=status (announced to AT)", () => {
       const { typePluginQuery } = renderPrimitive({
         pluginName: "aria-empty",

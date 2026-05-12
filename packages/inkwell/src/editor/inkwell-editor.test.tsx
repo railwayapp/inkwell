@@ -32,6 +32,7 @@ import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import { createCompletionsPlugin } from "../plugins/completions";
 import { createMentionsPlugin } from "../plugins/mentions";
 import { createSlashCommandsPlugin } from "../plugins/slash-commands";
+import { createSnippetsPlugin } from "../plugins/snippets";
 import type {
   CollaborationConfig,
   InkwellDecorations,
@@ -1119,6 +1120,14 @@ describe("InkwellEditor — plugin integration", () => {
       expect(await screen.findByText("/status")).toBeInTheDocument();
       expect(screen.getByText("/runbook")).toBeInTheDocument();
       expect(screen.getByText("Bounties are disabled")).toBeInTheDocument();
+      const listbox = screen.getByRole("listbox");
+      const options = screen.getAllByRole("option");
+      expect(listbox).toHaveAttribute(
+        "aria-activedescendant",
+        options[0]?.getAttribute("id") ?? "",
+      );
+      expect(options[0]).toHaveAttribute("aria-selected", "true");
+      expect(options[1]).toHaveAttribute("aria-selected", "false");
       const popup = container.querySelector(
         ".inkwell-plugin-picker-popup",
       ) as HTMLElement;
@@ -1389,7 +1398,7 @@ describe("InkwellEditor — plugin integration", () => {
       expect(ref.current?.getMarkdown()).toBe("Intro\n\n/");
     });
 
-    it("does not teleport the cursor to the end when opening or closing in the middle", async () => {
+    it("does not open before existing text on the same line", async () => {
       const { ref, editor } = await renderSlashEditor("Top\nBottom");
       act(() => {
         ref.current?.setMarkdown("Top\n\nBottom", { select: "start" });
@@ -1397,12 +1406,9 @@ describe("InkwellEditor — plugin integration", () => {
       act(() => {
         fireEvent.keyDown(editor, { key: "/" });
       });
-      await screen.findByText("/status");
-      act(() => {
-        fireEvent.keyDown(editor, { key: "Escape" });
-      });
 
-      expect(ref.current?.getMarkdown()).toBe("/Top\n\nBottom");
+      expect(screen.queryByText("/status")).not.toBeInTheDocument();
+      expect(ref.current?.getMarkdown()).toBe("Top\n\nBottom");
     });
   });
 
@@ -3313,6 +3319,86 @@ describe("Collaboration — withMarkdown behaviors", () => {
 });
 
 describe("Collaboration — component behavior", () => {
+  it("propagates setMarkdown through Yjs operations", async () => {
+    const collab = createCollabConfig("hello");
+    const refA = createRef<import("../types").InkwellEditorHandle>();
+    const refB = createRef<import("../types").InkwellEditorHandle>();
+    const { rerender } = render(
+      <InkwellEditor ref={refA} content="" collaboration={collab} />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      refA.current?.setMarkdown("from a");
+    });
+
+    rerender(<InkwellEditor ref={refB} content="" collaboration={collab} />);
+    await waitFor(() => {
+      expect(refB.current?.getMarkdown()).toBe("from a");
+    });
+  });
+
+  it("propagates clear through Yjs operations", async () => {
+    const collab = createCollabConfig("hello");
+    const refA = createRef<import("../types").InkwellEditorHandle>();
+    const refB = createRef<import("../types").InkwellEditorHandle>();
+    const { rerender } = render(
+      <InkwellEditor ref={refA} content="" collaboration={collab} />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      refA.current?.clear();
+    });
+
+    rerender(<InkwellEditor ref={refB} content="" collaboration={collab} />);
+    await waitFor(() => {
+      expect(refB.current?.getMarkdown()).toBe("");
+    });
+  });
+
+  it("does not resurrect replaced standalone content on undo", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const { container } = render(
+      <InkwellEditor ref={ref} content="old" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+    const editor = container.querySelector(".inkwell-editor");
+    if (!editor) throw new Error("editor not found");
+
+    await act(async () => {
+      ref.current?.setMarkdown("new");
+      fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
+    });
+
+    expect(ref.current?.getMarkdown()).toBe("new");
+  });
+
+  it("warns when collaboration identity changes after mount", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const first = createCollabConfig("first");
+    const second = createCollabConfig("second");
+    const { rerender } = render(
+      <InkwellEditor content="" collaboration={first} />,
+    );
+    await flushEffects();
+
+    rerender(<InkwellEditor content="" collaboration={second} />);
+    await waitFor(() => {
+      expect(warn).toHaveBeenCalledWith(
+        "InkwellEditor: collaboration is mount-only. Remount the editor with a React key to change collaboration mode, document, or user metadata.",
+      );
+    });
+    warn.mockRestore();
+  });
+
+  it("keeps plugin setup stable on unrelated rerenders without custom plugins", async () => {
+    const { rerender } = render(<InkwellEditor content="hello" />);
+    await flushEffects();
+
+    expect(() => rerender(<InkwellEditor content="hello" />)).not.toThrow();
+  });
+
   it("renders in collaborative mode without crashing", () => {
     const collab = createCollabConfig("hello");
     const { container } = render(
@@ -3398,10 +3484,85 @@ describe("InkwellEditor — character limit", () => {
         />,
       );
     });
-    // Wait for internal state update via content sync effect + change fire
-    // The over-limit flag is driven by characterCount which updates in
-    // handleChange, so it reflects internal state after the sync effect
-    // triggers a Slate change.
+    await waitFor(() => {
+      expect(container.querySelector(".inkwell-editor-wrapper")).toHaveClass(
+        "inkwell-editor-over-limit",
+      );
+    });
+  });
+
+  it("prevents insertMarkdown from exceeding an enforced limit", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    render(
+      <InkwellEditor
+        ref={ref}
+        content="hello"
+        onChange={vi.fn()}
+        characterLimit={7}
+        enforceCharacterLimit
+      />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      ref.current?.focus({ at: "end" });
+      ref.current?.insertMarkdown(" world");
+    });
+
+    expect(ref.current?.getText()).toBe("hello w");
+  });
+
+  it("prevents plugin insertion from exceeding an enforced limit", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const insertPlugin = createSnippetsPlugin({
+      snippets: [{ title: "Long", content: "abcdef" }],
+    });
+    const { container } = render(
+      <InkwellEditor
+        ref={ref}
+        content="Hi "
+        onChange={vi.fn()}
+        plugins={[insertPlugin]}
+        characterLimit={5}
+        enforceCharacterLimit
+      />,
+    );
+    await flushEffects();
+    const editor = container.querySelector(".inkwell-editor");
+    if (!editor) throw new Error("editor not found");
+
+    await act(async () => {
+      ref.current?.focus({ at: "end" });
+      fireEvent.keyDown(editor, { key: "[" });
+      ref.current?.insertMarkdown("[");
+    });
+    await screen.findByText("Long");
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "Enter" });
+    });
+
+    expect(ref.current?.getText().length).toBeLessThanOrEqual(5);
+  });
+
+  it("applies over-limit class after controlled over-limit rerender", async () => {
+    const { container, rerender } = render(
+      <InkwellEditor content="hi" onChange={vi.fn()} characterLimit={3} />,
+    );
+    await flushEffects();
+
+    rerender(
+      <InkwellEditor
+        content="too long"
+        onChange={vi.fn()}
+        characterLimit={3}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".inkwell-editor-wrapper")).toHaveClass(
+        "inkwell-editor-over-limit",
+      );
+    });
   });
 
   it("does not enforce by default (count only)", () => {

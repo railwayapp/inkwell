@@ -235,10 +235,10 @@ When a completion placeholder is active, Inkwell normalizes an otherwise empty e
 ## Slash commands
 
 A reusable chat-style command palette. The menu opens when `/` is typed
-with no prose between the start of the current line and the caret — so
-it fires on a blank line, after a newline, and at the very start of an
-existing line, but never in the middle of prose. The plugin keeps the
-command UI inside Inkwell, supports required first-argument choices,
+on an empty or whitespace-only line. It does not open before existing text in
+the same block, which prevents command cleanup from touching unrelated prose.
+The plugin keeps the command UI inside Inkwell, supports required
+first-argument choices,
 async choice loading, disabled commands/choices, reports when the
 command is ready for Enter-to-submit, and can emit a structured command
 payload via `onExecute`. Slash commands are intentionally Discord-style:
@@ -449,9 +449,10 @@ function App() {
 ```
 
 While upload is pending, Inkwell inserts an image placeholder with the default
-alt text `Uploading…`. When the promise resolves, the placeholder is updated to
-use the returned URL and the original file name as alt text. If upload fails,
-the placeholder is removed and `onError` is called.
+alt text `Uploading…`. When the promise resolves, the returned URL is validated
+against the same safe image URL allowlist before it is stored. Safe URLs update
+the placeholder and use the original file name as alt text. If upload fails or
+returns an unsafe URL, the placeholder is removed and `onError` is called.
 
 ### Attachment options
 
@@ -470,7 +471,9 @@ paste/drop handling.
 
 ## Using multiple plugins
 
-Pass an array to the `plugins` option:
+Pass an array to the `plugins` option. If you create plugin objects inside a
+React component, memoize the array and plugin objects when possible so setup
+plugins do not clean up and re-run on unrelated renders.
 
 ```tsx
 const { EditorInstance } = useInkwell({

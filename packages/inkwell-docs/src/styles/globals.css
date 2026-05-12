@@ -50,7 +50,7 @@
   border: 1px solid hsl(270, 70%, 85%);
   border-radius: 8px;
   background: hsl(270, 38%, 10%);
-  color: #e4e4e7;
+  color: var(--pink-900);
   line-height: 1.7;
   font-size: 1rem;
   transition: border-color 0.15s ease;
@@ -64,19 +64,19 @@
 }
 [data-demo-style="custom"] .inkwell-editor strong {
   font-weight: 700;
-  color: #f4f4f5;
+  color: var(--pink-950);
 }
 [data-demo-style="custom"] .inkwell-editor em {
   font-style: italic;
-  color: #d4d4d8;
+  color: var(--pink-800);
 }
 [data-demo-style="custom"] .inkwell-editor del {
   text-decoration: line-through;
-  color: #71717a;
+  color: var(--pink-400);
 }
 [data-demo-style="custom"] .inkwell-editor code {
-  background: #27272a;
-  color: #a78bfa;
+  background: var(--pink-100);
+  color: var(--pink-700);
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-size: 0.85em;
@@ -84,10 +84,10 @@
 
 /* Editor: blocks */
 [data-demo-style="custom"] .inkwell-editor-blockquote {
-  border-left: 3px solid #52525b;
+  border-left: 3px solid var(--pink-300);
   padding-left: 1em;
   margin: 0.5em 0;
-  color: #a1a1aa;
+  color: var(--pink-700);
 }
 [data-demo-style="custom"] .inkwell-editor-heading {
   font-weight: 700;
@@ -153,10 +153,10 @@
 }
 [data-demo-style="custom"] .inkwell-editor-backtick,
 [data-demo-style="custom"] .inkwell-editor-marker {
-  color: #52525b;
+  color: var(--pink-300);
 }
 [data-demo-style="custom"] .inkwell-editor .inkwell-editor-code-fence {
-  color: #52525b;
+  color: var(--pink-300);
 }
 [data-demo-style="custom"] .inkwell-editor .inkwell-editor-code-line {
   white-space: pre-wrap;
@@ -194,8 +194,8 @@
 [data-demo-style="custom"] .inkwell-plugin-bubble-menu-inner {
   display: flex;
   gap: 2px;
-  background: #18181b;
-  border: 1px solid #3f3f46;
+  background: var(--pink-50);
+  border: 1px solid var(--pink-200);
   border-radius: 8px;
   padding: 4px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
@@ -209,18 +209,18 @@
   height: 32px;
   border: none;
   background: transparent;
-  color: #a1a1aa;
+  color: var(--pink-700);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.1s ease;
 }
 [data-demo-style="custom"] .inkwell-plugin-bubble-menu-btn:hover {
-  background: #27272a;
-  color: #f4f4f5;
+  background: var(--pink-100);
+  color: var(--pink-950);
 }
 [data-demo-style="custom"] .inkwell-plugin-bubble-menu-btn-active {
-  background: #3f3f46;
-  color: #f4f4f5;
+  background: var(--pink-200);
+  color: var(--pink-950);
 }
 [data-demo-style="custom"] .inkwell-plugin-bubble-menu-item-bold {
   font-weight: 800;
@@ -242,8 +242,8 @@
   z-index: 1001;
 }
 [data-demo-style="custom"] .inkwell-plugin-picker {
-  background: #18181b;
-  border: 1px solid #3f3f46;
+  background: var(--pink-50);
+  border: 1px solid var(--pink-200);
   border-radius: 8px;
   overflow: hidden;
   min-width: 260px;
@@ -253,15 +253,15 @@
 [data-demo-style="custom"] .inkwell-plugin-picker-search {
   width: 100%;
   padding: 8px 12px;
-  background: #09090b;
+  background: var(--pink-50);
   border: none;
-  border-bottom: 1px solid #27272a;
-  color: #71717a;
+  border-bottom: 1px solid var(--pink-100);
+  color: var(--pink-400);
   font-size: 0.85rem;
   outline: none;
 }
 [data-demo-style="custom"] .inkwell-plugin-picker-search::placeholder {
-  color: #52525b;
+  color: var(--pink-300);
 }
 [data-demo-style="custom"] .inkwell-plugin-picker-item {
   padding: 8px 12px;
@@ -270,22 +270,22 @@
 }
 [data-demo-style="custom"] .inkwell-plugin-picker-item:hover,
 [data-demo-style="custom"] .inkwell-plugin-picker-item-active {
-  background: #27272a;
+  background: var(--pink-100);
 }
 [data-demo-style="custom"] .inkwell-plugin-picker-title {
   font-size: 0.85rem;
   font-weight: 500;
-  color: #e4e4e7;
+  color: var(--pink-900);
   margin-right: 0.5rem;
 }
 [data-demo-style="custom"] .inkwell-plugin-picker-subtitle {
   font-size: 0.75rem;
-  color: #71717a;
+  color: var(--pink-400);
   margin-top: 2px;
 }
 [data-demo-style="custom"] .inkwell-plugin-picker-preview {
   font-size: 0.75rem;
-  color: #71717a;
+  color: var(--pink-400);
   margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -294,13 +294,13 @@
 [data-demo-style="custom"] .inkwell-plugin-picker-empty {
   padding: 12px;
   text-align: center;
-  color: #52525b;
+  color: var(--pink-300);
   font-size: 0.85rem;
 }
 
 [data-demo-style="custom"] .inkwell-plugin-slash-commands-execute {
   padding: 8px 12px;
-  color: #e4e4e7;
+  color: var(--pink-900);
   font-size: 0.85rem;
   font-weight: 500;
   text-align: center;
@@ -333,10 +333,10 @@
   margin: 0.5em 0;
 }
 [data-demo-style="custom"] .inkwell-renderer blockquote {
-  border-left: 3px solid #52525b;
+  border-left: 3px solid var(--pink-300);
   padding-left: 1em;
   margin: 1em 0;
-  color: #a1a1aa;
+  color: var(--pink-700);
 }
 [data-demo-style="custom"] .inkwell-renderer ul,
 [data-demo-style="custom"] .inkwell-renderer ol {
@@ -353,8 +353,8 @@
   margin: 0.25em 0;
 }
 [data-demo-style="custom"] .inkwell-renderer code {
-  background: #27272a;
-  color: #a78bfa;
+  background: var(--pink-100);
+  color: var(--pink-700);
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-size: 0.85em;
@@ -371,10 +371,10 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--pink-200);
   border-radius: 6px;
-  background: #18181b;
-  color: #71717a;
+  background: var(--pink-50);
+  color: var(--pink-400);
   cursor: pointer;
   opacity: 0;
   transition:
@@ -389,14 +389,14 @@
   opacity: 1;
 }
 [data-demo-style="custom"] .inkwell-renderer-copy-btn:hover {
-  background: #27272a;
-  color: #f4f4f5;
+  background: var(--pink-100);
+  color: var(--pink-950);
 }
 [data-demo-style="custom"] .inkwell-renderer pre {
   margin: 1em 0;
   border-radius: 8px;
   overflow: auto;
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--pink-200);
 }
 [data-demo-style="custom"] .inkwell-renderer pre code {
   display: block;
@@ -406,12 +406,12 @@
   font-size: 14px;
 }
 [data-demo-style="custom"] .inkwell-renderer a {
-  color: #60a5fa;
+  color: var(--pink-600);
   text-decoration: underline;
 }
 [data-demo-style="custom"] .inkwell-renderer hr {
   border: none;
-  border-top: 1px solid #3f3f46;
+  border-top: 1px solid var(--pink-200);
   margin: 2em 0;
 }
 [data-demo-style="custom"] .inkwell-renderer strong {
@@ -473,7 +473,7 @@
 
 /* Demo settings modal scrollbar.
    Translucent thumb that brightens on hover, with a thin gradient tint
-   along the leading edge of the dialog. Kept on the neutral gray scale
+   along the leading edge of the dialog. Kept on the purple hsl(270) scale
    to match the modal palette. */
 .demo-modal-dialog {
   scrollbar-width: thin;

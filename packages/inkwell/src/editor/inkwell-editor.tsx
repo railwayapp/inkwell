@@ -28,7 +28,7 @@ import {
   Range,
   Transforms,
 } from "slate";
-import { withHistory } from "slate-history";
+import { HistoryEditor, withHistory } from "slate-history";
 import { Editable, ReactEditor, Slate, withReact } from "slate-react";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import type {
@@ -58,6 +58,7 @@ import { withMarkdown } from "./slate/with-markdown";
 import { generateId, withNodeId } from "./slate/with-node-id";
 
 const IS_SERVER = typeof window === "undefined";
+const EMPTY_PLUGINS: InkwellPlugin[] = [];
 
 /**
  * Built-in toast surfaced at the top-right of the editor when the document
@@ -116,6 +117,28 @@ const DEFAULT_DECORATIONS: Required<InkwellDecorations> = {
   images: true,
 };
 
+function replaceEditorChildren(
+  editor: InkwellSlateEditor,
+  nodes: Descendant[],
+  withoutSaving: boolean,
+) {
+  const replace = () => {
+    Editor.withoutNormalizing(editor, () => {
+      for (let index = editor.children.length - 1; index >= 0; index--) {
+        Transforms.removeNodes(editor, { at: [index] });
+      }
+      Transforms.insertNodes(editor, nodes, { at: [0] });
+    });
+  };
+
+  if (withoutSaving && HistoryEditor.isHistoryEditor(editor)) {
+    HistoryEditor.withoutSaving(editor, replace);
+    return;
+  }
+
+  replace();
+}
+
 /**
  * Public wrapper. Returns `null` during SSR so all hooks in the client
  * component below are always called in the same order on the client.
@@ -138,7 +161,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       style,
       placeholder,
       editable = true,
-      plugins: userPlugins = [],
+      plugins: userPlugins = EMPTY_PLUGINS,
       rehypePlugins,
       decorations,
       collaboration,
@@ -178,6 +201,8 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       enforce: enforceCharacterLimit,
     };
 
+    const initialCollaborationRef = useRef(collaboration);
+
     const editor = useMemo<InkwellSlateEditor>(() => {
       const base = withNodeId(withReact(createEditor()));
 
@@ -199,6 +224,15 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         characterLimitRef,
       );
     }, []);
+
+    useEffect(() => {
+      if (collaboration !== initialCollaborationRef.current) {
+        // biome-ignore lint/suspicious/noConsole: Dev-facing mount-only configuration warning.
+        console.warn(
+          "InkwellEditor: collaboration is mount-only. Remount the editor with a React key to change collaboration mode, document, or user metadata.",
+        );
+      }
+    }, [collaboration]);
 
     useEffect(() => {
       const cleanups: Array<() => void> = [];
@@ -419,7 +453,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       if (content === lastContent.current) return;
 
       const newValue = deserialize(content, resolvedDecorations);
-      editor.children = newValue;
+      replaceEditorChildren(editor, newValue, true);
 
       // Reset selection to start to avoid stale selection errors
       Transforms.select(editor, Editor.start(editor, []));
@@ -588,7 +622,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         const select = options?.select ?? "start";
         const newValue = deserialize(markdown, resolvedDecorations);
 
-        editor.children = newValue;
+        replaceEditorChildren(editor, newValue, true);
         updateCharacterCount();
         bumpStateVersion();
 

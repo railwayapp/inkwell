@@ -355,61 +355,6 @@ function Switch({
   );
 }
 
-function Segmented<T extends string>({
-  value,
-  onChange,
-  options,
-  ariaLabel,
-}: {
-  value: T;
-  onChange: (next: T) => void;
-  options: { value: T; label: string }[];
-  ariaLabel: string;
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      style={{
-        display: "inline-flex",
-        padding: 2,
-        borderRadius: 8,
-        border: `1px solid ${SURFACE.border}`,
-        background: SURFACE.bgSoft,
-      }}
-    >
-      {options.map(opt => {
-        const selected = opt.value === value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(opt.value)}
-            style={{
-              padding: "0.25rem 0.7rem",
-              border: "none",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontSize: "0.7rem",
-              fontWeight: 600,
-              color: selected ? SURFACE.textHi : SURFACE.textDim,
-              background: selected ? SURFACE.accentSoft : "transparent",
-              boxShadow: selected
-                ? `inset 0 0 0 1px ${SURFACE.borderStrong}`
-                : "none",
-              transition: "all 0.15s ease",
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function NumberInput({
   value,
   onChange,
@@ -998,7 +943,6 @@ export function Demo() {
   );
   const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
   const [characterLimit, setCharacterLimit] = useState(DEFAULT_CHARACTER_LIMIT);
-  const [demoStyle, setDemoStyle] = useState<"custom" | "default">("custom");
   const [completion, setCompletion] = useState<string | null>(DEMO_COMPLETION);
   const editorContentRef = useRef(editorContent);
   const completionRef = useRef(completion);
@@ -1035,7 +979,6 @@ export function Demo() {
       characterLimit={characterLimit}
       enforceCharacterLimit={enforceCharacterLimit}
       onCharacterCount={setCharacterCount}
-      styles={{ editor: { minHeight: "100%", width: "100%" } }}
     />
   );
 
@@ -1114,28 +1057,14 @@ export function Demo() {
           </button>
         </div>
 
-        {/* Editor / preview surface */}
-        <div
-          data-demo-style={demoStyle}
-          className="demo-tab-content"
-          style={{
-            borderRadius: "10px",
-            background: SURFACE.bg,
-            height: "760px",
-            overflowY: "auto",
-          }}
-        >
-          {activeTab === "editor" && editor}
-          {activeTab === "preview" && (
-            <div style={{ padding: "1.5rem" }}>
-              <InkwellRenderer
-                content={editorContent}
-                copyButton
-                mentions={MENTION_RENDERERS}
-              />
-            </div>
-          )}
-        </div>
+        {activeTab === "editor" && editor}
+        {activeTab === "preview" && (
+          <InkwellRenderer
+            content={editorContent}
+            copyButton
+            mentions={MENTION_RENDERERS}
+          />
+        )}
 
         {/* Settings live behind the gear button + modal. Hash `#demo-settings`
             opens it; closing restores the active tab's hash. */}
@@ -1167,41 +1096,6 @@ export function Demo() {
           })}
 
           <SectionHeader>Settings</SectionHeader>
-
-          <Row
-            title="Editor styles"
-            description={
-              <>
-                Switch between the demo's purple theme and the unstyled defaults
-                shipped with{" "}
-                <code
-                  style={{
-                    fontFamily:
-                      '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-                    fontSize: "0.78em",
-                    background: "hsl(220, 10%, 22%)",
-                    padding: "0 0.3rem",
-                    borderRadius: 3,
-                    color: SURFACE.textHi,
-                  }}
-                >
-                  @railway/inkwell/styles.css
-                </code>
-                .
-              </>
-            }
-            control={
-              <Segmented<"custom" | "default">
-                ariaLabel="Editor styles"
-                value={demoStyle}
-                onChange={setDemoStyle}
-                options={[
-                  { value: "custom", label: "Demo" },
-                  { value: "default", label: "Defaults" },
-                ]}
-              />
-            }
-          />
 
           <Row
             title="Character limit"

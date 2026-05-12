@@ -99,8 +99,6 @@ interface PluginDef {
   usage: ReactNode;
   /** Omitted for built-in plugins that are toggled via a dedicated editor prop. */
   create?: (ctx: {
-    getMarkdown: () => string;
-    setMarkdown: (markdown: string) => void;
     getCompletion: () => string | null;
     dismissCompletion: () => void;
     restoreCompletion: (completion: string) => void;
@@ -155,7 +153,8 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
     summary: "Placeholder completions for suggested text flows.",
     usage: (
       <>
-        Clear the editor to reveal a placeholder suggestion. Press <Kbd>Tab</Kbd>
+        Clear the editor to reveal a placeholder suggestion. Press{" "}
+        <Kbd>Tab</Kbd>
         to accept it, type anything or press <Kbd>Esc</Kbd> to dismiss it, then
         undo back to empty to restore it.
       </>
@@ -181,7 +180,7 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
         via the slash plugin's structured <code>onExecute</code> callback.
       </>
     ),
-    create: ({ getMarkdown, setMarkdown }) =>
+    create: () =>
       createSlashCommandsPlugin({
         commands: [
           {
@@ -212,8 +211,6 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
             description: "Prepare a short summary",
           },
         ],
-        getMarkdown,
-        setMarkdown,
         onExecute: () => {},
       }),
   },
@@ -439,8 +436,7 @@ function NumberInput({
   ariaLabel: string;
 }) {
   const [focused, setFocused] = useState(false);
-  const clamp = (n: number) =>
-    Math.min(max, Math.max(min, Math.round(n)));
+  const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
   const setBy = (delta: number) => onChange(clamp(value + delta));
 
   const stepBtn: React.CSSProperties = {
@@ -469,9 +465,7 @@ function NumberInput({
         border: `1px solid ${focused ? SURFACE.borderStrong : SURFACE.border}`,
         background: SURFACE.bgSoft,
         overflow: "hidden",
-        boxShadow: focused
-          ? `0 0 0 3px ${SURFACE.accentSoft}`
-          : "none",
+        boxShadow: focused ? `0 0 0 3px ${SURFACE.accentSoft}` : "none",
         transition: "border-color 0.15s ease, box-shadow 0.15s ease",
       }}
       onMouseDownCapture={() => {
@@ -514,8 +508,7 @@ function NumberInput({
           background: "transparent",
           color: SURFACE.textHi,
           fontSize: "0.82rem",
-          fontFamily:
-            '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+          fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
           fontVariantNumeric: "tabular-nums",
           fontWeight: 500,
           textAlign: "right",
@@ -1180,9 +1173,7 @@ export function Demo() {
     () => INITIAL_MARKDOWN.length,
   );
   const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
-  const [characterLimit, setCharacterLimit] = useState(
-    DEFAULT_CHARACTER_LIMIT,
-  );
+  const [characterLimit, setCharacterLimit] = useState(DEFAULT_CHARACTER_LIMIT);
   const [demoStyle, setDemoStyle] = useState<"custom" | "default">("custom");
   const [completion, setCompletion] = useState<string | null>(DEMO_COMPLETION);
   const editorContentRef = useRef(editorContent);
@@ -1193,17 +1184,20 @@ export function Demo() {
   const selectedPlugins = useMemo(
     () =>
       AVAILABLE_PLUGINS.filter(p => p.create && enabledPluginIds.has(p.id)).map(
-        p =>
-          p.create!({
-            getMarkdown: () => editorContentRef.current,
-            setMarkdown: setEditorContent,
+        p => {
+          // The filter above guarantees `create` is defined; capture it in
+          // a local so we don't need the non-null assertion.
+          const create = p.create;
+          if (!create) throw new Error("plugin missing create");
+          return create({
             getCompletion: () =>
               editorContentRef.current.trim().length === 0
                 ? completionRef.current
                 : null,
             dismissCompletion: () => setCompletion(null),
             restoreCompletion: nextCompletion => setCompletion(nextCompletion),
-          }),
+          });
+        },
       ),
     [enabledPluginIds],
   );
@@ -1233,7 +1227,11 @@ export function Demo() {
             marginBottom: "0.75rem",
           }}
         >
-          <div role="tablist" aria-label="Demo mode" style={{ display: "flex" }}>
+          <div
+            role="tablist"
+            aria-label="Demo mode"
+            style={{ display: "flex" }}
+          >
             {TABS.map(({ key, label }) => {
               const selected = activeTab === key;
               return (
@@ -1359,8 +1357,8 @@ export function Demo() {
             title="Editor styles"
             description={
               <>
-                Switch between the demo's purple theme and the unstyled
-                defaults shipped with{" "}
+                Switch between the demo's purple theme and the unstyled defaults
+                shipped with{" "}
                 <code
                   style={{
                     fontFamily:

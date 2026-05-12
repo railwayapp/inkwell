@@ -146,7 +146,7 @@ The library also exports components directly for lower-level integrations. Most 
 - **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createCompletionsPlugin`, `createEmojiPlugin`, `createMentionsPlugin`, `createSlashCommandsPlugin`, `createSnippetsPlugin`
 - **Plugin utilities**: `defaultBubbleMenuItems`, `pluginClass`, `PluginMenuPrimitive`, `pluginPickerClass`
 - **Serialization**: `serializeToMarkdown`, `parseMarkdown`, `deserialize`
-- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `InkwellPluginPlaceholder`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `CompletionPluginOptions`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`
+- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `InkwellPluginPlaceholder`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `CompletionPluginOptions`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`, `SubscribeForwardedKey`
 
 ### Editor Rendering Model (Slate.js)
 
@@ -184,7 +184,10 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
   search input. Selecting a command/argument stages execution; Enter calls
   `onExecute({ name, args, raw })` with string-only arguments and clears only
   the introduced slash-command line, while Escape in the execute phase cancels
-  and clears that line.
+  and clears that line. The plugin uses `ctx.setActivePlugin` from
+  `PluginKeyDownContext` to claim editor activation (no character trigger),
+  and writes the slash line directly through the captured editor — no
+  `getMarkdown`/`setMarkdown` round-trip is required from the host.
 
 All picker-style plugins (snippets, mentions, anything custom) render
 through the shared `PluginMenuPrimitive` so the menu UI, keyboard nav,
@@ -195,7 +198,24 @@ renders a built-in toast inside `.inkwell-editor-wrapper` at top-right
 whenever the document hits the limit. Opt out with `limitToast={false}`.
 Styled by `.inkwell-editor-limit-toast`.
 
-User plugins merged after built-ins.
+User plugins merged after built-ins. If a user plugin shares a name
+with a built-in (for example a custom `bubble-menu`), the user plugin
+replaces the built-in to keep React keys stable.
+
+**Plugin activation model**. The editor tracks a single `activePlugin`
+at a time. A plugin participates in activation either by declaring a
+`trigger` character (mentions, emoji, snippets) or by setting
+`activatable: true` and calling `ctx.setActivePlugin({ name })` from
+`onKeyDown` (slash commands). Always-on plugins (bubble menu,
+attachments, completions) leave both undefined and receive
+`active: true` every render.
+
+**Editor-scoped key forwarding**. While a plugin is active, the editor
+forwards navigation and printable keystrokes to subscribers via
+`subscribeForwardedKey(listener)` on `PluginRenderProps`. The channel
+is scoped per editor instance, so two editors on the same page do not
+cross-talk. The shared `PluginMenuPrimitive` subscribes through this
+prop — there is no module- or window-scoped event bus.
 
 **wrapSelection toggle**: Wrapping already-formatted text removes the formatting instead of double-wrapping. Detects markers in the selection or surrounding the selection.
 

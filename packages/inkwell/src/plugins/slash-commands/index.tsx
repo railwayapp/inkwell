@@ -1,15 +1,21 @@
 "use client";
 
 import {
+  forwardRef,
   type RefObject,
   useCallback,
   useEffect,
-  useLayoutEffect,
+  useImperativeHandle,
   useMemo,
   useState,
 } from "react";
-import { Editor, Range, Transforms } from "slate";
-import type { InkwellPlugin } from "../../types";
+import { Editor, type Path, Range, Transforms } from "slate";
+import type { InkwellEditor } from "../../editor/slate/types";
+import type {
+  InkwellPlugin,
+  PluginKeyDownContext,
+  PluginRenderProps,
+} from "../../types";
 import { pluginPickerClass } from "../plugin-picker";
 
 export interface SlashCommandChoice {
@@ -40,25 +46,17 @@ export interface SlashCommandExecution {
   raw: string;
 }
 
-interface SlashCommandMenuState {
-  visible: boolean;
-  open: () => void;
-  close: () => void;
-  appendQuery: (value: string) => void;
-  removeQueryChar: () => void;
-  move: (direction: 1 | -1) => void;
-  selectActive: () => void;
-  execute: () => void;
-  ready: boolean;
-}
-
 export interface SlashCommandsPluginOptions<T extends SlashCommandItem> {
+  /** Plugin name. Defaults to `"slash-commands"`. */
   name?: string;
+  /** Commands shown in the picker. */
   commands: T[];
-  getMarkdown: () => string;
-  setMarkdown: (markdown: string) => void;
+  /** Called whenever the menu transitions in and out of the execute phase. */
   onReadyChange?: (ready: boolean) => void;
+  /** Called with the structured execution payload when the user presses Enter
+   *  during the execute phase. */
   onExecute?: (command: SlashCommandExecution) => void;
+  /** Fallback message when filtering returns no commands. */
   emptyMessage?: string;
 }
 
@@ -72,119 +70,127 @@ interface SlashCommandAutocompleteItem<T extends SlashCommandItem> {
   command?: T;
 }
 
+/** Imperative surface the editor-side `onKeyDown`/`onActiveKeyDown` handlers
+ *  use to drive the menu without resorting to writing to refs during render. */
+interface SlashMenuHandle {
+  /** Whether the menu is currently in execute (ready-to-confirm) phase. */
+  isReady: () => boolean;
+  /** Append `value` to the current query. */
+  appendQuery: (value: string) => void;
+  /** Drop the last character from the query. */
+  removeQueryChar: () => void;
+  /** Move the active selection by one step. */
+  move: (direction: 1 | -1) => void;
+  /** Confirm the currently highlighted item (commands or args). */
+  selectActive: () => void;
+  /** Fire the configured `onExecute` with the current command + args. */
+  execute: () => void;
+  /** Reset state on dismissal. */
+  reset: () => void;
+}
+
 const fuzzyMatch = (query: string, text: string): boolean => {
   const q = query.toLowerCase();
   const t = text.toLowerCase();
   return t.includes(q) || t.startsWith(q);
 };
 
-const findActiveSlashLineIndex = (markdown: string): number => {
-  const lines = markdown.split("\n");
-  for (let index = lines.length - 1; index >= 0; index--) {
-    const line = lines[index] ?? "";
-    if (/^\s*\//.test(line)) return index;
-  }
-  return -1;
-};
-
-const replaceActiveSlashLine = (markdown: string, nextLine: string): string => {
-  const lines = markdown.split("\n");
-  const index = findActiveSlashLineIndex(markdown);
-  if (index === -1) return markdown;
-  lines[index] = nextLine;
-  return lines.join("\n");
-};
-
-const clearBlockAtPath = (editor: Editor, path: number[]) => {
+/** Replace the content of the block at `path` with `text`. */
+const setBlockText = (editor: InkwellEditor, path: Path, text: string) => {
   const start = Editor.start(editor, path);
   const end = Editor.end(editor, path);
   Transforms.select(editor, { anchor: start, focus: end });
-  Transforms.delete(editor);
-  editor.onChange();
+  Transforms.insertText(editor, text);
+  Transforms.select(editor, Editor.end(editor, path));
 };
 
-const getCurrentBlockText = (editor: Editor): string | null => {
+/** Clear the content of the block at `path` to an empty string. */
+const clearBlockAtPath = (editor: InkwellEditor, path: Path) => {
+  try {
+    const start = Editor.start(editor, path);
+    const end = Editor.end(editor, path);
+    Transforms.select(editor, { anchor: start, focus: end });
+    Transforms.delete(editor);
+    editor.onChange();
+  } catch {
+    // The block may have already been removed by an external edit.
+  }
+};
+
+const getCurrentBlockPath = (editor: InkwellEditor): Path | null => {
   const { selection } = editor;
   if (!selection || !Range.isCollapsed(selection)) return null;
-  return Editor.string(editor, selection.anchor.path);
+  // The first segment of the path is the block index at the root.
+  return selection.anchor.path.slice(0, 1) as Path;
 };
 
-const getTextBeforeCursorInBlock = (editor: Editor): string | null => {
+const getCurrentBlockText = (editor: InkwellEditor): string => {
+  const path = getCurrentBlockPath(editor);
+  if (!path) return "";
+  try {
+    return Editor.string(editor, path);
+  } catch {
+    return "";
+  }
+};
+
+const getTextBeforeCursorInBlock = (editor: InkwellEditor): string | null => {
   const { selection } = editor;
   if (!selection || !Range.isCollapsed(selection)) return null;
   const anchor = selection.anchor;
   const blockStart = { path: anchor.path, offset: 0 };
-  return Editor.string(editor, { anchor: blockStart, focus: anchor });
+  try {
+    return Editor.string(editor, { anchor: blockStart, focus: anchor });
+  } catch {
+    return null;
+  }
 };
 
-function SlashCommandMenu<T extends SlashCommandItem>({
-  commands,
-  emptyMessage,
-  getMarkdown,
-  setMarkdown,
-  stateRef,
-  onReadyChange,
-  editorRef,
-  getEditor,
-  onExecute,
-}: {
+interface SlashCommandMenuProps<T extends SlashCommandItem>
+  extends PluginRenderProps {
   commands: T[];
   emptyMessage: string;
-  getMarkdown: () => string;
-  setMarkdown: (markdown: string) => void;
-  stateRef: { current: SlashCommandMenuState };
   onReadyChange?: (ready: boolean) => void;
-  editorRef: RefObject<HTMLDivElement | null>;
-  getEditor: () => Editor | null;
   onExecute?: (command: SlashCommandExecution) => void;
-}) {
-  const [visible, setVisible] = useState(false);
+  getEditor: () => InkwellEditor | null;
+}
+
+const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
+  T extends SlashCommandItem,
+>(
+  {
+    commands,
+    emptyMessage,
+    onReadyChange,
+    onExecute,
+    onDismiss,
+    position,
+    getEditor,
+  }: SlashCommandMenuProps<T>,
+  ref: React.Ref<SlashMenuHandle>,
+) {
   const [mode, setMode] = useState<"commands" | "args" | "ready">("commands");
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedCommand, setSelectedCommand] = useState<T | null>(null);
-  const [selectedArg, setSelectedArg] = useState<{ name: string; value: string } | null>(null);
+  const [selectedArg, setSelectedArg] = useState<{
+    name: string;
+    value: string;
+  } | null>(null);
   const [argChoices, setArgChoices] = useState<SlashCommandChoice[]>([]);
   const [loadingArgs, setLoadingArgs] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
-    onReadyChange?.(visible && mode === "ready");
-  }, [mode, onReadyChange, visible]);
+    onReadyChange?.(mode === "ready");
+  }, [mode, onReadyChange]);
 
-  useLayoutEffect(() => {
-    if (!visible) return;
-
-    const selection = window.getSelection();
-    const editorEl = editorRef.current;
-    const wrapperEl = editorEl?.parentElement;
-    if (!selection || selection.rangeCount === 0 || !wrapperEl) return;
-
-    const range = selection.getRangeAt(0);
-    let rect =
-      "getBoundingClientRect" in range
-        ? range.getBoundingClientRect()
-        : new DOMRect(0, 0, 0, 0);
-    if (rect.width === 0 && rect.height === 0 && selection.anchorNode) {
-      const node =
-        selection.anchorNode instanceof HTMLElement
-          ? selection.anchorNode
-          : selection.anchorNode.parentElement;
-      if (node) rect = node.getBoundingClientRect();
-    }
-
-    const wrapperRect = wrapperEl.getBoundingClientRect();
-    setPosition({
-      top: rect.bottom - wrapperRect.top + 6,
-      left: Math.max(0, rect.left - wrapperRect.left),
-    });
-  }, [editorRef, mode, query, visible]);
-
+  // Load arg choices for the currently selected command when entering the
+  // `args` phase. Async fetches are cancellation-safe.
   useEffect(() => {
     let cancelled = false;
 
     const loadChoices = async () => {
-      if (!visible || mode !== "args" || !selectedCommand) {
+      if (mode !== "args" || !selectedCommand) {
         setArgChoices([]);
         return;
       }
@@ -218,7 +224,7 @@ function SlashCommandMenu<T extends SlashCommandItem>({
     return () => {
       cancelled = true;
     };
-  }, [mode, selectedCommand, visible]);
+  }, [mode, selectedCommand]);
 
   const commandItems: SlashCommandAutocompleteItem<T>[] = useMemo(
     () =>
@@ -263,37 +269,28 @@ function SlashCommandMenu<T extends SlashCommandItem>({
 
   const items = mode === "args" ? argItems : commandItems;
 
+  // Reset selection to the first enabled item whenever items change. Using
+  // `items.length`/`mode`/`query` as deps keeps this cheap without
+  // depending on the full items array identity.
   useEffect(() => {
     const firstEnabled = items.findIndex(item => !item.disabled);
     setSelectedIndex(firstEnabled >= 0 ? firstEnabled : 0);
   }, [items.length, mode, query]);
 
-  const close = useCallback(() => {
-    setVisible(false);
-    setMode("commands");
-    setQuery("");
-    setSelectedCommand(null);
-    setSelectedArg(null);
-    onReadyChange?.(false);
-  }, [onReadyChange]);
-
   const writeSlashLine = useCallback(
     (line: string) => {
       const editor = getEditor();
-      if (editor?.selection && Range.isCollapsed(editor.selection)) {
-        const path = editor.selection.anchor.path;
-        const start = Editor.start(editor, path);
-        const end = Editor.end(editor, path);
-        Transforms.select(editor, { anchor: start, focus: end });
-        Transforms.insertText(editor, line);
-        Transforms.select(editor, Editor.end(editor, path));
+      if (!editor) return;
+      const path = getCurrentBlockPath(editor);
+      if (!path) return;
+      try {
+        setBlockText(editor, path, line);
         editor.onChange();
-        return;
+      } catch {
+        // Block may have been removed by an external edit.
       }
-
-      setMarkdown(replaceActiveSlashLine(getMarkdown(), line));
     },
-    [getEditor, getMarkdown, setMarkdown],
+    [getEditor],
   );
 
   const handleSelect = useCallback(
@@ -303,7 +300,8 @@ function SlashCommandMenu<T extends SlashCommandItem>({
       if (item.type === "command") {
         const command = item.command;
         if (!command) return;
-        const hasRequiredArgs = command.args?.some(arg => arg.required) ?? false;
+        const hasRequiredArgs =
+          command.args?.some(arg => arg.required) ?? false;
         const nextLine = `/${command.name}${hasRequiredArgs ? " " : ""}`;
         writeSlashLine(nextLine);
         setSelectedCommand(command);
@@ -316,60 +314,68 @@ function SlashCommandMenu<T extends SlashCommandItem>({
       if (!selectedCommand) return;
       const firstArg = selectedCommand.args?.[0];
       writeSlashLine(`/${selectedCommand.name} ${item.label}`);
-      setSelectedArg(firstArg ? { name: firstArg.name, value: item.value } : null);
+      setSelectedArg(
+        firstArg ? { name: firstArg.name, value: item.value } : null,
+      );
       setQuery("");
       setMode("ready");
     },
     [selectedCommand, writeSlashLine],
   );
 
-  const move = useCallback(
-    (direction: 1 | -1) => {
-      setSelectedIndex(current => {
-        if (items.length === 0) return current;
-        for (let step = 1; step <= items.length; step++) {
-          const next = (current + direction * step + items.length) % items.length;
-          if (!items[next]?.disabled) return next;
-        }
-        return current;
-      });
-    },
-    [items],
+  useImperativeHandle(
+    ref,
+    () => ({
+      isReady: () => mode === "ready",
+      appendQuery: value => setQuery(current => `${current}${value}`),
+      removeQueryChar: () =>
+        setQuery(current => (current.length > 0 ? current.slice(0, -1) : "")),
+      move: direction =>
+        setSelectedIndex(current => {
+          if (items.length === 0) return current;
+          for (let step = 1; step <= items.length; step++) {
+            const next =
+              (current + direction * step + items.length) % items.length;
+            if (!items[next]?.disabled) return next;
+          }
+          return current;
+        }),
+      selectActive: () => {
+        const item = items[selectedIndex];
+        if (item) handleSelect(item);
+      },
+      execute: () => {
+        if (!selectedCommand) return;
+        const editor = getEditor();
+        const raw = editor
+          ? (getCurrentBlockText(editor) ?? `/${selectedCommand.name}`)
+          : `/${selectedCommand.name}`;
+        onExecute?.({
+          name: selectedCommand.name,
+          args: selectedArg ? { [selectedArg.name]: selectedArg.value } : {},
+          raw,
+        });
+      },
+      reset: () => {
+        setMode("commands");
+        setQuery("");
+        setSelectedCommand(null);
+        setSelectedArg(null);
+        setSelectedIndex(0);
+        setArgChoices([]);
+      },
+    }),
+    [
+      getEditor,
+      handleSelect,
+      items,
+      mode,
+      onExecute,
+      selectedArg,
+      selectedCommand,
+      selectedIndex,
+    ],
   );
-
-  const selectActive = useCallback(() => {
-    const item = items[selectedIndex];
-    if (item) handleSelect(item);
-  }, [handleSelect, items, selectedIndex]);
-
-  stateRef.current = {
-    visible,
-    open: () => {
-      setVisible(true);
-      setMode("commands");
-      setQuery("");
-      setSelectedCommand(null);
-      onReadyChange?.(false);
-    },
-    close,
-    appendQuery: value => setQuery(current => `${current}${value}`),
-    removeQueryChar: () => setQuery(current => current.slice(0, -1)),
-    move,
-    selectActive,
-    execute: () => {
-      if (!selectedCommand) return;
-      const editor = getEditor();
-      const raw = editor ? (getCurrentBlockText(editor) ?? `/${selectedCommand.name}`) : `/${selectedCommand.name}`;
-      onExecute?.({
-        name: selectedCommand.name,
-        args: selectedArg ? { [selectedArg.name]: selectedArg.value } : {},
-        raw,
-      });
-    },
-    ready: visible && mode === "ready",
-  };
-
-  if (!visible) return null;
 
   if (mode === "ready" && selectedCommand) {
     return (
@@ -403,7 +409,9 @@ function SlashCommandMenu<T extends SlashCommandItem>({
     >
       <div className={pluginPickerClass.picker}>
         <div className={pluginPickerClass.search}>
-          {mode === "commands" ? `/${query}` : `${selectedCommand ? `/${selectedCommand.name} ` : ""}${query}`}
+          {mode === "commands"
+            ? `/${query}`
+            : `${selectedCommand ? `/${selectedCommand.name} ` : ""}${query}`}
         </div>
         {loadingArgs && items.length === 0 ? (
           <div className={pluginPickerClass.empty}>Loading...</div>
@@ -433,138 +441,156 @@ function SlashCommandMenu<T extends SlashCommandItem>({
             })}
           </div>
         )}
-        <div className={pluginPickerClass.empty}>↑↓ navigate · Tab select · Esc close</div>
+        <div className={pluginPickerClass.empty}>
+          ↑↓ navigate · Tab/Enter select · Esc close
+        </div>
       </div>
     </div>
   );
-}
+}) as <T extends SlashCommandItem>(
+  props: SlashCommandMenuProps<T> & { ref?: React.Ref<SlashMenuHandle> },
+) => React.ReactElement | null;
 
 export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
   name = "slash-commands",
   commands,
-  getMarkdown,
-  setMarkdown,
   onReadyChange,
   onExecute,
   emptyMessage = "No commands found",
 }: SlashCommandsPluginOptions<T>): InkwellPlugin => {
-  let editorRef: Editor | null = null;
-  const stateRef: { current: SlashCommandMenuState } = {
-    current: {
-      visible: false,
-      open: () => {},
-      close: () => {},
-      appendQuery: () => {},
-      removeQueryChar: () => {},
-      move: () => {},
-      selectActive: () => {},
-      execute: () => {},
-      ready: false,
-    },
+  // Captured once via `setup` and again on every keydown — the latter
+  // covers tests that re-create plugin instances per render.
+  let editorRef: InkwellEditor | null = null;
+  // The rendered menu component publishes its imperative surface here so
+  // the editor-side keydown handler can drive it without writing to refs
+  // during render.
+  const menuRef: RefObject<SlashMenuHandle | null> = { current: null };
+
+  const enterReadyOrExecuteCleanup = (
+    editor: InkwellEditor,
+    ctx: PluginKeyDownContext,
+    action: () => void,
+  ) => {
+    const path = getCurrentBlockPath(editor);
+    action();
+    ctx.setActivePlugin(null);
+    if (!path) return;
+    // Defer the block clear so the action's final selection/state has a
+    // chance to settle before we remove the slash line.
+    requestAnimationFrame(() => clearBlockAtPath(editor, path));
   };
 
   return {
     name,
+    // Slash commands has no trigger character — it activates from
+    // `onKeyDown` once `/` is typed on a blank line. Without this flag the
+    // editor would render the menu by default (since there is no trigger).
+    activatable: true,
     setup: editor => {
       editorRef = editor;
       return () => {
         editorRef = null;
       };
     },
-    render: props => (
-      <SlashCommandMenu
-        commands={commands}
-        emptyMessage={emptyMessage}
-        getMarkdown={getMarkdown}
-        setMarkdown={setMarkdown}
-        stateRef={stateRef}
-        onReadyChange={onReadyChange}
-        editorRef={props.editorRef}
-        getEditor={() => editorRef}
-        onExecute={onExecute}
-      />
-    ),
-    onKeyDown: (event, _ctx, editor) => {
+    render: (props: PluginRenderProps) => {
+      if (!props.active) return null;
+      return (
+        <SlashCommandMenuInner<T>
+          {...props}
+          ref={menuRef}
+          commands={commands}
+          emptyMessage={emptyMessage}
+          onReadyChange={onReadyChange}
+          onExecute={onExecute}
+          getEditor={() => editorRef}
+        />
+      );
+    },
+    onKeyDown: (event, ctx, editor) => {
       editorRef = editor;
-      const state = stateRef.current;
-
-      if (!state.visible && event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      // Opening: `/` typed at the start of a blank/whitespace line.
+      if (
+        event.key === "/" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
         const beforeCursor = getTextBeforeCursorInBlock(editor);
         if (beforeCursor !== null && beforeCursor.trim() === "") {
           event.preventDefault();
           Transforms.insertText(editor, "/");
-          state.open();
+          ctx.setActivePlugin({ name });
+          // Reset state machine on (re)open.
+          menuRef.current?.reset();
+        }
+      }
+    },
+    onActiveKeyDown: (event, ctx, editor) => {
+      editorRef = editor;
+      const menu = menuRef.current;
+      if (!menu) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        // Only the execute (ready) phase clears the typed slash line. In
+        // the commands/args phases Escape just closes the menu and leaves
+        // the user's typed text intact (matching the test contract).
+        if (menu.isReady()) {
+          enterReadyOrExecuteCleanup(editor, ctx, () => {
+            // No execute on escape — just clear.
+          });
+        } else {
+          ctx.setActivePlugin(null);
+          menu.reset();
         }
         return;
       }
 
-      if (!state.visible) return;
-
-      if (event.key === "Escape") {
+      if (menu.isReady() && event.key === "Enter") {
         event.preventDefault();
-        const path = state.ready && editor.selection && Range.isCollapsed(editor.selection)
-          ? [...editor.selection.anchor.path]
-          : null;
-        state.close();
-        requestAnimationFrame(() => {
-          if (!path) return;
-          try {
-            clearBlockAtPath(editor, path);
-          } catch {
-            // The command line may already have been removed by the host.
-          }
-        });
-        return;
-      }
-
-      if (state.ready && event.key === "Enter") {
-        event.preventDefault();
-        const path = editor.selection && Range.isCollapsed(editor.selection)
-          ? [...editor.selection.anchor.path]
-          : null;
-        state.execute();
-        state.close();
-        requestAnimationFrame(() => {
-          if (!path) return;
-          try {
-            clearBlockAtPath(editor, path);
-          } catch {
-            // The command line may already have been removed by the host.
-          }
+        enterReadyOrExecuteCleanup(editor, ctx, () => {
+          menu.execute();
         });
         return;
       }
 
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        state.move(1);
+        menu.move(1);
         return;
       }
 
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        state.move(-1);
+        menu.move(-1);
         return;
       }
 
       if (event.key === "Tab" || event.key === "Enter") {
         event.preventDefault();
-        state.selectActive();
+        menu.selectActive();
         return;
       }
 
       if (event.key === "Backspace") {
         const beforeCursor = getTextBeforeCursorInBlock(editor);
         if (beforeCursor === "/") {
-          state.close();
+          // The user backspaced over the trigger — close the menu.
+          ctx.setActivePlugin(null);
+          menu.reset();
           return;
         }
-        state.removeQueryChar();
+        menu.removeQueryChar();
         return;
       }
 
-      if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.length === 1) {
-        state.appendQuery(event.key);
+      if (
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        event.key.length === 1
+      ) {
+        menu.appendQuery(event.key);
       }
     },
   };

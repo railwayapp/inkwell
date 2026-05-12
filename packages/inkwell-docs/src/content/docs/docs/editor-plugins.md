@@ -256,8 +256,6 @@ function App() {
             ],
           },
         ],
-        getMarkdown: () => content,
-        setMarkdown: setContent,
         onExecute: command => runCommand(command),
       }),
     ],
@@ -459,24 +457,36 @@ A plugin is an object that implements `InkwellPlugin`:
 interface InkwellPlugin {
   name: string;
   trigger?: { key: string };
+  // When true, only render while this plugin is the active one. Plugins
+  // with a `trigger` are activatable by default; non-trigger plugins
+  // that claim activation through `ctx.setActivePlugin` (e.g. slash
+  // commands) must set this explicitly.
+  activatable?: boolean;
   render: (props: PluginRenderProps) => ReactNode;
   getPlaceholder?: (editor: Editor) => string | InkwellPluginPlaceholder | null;
   onEditorChange?: (editor: Editor) => void;
   shouldTrigger?: (event: React.KeyboardEvent, editor: Editor) => boolean;
   onKeyDown?: (
     event: React.KeyboardEvent,
-    ctx: { wrapSelection: (before: string, after: string) => void },
+    ctx: PluginKeyDownContext,
     editor: Editor,
   ) => void;
   onActiveKeyDown?: (
     event: React.KeyboardEvent,
-    ctx: {
-      wrapSelection: (before: string, after: string) => void;
-      dismiss: () => void;
-    },
+    ctx: PluginKeyDownContext & { dismiss: () => void },
     editor: Editor,
   ) => false | void;
   setup?: (editor: Editor) => void | (() => void);
+}
+
+interface PluginKeyDownContext {
+  wrapSelection: (before: string, after: string) => void;
+  // Claim or release editor activation imperatively. Used by plugins
+  // (e.g. slash commands) that activate from context rather than from a
+  // single character trigger.
+  setActivePlugin: (
+    plugin: { name: string; query?: string } | null,
+  ) => void;
 }
 
 interface InkwellPluginPlaceholder {
@@ -484,6 +494,12 @@ interface InkwellPluginPlaceholder {
   hint?: string;
 }
 ```
+
+Plugins also receive a `subscribeForwardedKey` callback through
+`PluginRenderProps`. While a plugin is the active one, the editor forwards
+navigation keys (ArrowUp/Down, Enter, Backspace) and typed printable
+characters to all subscribers. The channel is scoped per editor instance,
+so two editors on the same page do not cross-talk.
 
 ### Basic example
 

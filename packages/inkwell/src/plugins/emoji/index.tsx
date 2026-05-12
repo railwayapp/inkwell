@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { InkwellPlugin } from "../../types";
 import { Editor, Range } from "slate";
+import type { InkwellPlugin } from "../../types";
 import { PluginMenuPrimitive, pluginPickerClass } from "../plugin-picker";
 
 export interface EmojiItem {
@@ -75,11 +75,17 @@ export const defaultEmojis: EmojiItem[] = [
 const itemText = (emoji: EmojiItem): string =>
   [emoji.name, ...(emoji.shortcodes ?? []), ...(emoji.tags ?? [])].join(" ");
 
-const defaultSearch = <T extends EmojiItem>(emojis: T[], query: string): T[] => {
+const defaultSearch = <T extends EmojiItem>(
+  emojis: T[],
+  query: string,
+): T[] => {
   const q = query.toLowerCase();
   const slashQuery = q === "/" ? "confused" : q;
   return emojis
-    .filter(emoji => !slashQuery || itemText(emoji).toLowerCase().includes(slashQuery))
+    .filter(
+      emoji =>
+        !slashQuery || itemText(emoji).toLowerCase().includes(slashQuery),
+    )
     .slice(0, 20);
 };
 
@@ -105,7 +111,12 @@ export const createEmojiPlugin = <T extends EmojiItem = EmojiItem>({
   return {
     name,
     shouldTrigger: (event, editor) => {
-      if (event.key !== trigger || event.ctrlKey || event.metaKey || event.altKey) {
+      if (
+        event.key !== trigger ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
         return false;
       }
 

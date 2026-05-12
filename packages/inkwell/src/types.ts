@@ -9,6 +9,7 @@ import type {
 import type { Plugin } from "unified";
 import type { Awareness } from "y-protocols/awareness";
 import type { XmlText as YXmlText } from "yjs";
+import type { InkwellEditor } from "./editor/slate/types";
 
 // biome-ignore lint/suspicious/noExplicitAny: unified Plugin type
 type RehypePlugin = Plugin<any[], any>;
@@ -239,6 +240,18 @@ export interface PluginTrigger {
 }
 
 /**
+ * Editor-scoped key-forwarding hook. Plugins subscribe to receive
+ * keystrokes that the editor forwarded while the plugin was active (used
+ * by picker UIs that don't own DOM focus while the Slate editable does).
+ *
+ * Returns an unsubscribe function. Listeners are scoped to the current
+ * editor instance — multiple editors on the same page do not cross-talk.
+ */
+export type SubscribeForwardedKey = (
+  listener: (key: string) => void,
+) => () => void;
+
+/**
  * Props passed to every plugin's render function on every render
  */
 export interface PluginRenderProps {
@@ -270,6 +283,13 @@ export interface PluginRenderProps {
    * Wrap the current selection with markdown markers
    */
   wrapSelection: (before: string, after: string) => void;
+  /**
+   * Subscribe to editor-forwarded keystrokes for this plugin. Returns an
+   * unsubscribe function. Forwarded keys include navigation keys
+   * (ArrowUp/Down, Enter, Backspace) and typed query characters that the
+   * editor delivered while this plugin was active.
+   */
+  subscribeForwardedKey: SubscribeForwardedKey;
 }
 
 /**
@@ -280,6 +300,16 @@ export interface PluginKeyDownContext {
    * Wrap the current selection with markdown markers
    */
   wrapSelection: (before: string, after: string) => void;
+  /**
+   * Claim editor focus for this plugin. Use when a plugin needs to behave
+   * as the "active" plugin without relying on a single-character trigger
+   * (e.g. slash commands). Forwarded editor keystrokes, escape handling,
+   * and trigger-suppression all key off the active plugin.
+   *
+   * Pass the plugin's own name and an empty initial query to activate.
+   * Pass `null` to deactivate.
+   */
+  setActivePlugin: (plugin: { name: string; query?: string } | null) => void;
 }
 
 /**
@@ -299,6 +329,16 @@ export interface InkwellPlugin {
    */
   trigger?: PluginTrigger;
   /**
+   * When true, the plugin is only rendered (`props.active === true`) while
+   * it is the editor's active plugin. Plugins with a `trigger` are
+   * activatable by default; non-trigger plugins that claim activation via
+   * `ctx.setActivePlugin` (e.g. slash commands) must opt in explicitly.
+   *
+   * Always-on plugins (bubble menu, attachments, completions) leave this
+   * undefined so they continue to render every frame.
+   */
+  activatable?: boolean;
+  /**
    * Render the plugin UI. Return `null` when inactive.
    */
   render: (props: PluginRenderProps) => ReactNode;
@@ -307,26 +347,18 @@ export interface InkwellPlugin {
    * overrides the editor placeholder.
    */
   getPlaceholder?: (
-    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
-    editor: any,
+    editor: InkwellEditor,
   ) => string | InkwellPluginPlaceholder | null;
   /**
    * Optional guard for character triggers. Return false to let the key type
    * normally without activating the plugin.
    */
-  shouldTrigger?: (
-    event: ReactKeyboardEvent,
-    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
-    editor: any,
-  ) => boolean;
+  shouldTrigger?: (event: ReactKeyboardEvent, editor: InkwellEditor) => boolean;
   /**
    * Optional document-change hook. Runs after Slate document changes are
    * serialized and editor state is updated.
    */
-  onEditorChange?: (
-    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
-    editor: any,
-  ) => void;
+  onEditorChange?: (editor: InkwellEditor) => void;
   /**
    * Optional keydown handler. Runs for events on the editor before trigger
    * matching, and is skipped while another plugin is active. Call
@@ -335,8 +367,7 @@ export interface InkwellPlugin {
   onKeyDown?: (
     event: ReactKeyboardEvent,
     ctx: PluginKeyDownContext,
-    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
-    editor: any,
+    editor: InkwellEditor,
   ) => void;
   /**
    * Optional keydown handler while this plugin is active. Return `false` to
@@ -345,8 +376,7 @@ export interface InkwellPlugin {
   onActiveKeyDown?: (
     event: ReactKeyboardEvent,
     ctx: PluginKeyDownContext & { dismiss: () => void },
-    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
-    editor: any,
+    editor: InkwellEditor,
   ) => false | void;
   /**
    * Optional one-time editor setup. Runs once after the editor is created
@@ -354,8 +384,7 @@ export interface InkwellPlugin {
    * DOM listeners. The returned function, if any, runs when the editor
    * unmounts or the plugin list changes.
    */
-  // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
-  setup?: (editor: any) => void | (() => void);
+  setup?: (editor: InkwellEditor) => void | (() => void);
 }
 
 /**

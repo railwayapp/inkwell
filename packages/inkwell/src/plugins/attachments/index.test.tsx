@@ -162,7 +162,6 @@ describe("createAttachmentsPlugin", () => {
     expect(onUpload).toHaveBeenCalledTimes(1);
   });
 
-
   it("inserts copied HTML images by URL", () => {
     const editor = createTestEditor();
     editor.children = deserialize("");

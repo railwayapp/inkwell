@@ -86,10 +86,41 @@ describe("withCharacterLimit", () => {
     // jsdom lacks DataTransfer; use a minimal stub that matches the subset
     // withCharacterLimit uses (`getData("text/plain")`).
     const data = {
+      types: ["text/plain"],
       getData: (type: string) => (type === "text/plain" ? "hello world" : ""),
     } as unknown as DataTransfer;
     editor.insertData(data);
 
     expect(getText(editor)).toBe("hello");
   });
+
+  it(
+    "keeps a clipped paste flowing through the downstream insertData so " +
+      "markdown-paste handling still parses headings/etc.",
+    () => {
+      // Spy on the base `insertData` to confirm it sees a DataTransfer whose
+      // text/plain payload was clipped — not a flat `insertText` call.
+      const base = withHistory(withNodeId(withReact(createEditor())));
+      const seen: string[] = [];
+      const originalInsertData = base.insertData;
+      base.insertData = data => {
+        seen.push(data.getData("text/plain"));
+        originalInsertData(data);
+      };
+      const ref = { current: { limit: 10, enforce: true } };
+      const editor = withCharacterLimit(base, ref);
+      editor.children = deserialize("");
+      editor.onChange();
+      Transforms.select(editor, Editor.start(editor, []));
+
+      const data = {
+        types: ["text/plain"],
+        getData: (type: string) =>
+          type === "text/plain" ? "## Heading clipped" : "",
+      } as unknown as DataTransfer;
+      editor.insertData(data);
+
+      expect(seen).toEqual(["## Heading"]);
+    },
+  );
 });

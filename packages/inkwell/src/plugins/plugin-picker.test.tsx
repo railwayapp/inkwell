@@ -4,9 +4,15 @@
  * pin down the contract directly so future plugins built on top of it
  * can rely on the documented behavior.
  */
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginRenderProps } from "../types";
+import type { PluginRenderProps, SubscribeForwardedKey } from "../types";
 import { PluginMenuPrimitive, pluginPickerClass } from "./plugin-picker";
 
 interface Item {
@@ -20,6 +26,26 @@ const ITEMS: Item[] = [
   { id: "c", label: "Charlie" },
 ];
 
+/**
+ * Build a controllable forwarded-key channel for tests. The picker
+ * subscribes through props — tests drive keys by calling `emit`.
+ */
+function createForwardedKeyChannel(): {
+  subscribe: SubscribeForwardedKey;
+  emit: (key: string) => void;
+} {
+  const listeners = new Set<(key: string) => void>();
+  return {
+    subscribe: listener => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit: key => {
+      for (const listener of listeners) listener(key);
+    },
+  };
+}
+
 function baseProps(
   overrides: Partial<PluginRenderProps> = {},
 ): PluginRenderProps {
@@ -31,22 +57,9 @@ function baseProps(
     position: { top: 0, left: 0 },
     editorRef: { current: null },
     wrapSelection: vi.fn(),
+    subscribeForwardedKey: () => () => {},
     ...overrides,
   };
-}
-
-function dispatchPluginKey(pluginName: string, key: string) {
-  act(() => {
-    window.dispatchEvent(
-      new CustomEvent(`inkwell-plugin-keydown:${pluginName}`, {
-        detail: { key },
-      }),
-    );
-  });
-}
-
-function typePluginQuery(pluginName: string, query: string) {
-  for (const key of query) dispatchPluginKey(pluginName, key);
 }
 
 function renderPrimitive(
@@ -60,6 +73,7 @@ function renderPrimitive(
 ) {
   const onSelect = props.onSelect ?? vi.fn();
   const onDismiss = props.onDismiss ?? vi.fn();
+  const channel = createForwardedKeyChannel();
   const renderResult = render(
     <PluginMenuPrimitive<Item>
       pluginName={props.pluginName ?? "test"}
@@ -71,10 +85,28 @@ function renderPrimitive(
       )}
       itemToText={item => item.id}
       emptyMessage="No matches"
-      {...baseProps({ onSelect, onDismiss })}
+      {...baseProps({
+        onSelect,
+        onDismiss,
+        subscribeForwardedKey: channel.subscribe,
+      })}
     />,
   );
-  return { ...renderResult, onSelect, onDismiss };
+
+  const dispatchPluginKey = (key: string) => {
+    act(() => channel.emit(key));
+  };
+  const typePluginQuery = (query: string) => {
+    for (const key of query) dispatchPluginKey(key);
+  };
+
+  return {
+    ...renderResult,
+    onSelect,
+    onDismiss,
+    dispatchPluginKey,
+    typePluginQuery,
+  };
 }
 
 describe("PluginMenuPrimitive", () => {
@@ -116,30 +148,36 @@ describe("PluginMenuPrimitive", () => {
   describe("query display", () => {
     it("renders the placeholder before editor-forwarded typing", () => {
       renderPrimitive({ items: ITEMS });
-      expect(document.querySelector(`.${pluginPickerClass.search}`)).toBeInTheDocument();
+      expect(
+        document.querySelector(`.${pluginPickerClass.search}`),
+      ).toBeInTheDocument();
     });
 
     it("highlights the first result by default", () => {
       const { container } = renderPrimitive({ items: ITEMS });
-      const items = container.querySelectorAll(
-        `.${pluginPickerClass.item}`,
-      );
+      const items = container.querySelectorAll(`.${pluginPickerClass.item}`);
       expect(items[0]).toHaveClass(pluginPickerClass.itemActive);
     });
   });
 
   describe("sync items path", () => {
     it("filters items by getKey on query change", () => {
-      renderPrimitive({ pluginName: "sync", items: ITEMS });
-      typePluginQuery("sync", "b");
+      const { typePluginQuery } = renderPrimitive({
+        pluginName: "sync",
+        items: ITEMS,
+      });
+      typePluginQuery("b");
       expect(screen.getByText("Bravo")).toBeInTheDocument();
       expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
       expect(screen.queryByText("Charlie")).not.toBeInTheDocument();
     });
 
     it("renders empty message when nothing matches", () => {
-      renderPrimitive({ pluginName: "sync", items: ITEMS });
-      typePluginQuery("sync", "zzz");
+      const { typePluginQuery } = renderPrimitive({
+        pluginName: "sync",
+        items: ITEMS,
+      });
+      typePluginQuery("zzz");
       expect(screen.getByText("No matches")).toBeInTheDocument();
     });
   });
@@ -149,12 +187,15 @@ describe("PluginMenuPrimitive", () => {
       const search = vi.fn(async (q: string) =>
         ITEMS.filter(i => i.label.toLowerCase().includes(q.toLowerCase())),
       );
-      renderPrimitive({ pluginName: "async", search });
+      const { typePluginQuery } = renderPrimitive({
+        pluginName: "async",
+        search,
+      });
       await waitFor(() =>
         expect(screen.getByText("Alpha")).toBeInTheDocument(),
       );
 
-      typePluginQuery("async", "char");
+      typePluginQuery("char");
       await waitFor(() => {
         expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
         expect(screen.getByText("Charlie")).toBeInTheDocument();
@@ -172,11 +213,14 @@ describe("PluginMenuPrimitive", () => {
           i.label.toLowerCase().includes(q.toLowerCase()),
         );
       });
-      renderPrimitive({ pluginName: "async-stale", search });
-      typePluginQuery("async-stale", "first");
+      const { dispatchPluginKey, typePluginQuery } = renderPrimitive({
+        pluginName: "async-stale",
+        search,
+      });
+      typePluginQuery("first");
       await act(async () => {});
-      for (let i = 0; i < "first".length; i++) dispatchPluginKey("async-stale", "Backspace");
-      typePluginQuery("async-stale", "b");
+      for (let i = 0; i < "first".length; i++) dispatchPluginKey("Backspace");
+      typePluginQuery("b");
       // Late-arriving first response should be ignored.
       await act(async () => {
         resolveFirst(ITEMS);
@@ -190,39 +234,45 @@ describe("PluginMenuPrimitive", () => {
 
   describe("keyboard", () => {
     it("ArrowDown selects the next item and wraps to the first", () => {
-      const { container } = renderPrimitive({ pluginName: "keys", items: ITEMS });
+      const { container, dispatchPluginKey } = renderPrimitive({
+        pluginName: "keys",
+        items: ITEMS,
+      });
       for (let i = 0; i < ITEMS.length; i++) {
-        dispatchPluginKey("keys", "ArrowDown");
+        dispatchPluginKey("ArrowDown");
       }
-      const items = container.querySelectorAll(
-        `.${pluginPickerClass.item}`,
-      );
+      const items = container.querySelectorAll(`.${pluginPickerClass.item}`);
       expect(items[0]).toHaveClass(pluginPickerClass.itemActive);
     });
 
     it("ArrowUp wraps from first to last", () => {
-      const { container } = renderPrimitive({ pluginName: "keys", items: ITEMS });
-      dispatchPluginKey("keys", "ArrowUp");
-      const items = container.querySelectorAll(
-        `.${pluginPickerClass.item}`,
-      );
-      expect(items[ITEMS.length - 1]).toHaveClass(
-        pluginPickerClass.itemActive,
-      );
+      const { container, dispatchPluginKey } = renderPrimitive({
+        pluginName: "keys",
+        items: ITEMS,
+      });
+      dispatchPluginKey("ArrowUp");
+      const items = container.querySelectorAll(`.${pluginPickerClass.item}`);
+      expect(items[ITEMS.length - 1]).toHaveClass(pluginPickerClass.itemActive);
     });
 
     it("Enter selects the currently highlighted item", () => {
       const onSelect = vi.fn();
-      renderPrimitive({ pluginName: "keys", items: ITEMS, onSelect });
-      dispatchPluginKey("keys", "ArrowDown");
-      dispatchPluginKey("keys", "Enter");
+      const { dispatchPluginKey } = renderPrimitive({
+        pluginName: "keys",
+        items: ITEMS,
+        onSelect,
+      });
+      dispatchPluginKey("ArrowDown");
+      dispatchPluginKey("Enter");
       expect(onSelect).toHaveBeenCalledWith("b");
     });
 
     it("Escape dismisses", () => {
       const onDismiss = vi.fn();
       const { container } = renderPrimitive({ items: ITEMS, onDismiss });
-      fireEvent.keyDown(container.querySelector(`.${pluginPickerClass.picker}`)!, { key: "Escape" });
+      const picker = container.querySelector(`.${pluginPickerClass.picker}`);
+      if (!picker) throw new Error("picker not rendered");
+      fireEvent.keyDown(picker, { key: "Escape" });
       expect(onDismiss).toHaveBeenCalled();
     });
 
@@ -235,33 +285,24 @@ describe("PluginMenuPrimitive", () => {
   });
 
   describe("forwarded editor keys", () => {
-    it("navigates via window 'inkwell-plugin-keydown:<name>' events", () => {
+    it("navigates via the subscribed channel", () => {
       const onSelect = vi.fn();
-      renderPrimitive({ pluginName: "fwd", items: ITEMS, onSelect });
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent("inkwell-plugin-keydown:fwd", {
-            detail: { key: "ArrowDown" },
-          }),
-        );
-        window.dispatchEvent(
-          new CustomEvent("inkwell-plugin-keydown:fwd", {
-            detail: { key: "Enter" },
-          }),
-        );
+      const { dispatchPluginKey } = renderPrimitive({
+        pluginName: "fwd",
+        items: ITEMS,
+        onSelect,
       });
+      dispatchPluginKey("ArrowDown");
+      dispatchPluginKey("Enter");
       expect(onSelect).toHaveBeenCalledWith("b");
     });
 
     it("typed characters extend the query and filter results", async () => {
-      renderPrimitive({ pluginName: "fwd", items: ITEMS });
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent("inkwell-plugin-keydown:fwd", {
-            detail: { key: "c" },
-          }),
-        );
+      const { dispatchPluginKey } = renderPrimitive({
+        pluginName: "fwd",
+        items: ITEMS,
       });
+      dispatchPluginKey("c");
       await waitFor(() => {
         expect(screen.getByText("Charlie")).toBeInTheDocument();
         expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
@@ -269,28 +310,42 @@ describe("PluginMenuPrimitive", () => {
     });
 
     it("Backspace shrinks the query", async () => {
-      renderPrimitive({
+      const { dispatchPluginKey, typePluginQuery } = renderPrimitive({
         pluginName: "fwd",
         items: ITEMS,
       });
-      typePluginQuery("fwd", "br");
-      dispatchPluginKey("fwd", "Backspace");
+      typePluginQuery("br");
+      dispatchPluginKey("Backspace");
       await waitFor(() => {
-        expect(document.querySelector(`.${pluginPickerClass.search}`)).toHaveTextContent("b");
+        expect(
+          document.querySelector(`.${pluginPickerClass.search}`),
+        ).toHaveTextContent("b");
       });
     });
 
-    it("only listens to its own scoped event channel", () => {
-      const onSelect = vi.fn();
-      renderPrimitive({ pluginName: "alpha", items: ITEMS, onSelect });
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent("inkwell-plugin-keydown:beta", {
-            detail: { key: "Enter" },
-          }),
-        );
+    it("each picker is scoped to its own channel", () => {
+      // Two separate renders — each gets its own channel. Dispatching on
+      // one does not affect the other.
+      const onSelectA = vi.fn();
+      const onSelectB = vi.fn();
+      const a = renderPrimitive({
+        pluginName: "alpha",
+        items: ITEMS,
+        onSelect: onSelectA,
       });
-      expect(onSelect).not.toHaveBeenCalled();
+      const b = renderPrimitive({
+        pluginName: "beta",
+        items: ITEMS,
+        onSelect: onSelectB,
+      });
+      a.dispatchPluginKey("Enter");
+      expect(onSelectA).toHaveBeenCalled();
+      expect(onSelectB).not.toHaveBeenCalled();
+      // Drive only on b's channel; a should not fire again.
+      onSelectA.mockClear();
+      b.dispatchPluginKey("Enter");
+      expect(onSelectA).not.toHaveBeenCalled();
+      expect(onSelectB).toHaveBeenCalled();
     });
   });
 });

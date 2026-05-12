@@ -1,7 +1,30 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginRenderProps, Snippet } from "../../types";
+import type {
+  PluginRenderProps,
+  Snippet,
+  SubscribeForwardedKey,
+} from "../../types";
 import { createSnippetsPlugin } from ".";
+
+/**
+ * Build a controllable forwarded-key channel for tests.
+ */
+function createForwardedKeyChannel(): {
+  subscribe: SubscribeForwardedKey;
+  emit: (key: string) => void;
+} {
+  const listeners = new Set<(key: string) => void>();
+  return {
+    subscribe: listener => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit: key => {
+      for (const listener of listeners) listener(key);
+    },
+  };
+}
 
 const SNIPPETS: Snippet[] = [
   { title: "Bug Report", content: "## Bug Report\n\n**Steps:**\n1. " },
@@ -32,19 +55,26 @@ describe("createSnippetsPlugin", () => {
   });
 
   describe("SnippetPicker rendering", () => {
+    /**
+     * Each render gets its own forwarded-key channel so tests can
+     * simulate editor-forwarded keystrokes without leaking state
+     * across renders.
+     */
+    let activeChannel: ReturnType<typeof createForwardedKeyChannel> | null =
+      null;
+
     function dispatchPluginKey(key: string) {
-  act(() => {
-    window.dispatchEvent(
-      new CustomEvent("inkwell-plugin-keydown:snippets", { detail: { key } }),
-    );
-  });
-}
+      if (!activeChannel) throw new Error("call renderPlugin first");
+      act(() => {
+        activeChannel?.emit(key);
+      });
+    }
 
-function typePluginQuery(query: string) {
-  for (const key of query) dispatchPluginKey(key);
-}
+    function typePluginQuery(query: string) {
+      for (const key of query) dispatchPluginKey(key);
+    }
 
-const defaultRenderProps: PluginRenderProps = {
+    const baseRenderProps: Omit<PluginRenderProps, "subscribeForwardedKey"> = {
       active: true,
       query: "",
       onSelect: vi.fn(),
@@ -58,9 +88,17 @@ const defaultRenderProps: PluginRenderProps = {
       snippets: Snippet[] = SNIPPETS,
       props: Partial<PluginRenderProps> = {},
     ) {
+      const channel = createForwardedKeyChannel();
+      activeChannel = channel;
       const plugin = createSnippetsPlugin({ snippets });
       return render(
-        <div>{plugin.render({ ...defaultRenderProps, ...props })}</div>,
+        <div>
+          {plugin.render({
+            ...baseRenderProps,
+            subscribeForwardedKey: channel.subscribe,
+            ...props,
+          })}
+        </div>,
       );
     }
 
@@ -73,7 +111,7 @@ const defaultRenderProps: PluginRenderProps = {
     });
 
     it("filters snippets by query", () => {
-      const { container } = renderPlugin();
+      renderPlugin();
       typePluginQuery("bug");
       expect(screen.getByText("Bug Report")).toBeInTheDocument();
       expect(screen.queryByText("Feature Request")).not.toBeInTheDocument();
@@ -81,13 +119,13 @@ const defaultRenderProps: PluginRenderProps = {
     });
 
     it("is case-insensitive when filtering", () => {
-      const { container } = renderPlugin();
+      renderPlugin();
       typePluginQuery("BUG");
       expect(screen.getByText("Bug Report")).toBeInTheDocument();
     });
 
     it("shows empty state when no snippets match", () => {
-      const { container } = renderPlugin();
+      renderPlugin();
       typePluginQuery("nonexistent");
       expect(screen.getByText("No snippets found")).toBeInTheDocument();
     });
@@ -243,7 +281,7 @@ const defaultRenderProps: PluginRenderProps = {
     it("selects the navigated snippet when ArrowDown and Enter fire before rerender", () => {
       const onSelect = vi.fn();
       const { container } = renderPlugin(SNIPPETS, { onSelect });
-      const input = container.querySelector(
+      const _input = container.querySelector(
         ".inkwell-plugin-picker-search",
       ) as HTMLInputElement;
 
@@ -257,22 +295,12 @@ const defaultRenderProps: PluginRenderProps = {
       expect(onSelect).toHaveBeenCalledWith(SNIPPETS[1].content);
     });
 
-    it("handles forwarded editor keydowns via the scoped window event", () => {
+    it("handles forwarded editor keydowns via subscribeForwardedKey", () => {
       const onSelect = vi.fn();
       renderPlugin(SNIPPETS, { onSelect });
 
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent("inkwell-plugin-keydown:snippets", {
-            detail: { key: "ArrowDown" },
-          }),
-        );
-        window.dispatchEvent(
-          new CustomEvent("inkwell-plugin-keydown:snippets", {
-            detail: { key: "Enter" },
-          }),
-        );
-      });
+      dispatchPluginKey("ArrowDown");
+      dispatchPluginKey("Enter");
 
       expect(onSelect).toHaveBeenCalledWith(SNIPPETS[1].content);
     });

@@ -48,6 +48,7 @@ const defaultRenderProps: PluginRenderProps = {
   position: { top: 100, left: 50 },
   editorRef: { current: null },
   wrapSelection: vi.fn(),
+  subscribeForwardedKey: () => () => {},
 };
 
 describe("createCompletionsPlugin", () => {
@@ -131,7 +132,11 @@ describe("createCompletionsPlugin", () => {
 
     const event = createKeyboardEvent("Tab");
 
-    plugin.onKeyDown?.(event, { wrapSelection: vi.fn() }, editor);
+    plugin.onKeyDown?.(
+      event,
+      { wrapSelection: vi.fn(), setActivePlugin: vi.fn() },
+      editor,
+    );
 
     expect(event.defaultPrevented).toBe(true);
     expect(onAccept).toHaveBeenCalledWith("Accepted **reply**");
@@ -152,7 +157,11 @@ describe("createCompletionsPlugin", () => {
 
     const event = createKeyboardEvent("Escape");
 
-    plugin.onKeyDown?.(event, { wrapSelection: vi.fn() }, editor);
+    plugin.onKeyDown?.(
+      event,
+      { wrapSelection: vi.fn(), setActivePlugin: vi.fn() },
+      editor,
+    );
 
     expect(event.defaultPrevented).toBe(true);
     expect(onDismiss).toHaveBeenCalledWith("Nope");
@@ -170,7 +179,11 @@ describe("createCompletionsPlugin", () => {
 
     const event = createKeyboardEvent("a");
 
-    plugin.onKeyDown?.(event, { wrapSelection: vi.fn() }, editor);
+    plugin.onKeyDown?.(
+      event,
+      { wrapSelection: vi.fn(), setActivePlugin: vi.fn() },
+      editor,
+    );
 
     expect(event.defaultPrevented).toBe(false);
     expect(onDismiss).toHaveBeenCalledWith("Suggestion");
@@ -192,7 +205,7 @@ describe("createCompletionsPlugin", () => {
 
     plugin.onKeyDown?.(
       createKeyboardEvent("Tab"),
-      { wrapSelection: vi.fn() },
+      { wrapSelection: vi.fn(), setActivePlugin: vi.fn() },
       editor,
     );
 

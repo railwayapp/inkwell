@@ -146,7 +146,9 @@
 }
 
 /* Over-limit feedback */
-[data-demo-style="custom"] .inkwell-editor-wrapper.inkwell-editor-over-limit .inkwell-editor {
+[data-demo-style="custom"]
+  .inkwell-editor-wrapper.inkwell-editor-over-limit
+  .inkwell-editor {
   box-shadow: inset 0 0 0 1px hsla(0, 70%, 55%, 0.45);
 }
 [data-demo-style="custom"] .inkwell-editor-backtick,
@@ -381,7 +383,9 @@
     background 0.15s ease;
   z-index: 1;
 }
-[data-demo-style="custom"] .inkwell-renderer-code-block:hover .inkwell-renderer-copy-btn {
+[data-demo-style="custom"]
+  .inkwell-renderer-code-block:hover
+  .inkwell-renderer-copy-btn {
   opacity: 1;
 }
 [data-demo-style="custom"] .inkwell-renderer-copy-btn:hover {
@@ -429,7 +433,9 @@
 /* Demo container override */
 .demo-tab-content > .inkwell-editor-wrapper,
 .demo-tab-content > div:has(> .inkwell-editor-wrapper),
-.demo-tab-content > div:has(> .inkwell-editor-wrapper) > .inkwell-editor-wrapper {
+.demo-tab-content
+  > div:has(> .inkwell-editor-wrapper)
+  > .inkwell-editor-wrapper {
   box-sizing: border-box;
   min-height: 100%;
   height: 100%;
@@ -491,7 +497,9 @@
   background-clip: padding-box;
   border-radius: 9999px;
   box-shadow: inset 0 0 0 1px hsla(220, 10%, 55%, 0.18);
-  transition: background 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.18s ease;
 }
 .demo-modal-dialog::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(

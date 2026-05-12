@@ -202,24 +202,36 @@ Plugins extend the editor with custom UI and behavior. Built-ins include bubble 
 interface InkwellPlugin {
   name: string;
   trigger?: { key: string };
+  // When true, the plugin only renders while it is the editor's active
+  // plugin. Plugins with a trigger are activatable by default; non-trigger
+  // plugins that claim activation via ctx.setActivePlugin (e.g. slash
+  // commands) must opt in explicitly.
+  activatable?: boolean;
   render: (props: PluginRenderProps) => ReactNode;
   getPlaceholder?: (editor: Editor) => string | InkwellPluginPlaceholder | null;
   onEditorChange?: (editor: Editor) => void;
   shouldTrigger?: (event: React.KeyboardEvent, editor: Editor) => boolean;
   onKeyDown?: (
     event: React.KeyboardEvent,
-    ctx: { wrapSelection: (before: string, after: string) => void },
+    ctx: PluginKeyDownContext,
     editor: Editor,
   ) => void;
   onActiveKeyDown?: (
     event: React.KeyboardEvent,
-    ctx: {
-      wrapSelection: (before: string, after: string) => void;
-      dismiss: () => void;
-    },
+    ctx: PluginKeyDownContext & { dismiss: () => void },
     editor: Editor,
   ) => false | void;
   setup?: (editor: Editor) => void | (() => void);
+}
+
+interface PluginKeyDownContext {
+  wrapSelection: (before: string, after: string) => void;
+  // Claim or release editor activation imperatively. Used by plugins
+  // (e.g. slash commands) that activate from context rather than a
+  // dedicated character trigger.
+  setActivePlugin: (
+    plugin: { name: string; query?: string } | null,
+  ) => void;
 }
 
 interface InkwellPluginPlaceholder {
@@ -239,6 +251,10 @@ interface PluginRenderProps {
   position: { top: number; left: number };
   editorRef: RefObject<HTMLDivElement | null>;
   wrapSelection: (before: string, after: string) => void;
+  // Subscribe to editor-forwarded keystrokes for this plugin. Returns an
+  // unsubscribe function. Scoped per editor instance — two editors on the
+  // same page do not cross-talk.
+  subscribeForwardedKey: (listener: (key: string) => void) => () => void;
 }
 ```
 
@@ -472,8 +488,6 @@ const slashCommands = createSlashCommandsPlugin({
       ],
     },
   ],
-  getMarkdown: () => content,
-  setMarkdown: setContent,
   onExecute: command => {
     // { name: "label", args: { label: "idea" }, raw: "/label Idea" }
   },
@@ -758,3 +772,4 @@ Types:
 - `SlashCommandItem`
 - `SlashCommandsPluginOptions`
 - `Snippet`
+- `SubscribeForwardedKey`

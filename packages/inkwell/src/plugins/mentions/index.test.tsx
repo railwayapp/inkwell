@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginRenderProps } from "../../types";
+import type { PluginRenderProps, SubscribeForwardedKey } from "../../types";
 import { createMentionsPlugin, type MentionItem } from ".";
 
 const USERS: MentionItem[] = [
@@ -15,19 +15,29 @@ const USERS: MentionItem[] = [
   { id: "3", title: "Carol" },
 ];
 
-function dispatchPluginKey(key: string) {
-  act(() => {
-    window.dispatchEvent(
-      new CustomEvent("inkwell-plugin-keydown:users", { detail: { key } }),
-    );
-  });
+/**
+ * Build a controllable forwarded-key channel for tests. The picker
+ * subscribes through props — tests drive keys by calling `emit`.
+ */
+function createForwardedKeyChannel(): {
+  subscribe: SubscribeForwardedKey;
+  emit: (key: string) => void;
+} {
+  const listeners = new Set<(key: string) => void>();
+  return {
+    subscribe: listener => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit: key => {
+      for (const listener of listeners) listener(key);
+    },
+  };
 }
 
-function typePluginQuery(query: string) {
-  for (const key of query) dispatchPluginKey(key);
-}
-
-const defaultRenderProps: PluginRenderProps = {
+const makeDefaultRenderProps = (
+  overrides: Partial<PluginRenderProps> = {},
+): PluginRenderProps => ({
   active: true,
   query: "",
   onSelect: vi.fn(),
@@ -35,7 +45,11 @@ const defaultRenderProps: PluginRenderProps = {
   position: { top: 10, left: 20 },
   editorRef: { current: null },
   wrapSelection: vi.fn(),
-};
+  subscribeForwardedKey: () => () => {},
+  ...overrides,
+});
+
+const defaultRenderProps = makeDefaultRenderProps();
 
 describe("createMentionsPlugin", () => {
   it("returns a plugin with the configured name and trigger", () => {
@@ -104,12 +118,22 @@ describe("createMentionsPlugin", () => {
       search,
       renderItem: item => <span>{item.title}</span>,
     });
+    const channel = createForwardedKeyChannel();
 
-    render(<div>{plugin.render(defaultRenderProps)}</div>);
+    render(
+      <div>
+        {plugin.render(
+          makeDefaultRenderProps({ subscribeForwardedKey: channel.subscribe }),
+        )}
+      </div>,
+    );
 
     await waitFor(() => expect(screen.getByText("Alice")).toBeInTheDocument());
 
-    typePluginQuery("ca");
+    act(() => {
+      channel.emit("c");
+      channel.emit("a");
+    });
     await act(async () => {});
 
     await waitFor(() => {
@@ -117,7 +141,6 @@ describe("createMentionsPlugin", () => {
       expect(screen.getByText("Carol")).toBeInTheDocument();
     });
   });
-
 
   it("selects the navigated item when ArrowDown and Enter happen before rerender", async () => {
     const onSelect = vi.fn();
@@ -130,13 +153,25 @@ describe("createMentionsPlugin", () => {
         <span data-active={active ? "true" : "false"}>{item.title}</span>
       ),
     });
+    const channel = createForwardedKeyChannel();
 
-    render(<div>{plugin.render({ ...defaultRenderProps, onSelect })}</div>);
+    render(
+      <div>
+        {plugin.render(
+          makeDefaultRenderProps({
+            onSelect,
+            subscribeForwardedKey: channel.subscribe,
+          }),
+        )}
+      </div>,
+    );
 
     await waitFor(() => expect(screen.getByText("Alice")).toBeInTheDocument());
 
-    dispatchPluginKey("ArrowDown");
-    dispatchPluginKey("Enter");
+    act(() => {
+      channel.emit("ArrowDown");
+      channel.emit("Enter");
+    });
     await act(async () => {});
 
     expect(onSelect).toHaveBeenCalledWith("@user[2]");
@@ -151,22 +186,24 @@ describe("createMentionsPlugin", () => {
       search: () => USERS,
       renderItem: item => <span>{item.title}</span>,
     });
+    const channel = createForwardedKeyChannel();
 
-    render(<div>{plugin.render({ ...defaultRenderProps, onSelect })}</div>);
+    render(
+      <div>
+        {plugin.render(
+          makeDefaultRenderProps({
+            onSelect,
+            subscribeForwardedKey: channel.subscribe,
+          }),
+        )}
+      </div>,
+    );
 
     await waitFor(() => expect(screen.getByText("Alice")).toBeInTheDocument());
 
     act(() => {
-      window.dispatchEvent(
-        new CustomEvent("inkwell-plugin-keydown:users", {
-          detail: { key: "ArrowDown" },
-        }),
-      );
-      window.dispatchEvent(
-        new CustomEvent("inkwell-plugin-keydown:users", {
-          detail: { key: "Enter" },
-        }),
-      );
+      channel.emit("ArrowDown");
+      channel.emit("Enter");
     });
 
     expect(onSelect).toHaveBeenCalledWith("@user[2]");

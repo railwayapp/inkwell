@@ -52,8 +52,6 @@ const insertCompletion = (editor: Editor, completion: string): void => {
   Transforms.insertFragment(editor, nodes);
 };
 
-const lastAcceptedCompletionByEditor = new WeakMap<Editor, string>();
-
 export function createCompletionsPlugin({
   name = "completions",
   getCompletion,
@@ -65,6 +63,11 @@ export function createCompletionsPlugin({
   onRestore,
   restoreOnUndo = true,
 }: CompletionPluginOptions): InkwellPlugin {
+  // Per-plugin-instance map of editors to the most recently accepted
+  // completion. Module scope would mean two `createCompletionsPlugin`
+  // instances on the same editor clobber each other's undo-restore state.
+  const lastAcceptedCompletionByEditor = new WeakMap<Editor, string>();
+
   return {
     name,
     render: () => null,

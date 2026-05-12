@@ -59,7 +59,9 @@ function extractFiles(data: DataTransfer): File[] {
   return files;
 }
 
-function extractHtmlImages(data: DataTransfer): Array<{ url: string; alt: string }> {
+function extractHtmlImages(
+  data: DataTransfer,
+): Array<{ url: string; alt: string }> {
   const html = data.getData("text/html");
   if (!html) return [];
 

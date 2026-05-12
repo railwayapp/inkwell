@@ -40,11 +40,14 @@ describe("useInkwell", () => {
     expect(screen.getByRole("textbox")).toHaveTextContent("hello");
   });
 
-  it("updates content through the grouped editor controller", () => {
+  it("updates content through the grouped editor controller", async () => {
     const onChange = vi.fn();
     render(<HookEditor onChange={onChange} />);
+    // Flush slate-react's post-mount effects so the click below is the
+    // only source of state changes inside the act block.
+    await act(async () => {});
 
-    act(() => {
+    await act(async () => {
       fireEvent.click(screen.getByText("Replace"));
     });
 

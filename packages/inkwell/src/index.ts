@@ -53,6 +53,7 @@ export type {
   InkwellEditorProps,
   InkwellEditorState,
   InkwellPlugin,
+  InkwellPluginPlaceholder,
   InkwellRendererProps,
   InkwellSetMarkdownOptions,
   MentionRenderer,
@@ -61,6 +62,7 @@ export type {
   PluginTrigger,
   RehypePluginConfig,
   Snippet,
+  SubscribeForwardedKey,
   UseInkwellOptions,
   UseInkwellResult,
 } from "./types";

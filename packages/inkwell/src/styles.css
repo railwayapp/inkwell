@@ -36,8 +36,9 @@
   --inkwell-code-fg: hsl(338, 78%, 42%);
 
   /* Type */
-  --inkwell-font-mono: "JetBrains Mono", "Fira Code", ui-monospace,
-    SFMono-Regular, Menlo, Consolas, monospace;
+  --inkwell-font-mono:
+    "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
   --inkwell-radius: 6px;
 }
 
@@ -121,25 +122,49 @@
   line-height: 1.3;
   color: var(--inkwell-text);
 }
-.inkwell-editor-heading-1 { font-size: 1.75em; }
-.inkwell-editor-heading-2 { font-size: 1.4em; }
-.inkwell-editor-heading-3 { font-size: 1.2em; }
-.inkwell-editor-heading-4 { font-size: 1em; }
-.inkwell-editor-heading-5 { font-size: 0.9em; }
-.inkwell-editor-heading-6 { font-size: 0.8em; }
+.inkwell-editor-heading-1 {
+  font-size: 1.75em;
+}
+.inkwell-editor-heading-2 {
+  font-size: 1.4em;
+}
+.inkwell-editor-heading-3 {
+  font-size: 1.2em;
+}
+.inkwell-editor-heading-4 {
+  font-size: 1em;
+}
+.inkwell-editor-heading-5 {
+  font-size: 0.9em;
+}
+.inkwell-editor-heading-6 {
+  font-size: 0.8em;
+}
 
-.inkwell-editor-list-item { padding-left: 1em; }
-.inkwell-editor-list-item[data-indent="1"] { padding-left: 2.5em; }
-.inkwell-editor-list-item[data-indent="2"] { padding-left: 4em; }
-.inkwell-editor-list-item[data-indent="3"] { padding-left: 5.5em; }
-.inkwell-editor-list-item[data-indent="4"] { padding-left: 7em; }
+.inkwell-editor-list-item {
+  padding-left: 1em;
+}
+.inkwell-editor-list-item[data-indent="1"] {
+  padding-left: 2.5em;
+}
+.inkwell-editor-list-item[data-indent="2"] {
+  padding-left: 4em;
+}
+.inkwell-editor-list-item[data-indent="3"] {
+  padding-left: 5.5em;
+}
+.inkwell-editor-list-item[data-indent="4"] {
+  padding-left: 7em;
+}
 
 .inkwell-editor-image {
   margin: 0.75em 0;
   border-radius: var(--inkwell-radius);
   overflow: hidden;
   border: 1px solid transparent;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .inkwell-editor-image[data-selected] {
   border-color: var(--inkwell-accent);
@@ -159,8 +184,14 @@
    so it tracks the editor box; pointer-events disabled so it never
    blocks typing or selection. */
 @keyframes inkwell-limit-toast-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .inkwell-editor-limit-toast {
   position: absolute;
@@ -235,8 +266,14 @@
 /* ── Bubble menu plugin ──────────────────────────────────────────── */
 
 @keyframes inkwell-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .inkwell-plugin-bubble-menu-container {
@@ -264,7 +301,9 @@
   color: var(--inkwell-text-muted);
   border-radius: 4px;
   cursor: pointer;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 .inkwell-plugin-bubble-menu-btn:hover {
   background: var(--inkwell-bg-subtle);
@@ -398,9 +437,15 @@
   padding-left: 1.5em;
   margin: 1em 0;
 }
-.inkwell-renderer ul { list-style: disc; }
-.inkwell-renderer ol { list-style: decimal; }
-.inkwell-renderer li { margin: 0.25em 0; }
+.inkwell-renderer ul {
+  list-style: disc;
+}
+.inkwell-renderer ol {
+  list-style: decimal;
+}
+.inkwell-renderer li {
+  margin: 0.25em 0;
+}
 .inkwell-renderer code {
   background: var(--inkwell-code-bg);
   color: var(--inkwell-code-fg);
@@ -427,7 +472,10 @@
   color: var(--inkwell-text-muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
   z-index: 1;
 }
 .inkwell-renderer-code-block:hover .inkwell-renderer-copy-btn {
@@ -461,9 +509,15 @@
   border-top: 1px solid var(--inkwell-border);
   margin: 2em 0;
 }
-.inkwell-renderer strong { font-weight: 600; }
-.inkwell-renderer em { font-style: italic; }
-.inkwell-renderer del { text-decoration: line-through; }
+.inkwell-renderer strong {
+  font-weight: 600;
+}
+.inkwell-renderer em {
+  font-style: italic;
+}
+.inkwell-renderer del {
+  text-decoration: line-through;
+}
 .inkwell-renderer img {
   max-width: 100%;
   height: auto;

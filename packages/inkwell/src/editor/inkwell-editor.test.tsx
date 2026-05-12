@@ -260,6 +260,21 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+/**
+ * Flush queued effects + microtasks so React 19 + slate-react state
+ * updates triggered after the initial mount land inside `act`. Without
+ * this, slate-react's `setIsFocused(...)` useEffect (and similar) fires
+ * after our render() returns and React warns about "not wrapped in
+ * act(...)".
+ *
+ * Call this immediately after `render(...)` (or any imperative ref
+ * action) when the test needs to wait for state to settle before
+ * asserting.
+ */
+async function flushEffects(): Promise<void> {
+  await act(async () => {});
+}
+
 describe("InkwellEditor — rendering", () => {
   it("renders a Slate editor with contenteditable", () => {
     render(<InkwellEditor content="hello" onChange={vi.fn()} />);
@@ -438,7 +453,7 @@ describe("InkwellEditor — placeholder", () => {
     );
   });
 
-  it("prefixes plugin placeholder text with the hint", () => {
+  it("prefixes plugin placeholder text with the hint", async () => {
     render(
       <InkwellEditor
         content=""
@@ -451,6 +466,7 @@ describe("InkwellEditor — placeholder", () => {
         ]}
       />,
     );
+    await flushEffects();
 
     expect(screen.getByRole("textbox")).toHaveAttribute(
       "data-placeholder",
@@ -719,7 +735,6 @@ describe("InkwellEditor — plugin integration", () => {
     expect(screen.getByTestId("test-plugin")).toBeInTheDocument();
   });
 
-
   it("forwards keyboard navigation and selection to active character plugins", async () => {
     const onChange = vi.fn();
     const mentions = createMentionsPlugin({
@@ -753,7 +768,6 @@ describe("InkwellEditor — plugin integration", () => {
       expect(onChange).toHaveBeenLastCalledWith("@user[2]");
     });
   });
-
 
   it("forwards typed query keys to active character plugins", async () => {
     const onChange = vi.fn();
@@ -823,8 +837,6 @@ describe("InkwellEditor — plugin integration", () => {
           ],
         },
       ],
-      getMarkdown: () => ref.current?.getMarkdown() ?? "",
-      setMarkdown: markdown => ref.current?.setMarkdown(markdown),
       onExecute,
     });
 
@@ -862,7 +874,9 @@ describe("InkwellEditor — plugin integration", () => {
       fireEvent.keyDown(editor, { key: "Enter" });
     });
 
-    expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+    expect(
+      screen.getByText("Enter to execute · Esc to cancel"),
+    ).toBeInTheDocument();
 
     act(() => {
       fireEvent.keyDown(editor, { key: "Enter" });
@@ -885,8 +899,6 @@ describe("InkwellEditor — plugin integration", () => {
     const onExecute = vi.fn();
     const slashCommands = createSlashCommandsPlugin({
       commands: [{ name: "runbook", description: "Run a support runbook" }],
-      getMarkdown: () => ref.current?.getMarkdown() ?? "",
-      setMarkdown: markdown => ref.current?.setMarkdown(markdown),
       onExecute,
     });
 
@@ -919,7 +931,9 @@ describe("InkwellEditor — plugin integration", () => {
       fireEvent.keyDown(editor, { key: "Enter" });
     });
 
-    expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+    expect(
+      screen.getByText("Enter to execute · Esc to cancel"),
+    ).toBeInTheDocument();
 
     act(() => {
       fireEvent.keyDown(editor, { key: "Escape" });
@@ -931,12 +945,10 @@ describe("InkwellEditor — plugin integration", () => {
     });
   });
 
-  it("does not open slash commands for prose slashes", () => {
+  it("does not open slash commands for prose slashes", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const slashCommands = createSlashCommandsPlugin({
       commands: [{ name: "status", description: "Set a thread status" }],
-      getMarkdown: () => ref.current?.getMarkdown() ?? "",
-      setMarkdown: markdown => ref.current?.setMarkdown(markdown),
     });
 
     const { container } = render(
@@ -948,8 +960,9 @@ describe("InkwellEditor — plugin integration", () => {
       />,
     );
     const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    await flushEffects();
 
-    act(() => {
+    await act(async () => {
       ref.current?.focus({ at: "end" });
       fireEvent.keyDown(editor, { key: "/" });
     });
@@ -961,7 +974,9 @@ describe("InkwellEditor — plugin integration", () => {
     const createStatusPlugin = (
       ref: React.RefObject<import("../types").InkwellEditorHandle | null>,
       options: {
-        onExecute?: Parameters<typeof createSlashCommandsPlugin>[0]["onExecute"];
+        onExecute?: Parameters<
+          typeof createSlashCommandsPlugin
+        >[0]["onExecute"];
         onReadyChange?: (ready: boolean) => void;
       } = {},
     ) =>
@@ -991,13 +1006,11 @@ describe("InkwellEditor — plugin integration", () => {
             disabled: () => "Bounties are disabled",
           },
         ],
-        getMarkdown: () => ref.current?.getMarkdown() ?? "",
-        setMarkdown: markdown => ref.current?.setMarkdown(markdown),
         onExecute: options.onExecute,
         onReadyChange: options.onReadyChange,
       });
 
-    const renderSlashEditor = (content = "Intro") => {
+    const renderSlashEditor = async (content = "Intro") => {
       const ref = createRef<import("../types").InkwellEditorHandle>();
       const onExecute = vi.fn();
       const onReadyChange = vi.fn();
@@ -1010,38 +1023,44 @@ describe("InkwellEditor — plugin integration", () => {
         />,
       );
       const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+      // Flush slate-react's post-mount effects so the test's later state
+      // changes don't trip React's act-warning when those effects finally
+      // settle.
+      await flushEffects();
       return { ref, editor, container, onExecute, onReadyChange };
     };
 
-    const startBlankSlashLine = (
+    const startBlankSlashLine = async (
       ref: React.RefObject<import("../types").InkwellEditorHandle | null>,
       editor: HTMLElement,
     ) => {
-      act(() => {
+      await act(async () => {
         ref.current?.focus({ at: "end" });
         ref.current?.insertMarkdown("\n");
       });
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(editor, { key: "/" });
       });
     };
 
     it("opens immediately on a blank slash line and renders at a cursor position", async () => {
-      const { ref, editor, container } = renderSlashEditor();
-      startBlankSlashLine(ref, editor);
+      const { ref, editor, container } = await renderSlashEditor();
+      await startBlankSlashLine(ref, editor);
 
       expect(await screen.findByText("/status")).toBeInTheDocument();
       expect(screen.getByText("/runbook")).toBeInTheDocument();
       expect(screen.getByText("Bounties are disabled")).toBeInTheDocument();
-      const popup = container.querySelector(".inkwell-plugin-picker-popup") as HTMLElement;
+      const popup = container.querySelector(
+        ".inkwell-plugin-picker-popup",
+      ) as HTMLElement;
       expect(popup).toBeInTheDocument();
       expect(popup.style.position).toBe("absolute");
       expect(popup.style.zIndex).toBe("1001");
     });
 
     it("filters from typed editor text without a dedicated input", async () => {
-      const { ref, editor, container } = renderSlashEditor();
-      startBlankSlashLine(ref, editor);
+      const { ref, editor, container } = await renderSlashEditor();
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
       act(() => {
@@ -1051,12 +1070,14 @@ describe("InkwellEditor — plugin integration", () => {
       expect(screen.getByText("/runbook")).toBeInTheDocument();
       expect(screen.queryByText("/status")).not.toBeInTheDocument();
       expect(container.querySelector("input")).not.toBeInTheDocument();
-      expect(container.querySelector(".inkwell-plugin-picker-search")).toHaveTextContent("/r");
+      expect(
+        container.querySelector(".inkwell-plugin-picker-search"),
+      ).toHaveTextContent("/r");
     });
 
-    it("does not open for slashes after prose on the same line", () => {
-      const { ref, editor } = renderSlashEditor("Intro text");
-      act(() => {
+    it("does not open for slashes after prose on the same line", async () => {
+      const { ref, editor } = await renderSlashEditor("Intro text");
+      await act(async () => {
         ref.current?.focus({ at: "end" });
         fireEvent.keyDown(editor, { key: "/" });
       });
@@ -1065,8 +1086,8 @@ describe("InkwellEditor — plugin integration", () => {
     });
 
     it("deleting the trigger closes the menu and releases Enter", async () => {
-      const { ref, editor } = renderSlashEditor();
-      startBlankSlashLine(ref, editor);
+      const { ref, editor } = await renderSlashEditor();
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
       act(() => {
@@ -1081,8 +1102,8 @@ describe("InkwellEditor — plugin integration", () => {
     });
 
     it("navigates commands with arrow keys and executes a no-arg command", async () => {
-      const { ref, editor, onExecute } = renderSlashEditor();
-      startBlankSlashLine(ref, editor);
+      const { ref, editor, onExecute } = await renderSlashEditor();
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
       act(() => {
@@ -1092,7 +1113,9 @@ describe("InkwellEditor — plugin integration", () => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
 
-      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      expect(
+        screen.getByText("Enter to execute · Esc to cancel"),
+      ).toBeInTheDocument();
       act(() => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
@@ -1107,28 +1130,30 @@ describe("InkwellEditor — plugin integration", () => {
     });
 
     it("does not select disabled commands or disabled argument choices", async () => {
-      const { ref, editor, onExecute } = renderSlashEditor();
-      startBlankSlashLine(ref, editor);
+      const { ref, editor, onExecute } = await renderSlashEditor();
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
       const disabledItem = screen.getByText("/bounty").closest("div");
       expect(disabledItem).toHaveAttribute("aria-disabled", "true");
       expect(screen.getByText("Bounties are disabled")).toBeInTheDocument();
 
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(editor, { key: "ArrowUp" });
       });
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
 
       expect(onExecute).not.toHaveBeenCalled();
-      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      expect(
+        screen.getByText("Enter to execute · Esc to cancel"),
+      ).toBeInTheDocument();
     });
 
     it("shows required argument choices after selecting a command", async () => {
-      const { ref, editor, container } = renderSlashEditor();
-      startBlankSlashLine(ref, editor);
+      const { ref, editor, container } = await renderSlashEditor();
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
       act(() => {
@@ -1138,7 +1163,9 @@ describe("InkwellEditor — plugin integration", () => {
       expect(await screen.findByText("Solved")).toBeInTheDocument();
       expect(screen.getByText("Awaiting User Response")).toBeInTheDocument();
       expect(screen.getByText("(current)")).toBeInTheDocument();
-      expect(container.querySelector(".inkwell-plugin-picker-search")).toHaveTextContent("/status");
+      expect(
+        container.querySelector(".inkwell-plugin-picker-search"),
+      ).toHaveTextContent("/status");
     });
 
     it("loads async argument choices and reports readiness transitions", async () => {
@@ -1163,8 +1190,6 @@ describe("InkwellEditor — plugin integration", () => {
             ],
           },
         ],
-        getMarkdown: () => ref.current?.getMarkdown() ?? "",
-        setMarkdown: markdown => ref.current?.setMarkdown(markdown),
         onReadyChange,
       });
       const { container } = render(
@@ -1176,10 +1201,11 @@ describe("InkwellEditor — plugin integration", () => {
         />,
       );
       const editor = container.querySelector(".inkwell-editor") as HTMLElement;
-      startBlankSlashLine(ref, editor);
+      await flushEffects();
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/assign");
 
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
 
@@ -1187,38 +1213,43 @@ describe("InkwellEditor — plugin integration", () => {
       expect(await screen.findByText("Alpha")).toBeInTheDocument();
       expect(screen.getByText("Beta")).toBeInTheDocument();
 
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
 
-      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      expect(
+        screen.getByText("Enter to execute · Esc to cancel"),
+      ).toBeInTheDocument();
       expect(onReadyChange).toHaveBeenLastCalledWith(true);
     });
 
     it("execute phase shows only centered instruction text", async () => {
-      const { ref, editor, container } = renderSlashEditor();
-      startBlankSlashLine(ref, editor);
+      const { ref, editor, container } = await renderSlashEditor();
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
       await screen.findByText("Solved");
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
 
       const execute = screen.getByText("Enter to execute · Esc to cancel");
       expect(execute).toHaveClass("inkwell-plugin-slash-commands-execute");
-      const picker = container.querySelector(".inkwell-plugin-picker") as HTMLElement;
+      const picker = container.querySelector(
+        ".inkwell-plugin-picker",
+      ) as HTMLElement;
       expect(picker).not.toHaveTextContent("✓");
       expect(picker).not.toHaveTextContent("/status");
       expect(picker).not.toHaveTextContent("Solved");
     });
 
     it("executes selected argument values as strings and clears only that command line", async () => {
-      const { ref, editor, onExecute } = renderSlashEditor("Intro\nMiddle");
-      startBlankSlashLine(ref, editor);
+      const { ref, editor, onExecute } =
+        await renderSlashEditor("Intro\nMiddle");
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
       act(() => {
@@ -1231,7 +1262,9 @@ describe("InkwellEditor — plugin integration", () => {
       act(() => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
-      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      expect(
+        screen.getByText("Enter to execute · Esc to cancel"),
+      ).toBeInTheDocument();
       act(() => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
@@ -1249,8 +1282,9 @@ describe("InkwellEditor — plugin integration", () => {
     });
 
     it("canceling from execute phase clears only the command line and does not execute", async () => {
-      const { ref, editor, onExecute } = renderSlashEditor("Intro\nMiddle");
-      startBlankSlashLine(ref, editor);
+      const { ref, editor, onExecute } =
+        await renderSlashEditor("Intro\nMiddle");
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
       act(() => {
@@ -1259,7 +1293,9 @@ describe("InkwellEditor — plugin integration", () => {
       act(() => {
         fireEvent.keyDown(editor, { key: "Enter" });
       });
-      expect(screen.getByText("Enter to execute · Esc to cancel")).toBeInTheDocument();
+      expect(
+        screen.getByText("Enter to execute · Esc to cancel"),
+      ).toBeInTheDocument();
       act(() => {
         fireEvent.keyDown(editor, { key: "Escape" });
       });
@@ -1271,8 +1307,8 @@ describe("InkwellEditor — plugin integration", () => {
     });
 
     it("Escape before execute closes the menu but keeps typed command text", async () => {
-      const { ref, editor } = renderSlashEditor();
-      startBlankSlashLine(ref, editor);
+      const { ref, editor } = await renderSlashEditor();
+      await startBlankSlashLine(ref, editor);
       await screen.findByText("/status");
 
       act(() => {
@@ -1285,7 +1321,7 @@ describe("InkwellEditor — plugin integration", () => {
     });
 
     it("does not teleport the cursor to the end when opening or closing in the middle", async () => {
-      const { ref, editor } = renderSlashEditor("Top\nBottom");
+      const { ref, editor } = await renderSlashEditor("Top\nBottom");
       act(() => {
         ref.current?.setMarkdown("Top\n\nBottom", { select: "start" });
       });
@@ -1329,7 +1365,7 @@ describe("InkwellEditor — plugin integration", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("Escape dismisses active plugin", () => {
+  it("Escape dismisses active plugin", async () => {
     const dismissPlugin = {
       name: "test",
       trigger: { key: "Control+/" },
@@ -1349,19 +1385,20 @@ describe("InkwellEditor — plugin integration", () => {
       />,
     );
     const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    await flushEffects();
 
-    act(() => {
+    await act(async () => {
       fireEvent.keyDown(editor, { key: "/", ctrlKey: true });
     });
     expect(screen.getByTestId("test-plugin")).toBeInTheDocument();
 
-    act(() => {
+    await act(async () => {
       fireEvent.keyDown(editor, { key: "Escape" });
     });
     expect(screen.queryByTestId("test-plugin")).not.toBeInTheDocument();
   });
 
-  it("click outside dismisses active plugin", () => {
+  it("click outside dismisses active plugin", async () => {
     const dismissPlugin = {
       name: "test",
       trigger: { key: "Control+/" },
@@ -1381,8 +1418,9 @@ describe("InkwellEditor — plugin integration", () => {
       />,
     );
     const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    await flushEffects();
 
-    act(() => {
+    await act(async () => {
       fireEvent.keyDown(editor, { key: "/", ctrlKey: true });
     });
     expect(screen.getByTestId("test-plugin")).toBeInTheDocument();
@@ -1390,7 +1428,7 @@ describe("InkwellEditor — plugin integration", () => {
     const backdrop = container.querySelector(
       ".inkwell-plugin-backdrop",
     ) as HTMLElement;
-    act(() => {
+    await act(async () => {
       fireEvent.mouseDown(backdrop);
     });
     expect(screen.queryByTestId("test-plugin")).not.toBeInTheDocument();
@@ -1414,14 +1452,15 @@ describe("InkwellEditor — imperative API and state", () => {
     });
   });
 
-  it("can replace markdown without emitting onChange", () => {
+  it("can replace markdown without emitting onChange", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onChange = vi.fn();
     const { container } = render(
       <InkwellEditor ref={ref} content="hello" onChange={onChange} />,
     );
+    await flushEffects();
 
-    act(() => {
+    await act(async () => {
       ref.current?.setMarkdown("replacement", { emitChange: false });
     });
 
@@ -1432,12 +1471,13 @@ describe("InkwellEditor — imperative API and state", () => {
     );
   });
 
-  it("clears markdown and emits onChange by default", () => {
+  it("clears markdown and emits onChange by default", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onChange = vi.fn();
     render(<InkwellEditor ref={ref} content="hello" onChange={onChange} />);
+    await flushEffects();
 
-    act(() => {
+    await act(async () => {
       ref.current?.clear();
     });
 
@@ -1445,14 +1485,15 @@ describe("InkwellEditor — imperative API and state", () => {
     expect(onChange).toHaveBeenLastCalledWith("");
   });
 
-  it("focuses through the ref handle", () => {
+  it("focuses through the ref handle", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const focusSpy = vi
       .spyOn(ReactEditor, "focus")
       .mockImplementation(() => {});
     render(<InkwellEditor ref={ref} content="hello" onChange={vi.fn()} />);
+    await flushEffects();
 
-    act(() => {
+    await act(async () => {
       ref.current?.focus({ at: "end" });
     });
 
@@ -1460,12 +1501,13 @@ describe("InkwellEditor — imperative API and state", () => {
     focusSpy.mockRestore();
   });
 
-  it("inserts markdown through the ref handle", () => {
+  it("inserts markdown through the ref handle", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onChange = vi.fn();
     render(<InkwellEditor ref={ref} content="hello" onChange={onChange} />);
+    await flushEffects();
 
-    act(() => {
+    await act(async () => {
       ref.current?.focus({ at: "end" });
       ref.current?.insertMarkdown(" world");
     });
@@ -1505,27 +1547,33 @@ describe("InkwellEditor — imperative API and state", () => {
 });
 
 describe("InkwellEditor — content synchronization", () => {
-  it("updates editor when content prop changes externally", () => {
+  it("updates editor when content prop changes externally", async () => {
     const onChange = vi.fn();
     const { container, rerender } = render(
       <InkwellEditor content="initial" onChange={onChange} />,
     );
+    await flushEffects();
 
-    rerender(<InkwellEditor content="**updated**" onChange={onChange} />);
+    await act(async () => {
+      rerender(<InkwellEditor content="**updated**" onChange={onChange} />);
+    });
 
     const editor = container.querySelector(".inkwell-editor");
     expect(editor?.querySelector("strong")).toBeInTheDocument();
     expect(editor?.textContent).toContain("updated");
   });
 
-  it("handles rapid content changes without crashing", () => {
+  it("handles rapid content changes without crashing", async () => {
     const onChange = vi.fn();
     const { container, rerender } = render(
       <InkwellEditor content="v1" onChange={onChange} />,
     );
+    await flushEffects();
 
-    rerender(<InkwellEditor content="v2" onChange={onChange} />);
-    rerender(<InkwellEditor content="v3" onChange={onChange} />);
+    await act(async () => {
+      rerender(<InkwellEditor content="v2" onChange={onChange} />);
+      rerender(<InkwellEditor content="v3" onChange={onChange} />);
+    });
 
     const editor = container.querySelector(".inkwell-editor");
     expect(editor?.textContent).toContain("v3");
@@ -3267,17 +3315,20 @@ describe("InkwellEditor — character limit", () => {
     const { container, rerender } = render(
       <InkwellEditor content="hi" onChange={onChange} characterLimit={3} />,
     );
+    await flushEffects();
     expect(container.querySelector(".inkwell-editor-wrapper")).not.toHaveClass(
       "inkwell-editor-over-limit",
     );
 
-    rerender(
-      <InkwellEditor
-        content="too long"
-        onChange={onChange}
-        characterLimit={3}
-      />,
-    );
+    await act(async () => {
+      rerender(
+        <InkwellEditor
+          content="too long"
+          onChange={onChange}
+          characterLimit={3}
+        />,
+      );
+    });
     // Wait for internal state update via content sync effect + change fire
     // The over-limit flag is driven by characterCount which updates in
     // handleChange, so it reflects internal state after the sync effect
@@ -3374,11 +3425,7 @@ describe("InkwellEditor — limit toast", () => {
 
   it("is not shown at exactly the limit when not enforced", () => {
     const { container } = render(
-      <InkwellEditor
-        content="hello"
-        onChange={vi.fn()}
-        characterLimit={5}
-      />,
+      <InkwellEditor content="hello" onChange={vi.fn()} characterLimit={5} />,
     );
     expect(
       container.querySelector(".inkwell-editor-limit-toast"),

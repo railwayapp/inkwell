@@ -25,7 +25,11 @@ export const pluginPickerClass = {
 };
 
 interface PluginMenuPrimitiveProps<T> extends PluginRenderProps {
-  /** Plugin name (used for the forwarded keyboard event channel). */
+  /**
+   * Plugin name. Retained for backwards compatibility but no longer used
+   * for routing forwarded keys — those come through
+   * `subscribeForwardedKey` from `PluginRenderProps`.
+   */
   pluginName: string;
   /** Sync item list. Used when `search` is not provided. */
   items?: T[];
@@ -49,7 +53,6 @@ interface PluginMenuPrimitiveProps<T> extends PluginRenderProps {
  * navigation (locally and via forwarded editor keys), and selection.
  */
 export function PluginMenuPrimitive<T>({
-  pluginName,
   items,
   search,
   getKey,
@@ -60,6 +63,7 @@ export function PluginMenuPrimitive<T>({
   onSelect,
   onDismiss,
   position,
+  subscribeForwardedKey,
 }: PluginMenuPrimitiveProps<T>): ReactNode {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [query, setQuery] = useState("");
@@ -157,23 +161,10 @@ export function PluginMenuPrimitive<T>({
     [commitSelected, onSelect, query.length, updateSelectedIndex],
   );
 
-  useEffect(() => {
-    const handleForwardedKey = (event: Event) => {
-      const customEvent = event as CustomEvent<{ key: string }>;
-      handlePluginKey(customEvent.detail.key);
-    };
-
-    window.addEventListener(
-      `inkwell-plugin-keydown:${pluginName}`,
-      handleForwardedKey,
-    );
-    return () => {
-      window.removeEventListener(
-        `inkwell-plugin-keydown:${pluginName}`,
-        handleForwardedKey,
-      );
-    };
-  }, [handlePluginKey, pluginName]);
+  useEffect(
+    () => subscribeForwardedKey(handlePluginKey),
+    [handlePluginKey, subscribeForwardedKey],
+  );
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {

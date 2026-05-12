@@ -2,6 +2,39 @@ import { Node } from "slate";
 import type { InkwellEditor } from "./types";
 
 /**
+ * Create a `DataTransfer`-shaped clone of `original` with the
+ * `text/plain` payload sliced to `maxChars`. We avoid `new DataTransfer()`
+ * because it is not available in jsdom and we only need the subset of the
+ * interface that Slate's `insertData` calls (`getData`, `types`, `files`,
+ * `items`).
+ */
+function truncateDataTransfer(
+  original: DataTransfer,
+  maxChars: number,
+): DataTransfer {
+  const truncatedPlain = original.getData("text/plain").slice(0, maxChars);
+  // Copy through types other than plain text untouched. Slate paste
+  // handlers may read HTML, vnd.slate-fragment, etc.
+  const passthrough = new Map<string, string>();
+  for (const type of original.types ?? []) {
+    if (type === "text/plain") continue;
+    passthrough.set(type, original.getData(type));
+  }
+  return {
+    types: original.types ?? [],
+    files: original.files,
+    items: original.items,
+    getData: (type: string) =>
+      type === "text/plain" ? truncatedPlain : (passthrough.get(type) ?? ""),
+    setData: () => {},
+    clearData: () => {},
+    setDragImage: () => {},
+    dropEffect: original.dropEffect,
+    effectAllowed: original.effectAllowed,
+  } as DataTransfer;
+}
+
+/**
  * Runtime configuration for the character-limit enforcement.
  * Read via a ref so the editor instance reacts to prop changes.
  */
@@ -45,7 +78,11 @@ export function withCharacterLimit(
       if (pasted && current + pasted.length > cfg.limit) {
         const remaining = Math.max(0, cfg.limit - current);
         if (remaining === 0) return;
-        return insertText(pasted.slice(0, remaining));
+        // Re-emit the paste through `insertData` with a truncated
+        // text/plain payload so downstream paste handling (markdown
+        // parsing, attachments, etc.) still runs against the trimmed
+        // input rather than collapsing the structured paste into raw text.
+        return insertData(truncateDataTransfer(data, remaining));
       }
     }
     insertData(data);

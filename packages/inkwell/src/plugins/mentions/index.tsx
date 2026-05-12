@@ -51,6 +51,14 @@ export function createMentionsPlugin<T extends MentionItem = MentionItem>(
   return {
     name: options.name,
     trigger: { key: options.trigger },
+    // Dismiss the picker when the user types whitespace or punctuation —
+    // matches the emoji plugin so `@john<space>` flows back into the
+    // document instead of growing the query indefinitely.
+    onActiveKeyDown: event => {
+      if (event.key.length !== 1) return;
+      if (/[\p{L}\p{N}_-]/u.test(event.key)) return;
+      return false;
+    },
     render: (props: PluginRenderProps) => (
       <PluginMenuPrimitive<T>
         pluginName={options.name}

@@ -56,8 +56,15 @@ inkwell-dev/
                                    PluginMenuPrimitive).
             index.tsx
             index.test.tsx
+          emoji/                   Emoji picker plugin (uses
+                                   PluginMenuPrimitive).
+            index.tsx
+            index.test.tsx
           completions/             Placeholder completion plugin for
                                    suggested text flows.
+            index.tsx
+            index.test.tsx
+          slash-commands/          Discord-style slash command plugin.
             index.tsx
             index.test.tsx
           mentions/                Mentions picker plugin (uses
@@ -66,8 +73,8 @@ inkwell-dev/
             index.tsx
             index.test.tsx
           attachments/             Image paste/drop → onUpload → block
-                                   image insertion. Also handles copied
-                                   HTML `<img>` clipboard payloads.
+                                   image insertion. Also inserts safe
+                                   copied HTML `<img>` src URLs directly.
             index.tsx
             index.test.tsx
     inkwell-docs/            (docs site — Astro Starlight + React islands)
@@ -144,9 +151,9 @@ The library also exports components directly for lower-level integrations. Most 
 - **Hooks**: `useInkwell`
 - **Components**: `InkwellEditor`, `InkwellRenderer`
 - **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createCompletionsPlugin`, `createEmojiPlugin`, `createMentionsPlugin`, `createSlashCommandsPlugin`, `createSnippetsPlugin`
-- **Plugin utilities**: `defaultBubbleMenuItems`, `pluginClass`, `PluginMenuPrimitive`, `pluginPickerClass`
+- **Plugin utilities**: `defaultBubbleMenuItems`, `defaultEmojis`, `pluginClass`, `PluginMenuPrimitive`, `pluginPickerClass`
 - **Serialization**: `serializeToMarkdown`, `parseMarkdown`, `deserialize`
-- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `InkwellPluginPlaceholder`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `CompletionPluginOptions`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`, `SubscribeForwardedKey`
+- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `InkwellPluginPlaceholder`, `AttachmentsPluginOptions`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `CompletionPluginOptions`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`, `SubscribeForwardedKey`
 
 ### Editor Rendering Model (Slate.js)
 
@@ -154,8 +161,8 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
 
 **Block elements** (configurable via `decorations` prop, all enabled by default):
 
-- `paragraph`, `heading`, `code-fence`, `code-line`, `blockquote`, `list-item`
-- All have typing triggers (e.g., `## ` → heading, `> ` → blockquote, `- ` → list-item, ` ``` ` → code-fence)
+- `paragraph`, `heading`, `code-fence`, `code-line`, `blockquote`, `list-item`, `image`
+- Headings, blockquotes, lists, and code fences have typing triggers (e.g., `## ` → heading, `> ` → blockquote, `- ` / `1. ` → list-item, ` ``` ` → code-fence). Block images are recognized when Markdown is loaded, pasted, or inserted.
 
 **Decoration marks**: bold, italic, strikethrough, inlineCode, hljs, remoteCursor, remoteCursorCaret. Also marker spans for syntax dimming: boldMarker, italicMarker, strikeMarker, codeMarker.
 
@@ -166,11 +173,15 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
   items: bold/italic/strike. Each item is a React component receiving
   `{ wrapSelection }`.
 - **Snippets** — picker plugin for inserting Markdown templates.
+- **Emoji** — searchable picker opened by `:` at token boundaries, backed by
+  `defaultEmojis` by default and customizable with `emojis`, async `search`,
+  `renderItem`, `trigger`, and `emptyMessage`.
 - **Mentions** — generic trigger-based searchable picker, inserts
   `@<marker>[<id>]` (or the string returned by `onSelect`). Renderer
   hydrates markers into custom React nodes via the `mentions` prop.
 - **Attachments** — image paste / drop → `onUpload` → block-image
-  insertion. Also resolves copied HTML `<img>` clipboard payloads.
+  insertion. Also inserts safe copied HTML `<img>` `src` URLs directly as
+  image blocks; HTML image URLs are not uploaded through `onUpload`.
 - **Completions** — generic placeholder completions for suggested text flows.
   Host code owns completion state via `getCompletion`; the plugin prefixes the
   editor placeholder with `[tab ↹]`, accepts with Tab, dismisses with Escape or
@@ -191,14 +202,16 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
   and writes the slash line directly through the captured editor — no
   `getMarkdown`/`setMarkdown` round-trip is required from the host.
 
-All picker-style plugins (snippets, mentions, anything custom) render
+All picker-style plugins (snippets, emoji, mentions, anything custom) render
 through the shared `PluginMenuPrimitive` so the menu UI, keyboard nav,
 focus, and class namespace (`.inkwell-plugin-picker-*`) are identical.
 
 **Character-limit toast**. When `characterLimit` is set, the editor
-renders a built-in toast inside `.inkwell-editor-wrapper` at top-right
-whenever the document hits the limit. Opt out with `limitToast={false}`.
-Styled by `.inkwell-editor-limit-toast`.
+renders a built-in toast inside `.inkwell-editor-wrapper` at top-right when
+`characterCount > characterLimit`. If `enforceCharacterLimit` is true, it also
+renders at `characterCount === characterLimit` because further typing is
+blocked. Opt out with `limitToast={false}`. Styled by
+`.inkwell-editor-limit-toast`.
 
 User plugins merged after built-ins. If a user plugin shares a name
 with a built-in (for example a custom `bubble-menu`), the user plugin
@@ -234,8 +247,8 @@ Two modes: standalone (`withHistory`) vs collab (`withYjs` + `withCursors` + `wi
 - **Shared picker primitive** — `plugins/plugin-picker.tsx` exposes
   `PluginMenuPrimitive` and the `pluginPickerClass` namespace map. Any new
   picker-style plugin should render through it so it inherits the keyboard,
-  focus, forwarded-key, and CSS-class contract that snippets and mentions
-  rely on. Direct unit tests live in `plugin-picker.test.tsx`.
+  focus, forwarded-key, and CSS-class contract that snippets, emoji, and
+  mentions rely on. Direct unit tests live in `plugin-picker.test.tsx`.
 - **Docs site: vanilla Starlight** — no custom theming. Previous attempts at custom purple themes were rejected as "horrid". Keep it default. Has minor structural overrides (PageSidebar, custom CSS for inkwell component styling) but no theme changes.
 - **Landing page is separate** — custom Astro page with React demo island, NOT Starlight-themed.
 

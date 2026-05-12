@@ -55,7 +55,7 @@ export interface InkwellSetMarkdownOptions {
 export interface InkwellPluginPlaceholder {
   /** Placeholder text shown by Slate while the editor is empty. */
   text: string;
-  /** Optional hint rendered as editor-owned placeholder chrome. */
+  /** Optional hint prepended to the placeholder text. */
   hint?: string;
 }
 
@@ -145,9 +145,10 @@ export interface InkwellEditorProps {
    */
   onCharacterCount?: (count: number, limit?: number) => void;
   /**
-   * Show the built-in toast at the top-right of the editor when the
-   * character count meets or exceeds `characterLimit`. Has no effect
-   * unless `characterLimit` is set. Default: `true`.
+   * Show the built-in toast at the top-right of the editor when
+   * `characterCount > characterLimit`. When `enforceCharacterLimit` is true,
+   * the toast also shows at exactly the limit because further typing is
+   * blocked. Has no effect unless `characterLimit` is set. Default: `true`.
    *
    * Set to `false` to render your own indicator instead (e.g. via
    * `onCharacterCount`). The toast is styled by `.inkwell-editor-limit-toast`.
@@ -256,7 +257,7 @@ export type SubscribeForwardedKey = (
  */
 export interface PluginRenderProps {
   /**
-   * Whether this plugin's trigger has fired (always true for plugins without triggers)
+   * Whether this plugin is active. Always-on plugins receive `true` every render.
    */
   active: boolean;
   /**
@@ -313,11 +314,11 @@ export interface PluginKeyDownContext {
 }
 
 /**
- * A Inkwell editor plugin.
+ * An Inkwell editor plugin.
  *
- * Every plugin is always rendered. Plugins with a `trigger` receive
- * `active: true` when the trigger fires and `active: false` otherwise.
- * Plugins without a trigger always receive `active: true`.
+ * Always-on plugins are rendered every frame with `active: true`. Plugins with
+ * a `trigger`, or plugins that set `activatable: true`, render with
+ * `active: true` only while they are the editor's active plugin.
  */
 export interface InkwellPlugin {
   /**
@@ -463,7 +464,7 @@ export interface InkwellDecorations {
    */
   heading6?: boolean;
   /**
-   * Recognize `- `, `* `, `+ ` as list items (default: true)
+   * Recognize unordered, ordered, and indented list items (default: true)
    */
   lists?: boolean;
   /**

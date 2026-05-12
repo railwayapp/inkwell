@@ -10,7 +10,7 @@ const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
  * Deserialize a markdown string into Slate decorations.
  *
  * Each line becomes its own element. Block-level patterns (code fences,
- * blockquotes, list items, headings) get their own element types based
+ * blockquotes, list items, images, headings) get their own element types based
  * on the `decorations` config. Everything else is a paragraph. Text content
  * is stored verbatim — visual formatting is handled by decorations at
  * render time, not in the data model.

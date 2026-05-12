@@ -2,7 +2,7 @@
 title: "Plugins"
 ---
 
-Plugins extend the editor with custom UI and behavior. Inkwell ships built-in plugins for formatting, snippets, mentions, completions, slash commands, and attachments, and supports creating your own.
+Plugins extend the editor with custom UI and behavior. Inkwell ships built-in plugins for formatting, snippets, emoji, mentions, completions, slash commands, and attachments, and supports creating your own.
 
 ## Bubble Menu
 
@@ -127,8 +127,11 @@ Once the picker is open:
 
 ## Emoji
 
-A searchable emoji picker triggered by `:`. It ships with a small default set
-and can accept your own emoji list or async search function.
+A searchable emoji picker. By default it opens when `:` is typed at a token
+boundary (the start of the document, after whitespace, or after an opening
+bracket/parenthesis). It intentionally stays closed for emoticons, URLs, and
+prose such as `foo:bar`. It ships with a default emoji list exported as
+`defaultEmojis`, and can accept your own emoji list or async search function.
 
 ```tsx
 import { createEmojiPlugin, useInkwell } from "@railway/inkwell";
@@ -156,6 +159,19 @@ const emoji = createEmojiPlugin({
     { emoji: "🚀", name: "rocket", shortcodes: ["ship"] },
   ],
 });
+```
+
+### Emoji options
+
+```tsx
+interface EmojiPluginOptions<T extends EmojiItem = EmojiItem> {
+  name?: string;
+  trigger?: string;
+  emojis?: T[];
+  search?: (query: string) => Promise<T[]> | T[];
+  renderItem?: (item: T, active: boolean) => ReactNode;
+  emptyMessage?: string;
+}
 ```
 
 ## Completions
@@ -390,7 +406,12 @@ function Preview({ content }: { content: string }) {
 
 The attachments plugin intercepts pasted or dropped files, uploads each file
 with your `onUpload` callback, and inserts an image block into the Markdown.
-It also handles copied HTML images by inserting their `src` URL directly.
+It also handles copied HTML `<img>` elements by inserting a block image for
+each safe `src` directly; those HTML URLs are not uploaded through `onUpload`.
+Safe image URLs are `http:`, `https:`, protocol-relative, relative paths,
+`blob:`, or raster `data:image/png|jpeg|jpg|gif|webp`. Missing or unsafe
+values such as `javascript:`, `file:`, `data:text/html`, or
+`data:image/svg+xml` are ignored.
 
 ```tsx
 import { createAttachmentsPlugin, useInkwell } from "@railway/inkwell";
@@ -562,36 +583,39 @@ The `trigger` field determines how a plugin activates. It uses
 - Prevents the default browser action
 - Best for command palettes, search overlays, and similar UI
 
-**Single characters** like `"["`, `"@"`, or `"/"`:
+**Single characters** like `"["`, `":"`, or `"@"`:
 
 - The character is typed into the editor first
 - When the user selects via `onSelect`, the trigger character is
   automatically removed
-- Best for inline pickers (mentions, snippets, slash commands)
+- Best for inline pickers (snippets, emoji, mentions)
 
-**No trigger** (omit the field entirely):
+**No trigger** (omit the field and leave `activatable` undefined):
 
 - The plugin is always rendered with `active: true`
 - Best for persistent UI like status bars or word counts
+- Non-trigger plugins that claim activation through `setActivePlugin` should
+  set `activatable: true`
 
 ### Render props
 
 Your `render` function receives these props:
 
-| Prop            | Type                                | Description                                                                                 |
-| --------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- |
-| `active`        | `boolean`                           | Whether the trigger has fired. Always `true` for plugins without triggers.                  |
-| `query`         | `string`                            | Text typed since the trigger fired. Useful for filtering results.                           |
-| `position`      | `{ top, left }`                     | Cursor coordinates when the trigger fired. Use for positioning your UI.                     |
-| `onSelect`      | `(text: string) => void`            | Insert Markdown at the cursor. For character triggers, removes the trigger character first. |
-| `onDismiss`     | `() => void`                        | Deactivate the plugin and return focus to the editor.                                       |
-| `wrapSelection` | `(before, after) => void`           | Toggle Markdown markers around the current selection.                                       |
-| `editorRef`     | `RefObject<HTMLDivElement \| null>` | Ref to the editor's contenteditable element.                                                |
+| Prop                    | Type                                    | Description                                                                                                                       |
+| ----------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `active`                | `boolean`                               | Whether this plugin is active. Always-on plugins receive `true` every render.                                                     |
+| `query`                 | `string`                                | Text typed since the trigger fired. Useful for filtering results.                                                                 |
+| `position`              | `{ top, left }`                         | Cursor coordinates when the trigger fired. Use for positioning your UI.                                                           |
+| `onSelect`              | `(text: string) => void`                | Insert Markdown at the cursor. For character triggers, removes the trigger character first.                                       |
+| `onDismiss`             | `() => void`                            | Deactivate the plugin and return focus to the editor.                                                                             |
+| `wrapSelection`         | `(before, after) => void`               | Toggle Markdown markers around the current selection.                                                                             |
+| `editorRef`             | `RefObject<HTMLDivElement \| null>`     | Ref to the editor's contenteditable element.                                                                                      |
+| `subscribeForwardedKey` | `SubscribeForwardedKey`                 | Subscribe to editor-forwarded ArrowUp/Down, Enter, Backspace, and printable keys while this plugin is active; returns cleanup.   |
 
 ### Keyboard shortcuts
 
 Plugins can add keyboard shortcuts via `onKeyDown`. The handler fires
-while the editor is focused and no other triggered plugin is active.
+while the editor is focused and no other plugin is active.
 
 ```tsx
 const highlightShortcut: InkwellPlugin = {
@@ -613,11 +637,15 @@ The built-in bubble menu uses this same mechanism for its `⌘B` / `⌘I` /
 ### Lifecycle
 
 - Plugins mount and unmount with the editor
-- Only one triggered plugin can be active at a time
+- Only one plugin can be active at a time
 - Pressing `Escape` or clicking outside the editor dismisses the active
   plugin
 
-### Example: slash commands
+### Example: simple slash-like trigger
+
+For production slash command flows, prefer the built-in
+`createSlashCommandsPlugin` above. This example shows how a custom
+single-character trigger can insert Markdown snippets.
 
 ````tsx
 const slashCommands: InkwellPlugin = {

@@ -65,7 +65,9 @@ Most applications should use `useInkwell`. The lower-level `InkwellEditor` compo
 - `characterLimit?: number` — Tracks character count and adds `inkwell-editor-over-limit` when exceeded.
 - `enforceCharacterLimit?: boolean` (default: `false`) — Blocks text input past `characterLimit`.
 - `onCharacterCount?: (count: number, limit?: number) => void` — Called when character count changes.
-- `limitToast?: boolean` (default: `true`) — Renders a built-in toast (`.inkwell-editor-limit-toast`) at the top-right of `.inkwell-editor-wrapper` when the document hits `characterLimit`. Set to `false` to render your own indicator instead.
+- `submitOnEnter?: boolean` (default: `false`) — When true, Enter calls `onSubmit(markdown)` instead of inserting a newline; Shift+Enter still inserts a newline.
+- `onSubmit?: (markdown: string) => void` — Called when `submitOnEnter` handles Enter.
+- `limitToast?: boolean` (default: `true`) — Renders a built-in toast (`.inkwell-editor-limit-toast`) at the top-right of `.inkwell-editor-wrapper` when `characterCount > characterLimit`, and also at `characterCount === characterLimit` when `enforceCharacterLimit` blocks further typing. Set to `false` to render your own indicator instead.
 
 ### Editor Controller
 
@@ -83,11 +85,12 @@ Most applications should use `useInkwell`. The lower-level `InkwellEditor` compo
 
 The editor renders Markdown visually as you type. All formatting is enabled by default.
 
-Block formatting (type at the start of a line):
+Block formatting (use at the start of a line; headings, lists, blockquotes, and code fences also have typing triggers):
 - `# ` through `###### ` → Headings (h1–h6)
-- `- `, `* `, or `+ ` → List items
+- `- `, `* `, `+ `, or `1. ` → List items (ordered markers auto-increment; two-space indents are preserved)
 - `> ` → Blockquotes
 - ` ``` ` → Fenced code blocks
+- `![alt](url)` on its own line → Block image (recognized when Markdown is loaded, pasted, or inserted)
 
 Inline formatting (wrap text):
 - `**text**` → Bold
@@ -122,9 +125,10 @@ interface InkwellDecorations {
   heading4?: boolean;    // default: true
   heading5?: boolean;    // default: true
   heading6?: boolean;    // default: true
-  lists?: boolean;       // default: true
+  lists?: boolean;       // default: true (unordered, ordered, indented)
   blockquotes?: boolean; // default: true
   codeBlocks?: boolean;  // default: true
+  images?: boolean;      // default: true
 }
 ```
 
@@ -152,7 +156,7 @@ return <EditorInstance />;
 
 ## Renderer
 
-`InkwellRenderer` converts Markdown to React elements. Produces semantic HTML, no browser dependencies, works with SSR.
+`InkwellRenderer` converts Markdown to React elements. Produces semantic HTML, no browser dependencies, works with SSR. It supports CommonMark plus GFM strikethrough, task lists, and autolinks; GFM table syntax is rendered as plain text and does not emit `<table>` elements by default.
 
 ```tsx
 import { InkwellRenderer } from "@railway/inkwell";
@@ -166,6 +170,7 @@ import { InkwellRenderer } from "@railway/inkwell";
 - `components?: InkwellComponents` — Override how specific HTML elements render.
 - `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for the rendering pipeline.
 - `copyButton?: boolean` (default: `true`) — Show a copy button on fenced code blocks.
+- `mentions?: MentionRenderer[]` — Text patterns to hydrate into React nodes during rendering.
 - `className?: string` — CSS class applied to the wrapper div.
 
 ### Custom Components
@@ -190,7 +195,7 @@ Override HTML element rendering:
 />
 ```
 
-You can override any HTML element: `h1`–`h6`, `p`, `a`, `img`, `blockquote`, `pre`, `code`, `ul`, `ol`, `li`, `table`, `strong`, `em`, `del`, and more.
+You can override any HTML element: `h1`–`h6`, `p`, `a`, `img`, `blockquote`, `pre`, `code`, `ul`, `ol`, `li`, `strong`, `em`, `del`, and more.
 
 ## Plugins
 
@@ -261,8 +266,8 @@ interface PluginRenderProps {
 ### Triggers
 
 - **Modifier combos** (`"Control+/"`, `"Meta+k"`): Prevents default browser action. Good for command palettes.
-- **Single characters** (`"["`, `"@"`, `"/"`): Character typed into editor first, removed on `onSelect`. Good for inline pickers.
-- **No trigger** (omit the field): Plugin always renders with `active: true`. Good for persistent UI.
+- **Single characters** (`"["`, `":"`, `"@"`): Character typed into editor first, removed on `onSelect`. Good for inline pickers such as snippets, emoji, and mentions.
+- **No trigger** (omit the field and leave `activatable` undefined): Plugin always renders with `active: true`. Good for persistent UI. Non-trigger plugins that call `setActivePlugin` should set `activatable: true`.
 
 ### Built-in: Bubble Menu
 
@@ -342,6 +347,40 @@ Snippet shape:
 interface Snippet {
   title: string;
   content: string;
+}
+```
+
+### Built-in: Emoji
+
+Searchable emoji picker. By default it opens when `:` is typed at a token boundary (start of the document, after whitespace, or after an opening bracket/parenthesis) and intentionally stays closed for emoticons, URLs, and prose such as `foo:bar`. The default list is exported as `defaultEmojis`.
+
+```tsx
+import { createEmojiPlugin, useInkwell } from "@railway/inkwell";
+
+const emoji = createEmojiPlugin();
+
+const { EditorInstance } = useInkwell({
+  content,
+  onChange: setContent,
+  plugins: [emoji],
+});
+```
+
+```tsx
+interface EmojiItem {
+  emoji: string;
+  name: string;
+  shortcodes?: string[];
+  tags?: string[];
+}
+
+interface EmojiPluginOptions<T extends EmojiItem = EmojiItem> {
+  name?: string;
+  trigger?: string;
+  emojis?: T[];
+  search?: (query: string) => Promise<T[]> | T[];
+  renderItem?: (item: T, active: boolean) => ReactNode;
+  emptyMessage?: string;
 }
 ```
 
@@ -506,7 +545,7 @@ interface SlashCommandExecution {
 
 ### Built-in: Attachments
 
-Paste or drop image files into the editor. The plugin runs each file through your `onUpload` and inserts a block image at the cursor. Also handles copied HTML `<img>` clipboard payloads with a remote `src`.
+Paste or drop image files into the editor. The plugin runs each matching file through your `onUpload` and inserts a block image at the cursor. It also handles copied HTML `<img>` elements by inserting a block image for each safe `src` directly; those HTML URLs are not uploaded through `onUpload`. Safe image URLs are `http:`, `https:`, protocol-relative, relative paths, `blob:`, or raster `data:image/png|jpeg|jpg|gif|webp`; missing or unsafe values such as `javascript:`, `file:`, `data:text/html`, or `data:image/svg+xml` are ignored.
 
 ```tsx
 import { createAttachmentsPlugin, useInkwell } from "@railway/inkwell";
@@ -525,14 +564,23 @@ const { EditorInstance } = useInkwell({
 });
 ```
 
+```tsx
+interface AttachmentsPluginOptions {
+  onUpload: (file: File) => Promise<string>;
+  accept?: string;
+  uploadingPlaceholder?: (file: File) => string;
+  onError?: (error: unknown, file: File) => void;
+}
+```
+
 ### Shared Plugin Picker Primitive
 
-Snippets, mentions, and any custom picker-style plugin all render through `PluginMenuPrimitive` (re-exported as a building block). It provides:
+Snippets, emoji, mentions, and any custom picker-style plugin all render through `PluginMenuPrimitive` (re-exported as a building block). It provides:
 
 - inline query display driven by characters typed after the trigger; focus stays in the editor
 - sync `items` filtering or async `search` callback
 - keyboard navigation (`ArrowUp`/`ArrowDown` with wrap, `Enter` to select, `Escape` to dismiss, `Backspace` to shrink the query, typed chars extend the query)
-- forwarded editor keys via `window` event `inkwell-plugin-keydown:<plugin-name>`
+- forwarded editor keys through `subscribeForwardedKey` from `PluginRenderProps`; the channel is scoped per editor instance and uses no window/global event bus
 - mouse hover/click selection
 - a single CSS namespace (`.inkwell-plugin-picker-*`) so styling carries across plugins
 
@@ -664,7 +712,8 @@ Container:
 Block elements:
 - `.inkwell-editor-heading` + `.inkwell-editor-heading-1` through `-heading-6`
 - `.inkwell-editor-blockquote`
-- `.inkwell-editor-list-item`
+- `.inkwell-editor-list-item` — includes `data-list`, `data-ordered="true"` for ordered markers, and `data-indent` for two-space indent levels
+- `.inkwell-editor-image` — block image wrapper; `data-selected` when selected
 - `.inkwell-editor-code-fence`
 - `.inkwell-editor-code-line`
 
@@ -678,7 +727,7 @@ Remote cursors:
 
 Character limit:
 - `.inkwell-editor-wrapper.inkwell-editor-over-limit` — Wrapper while `characterCount > characterLimit`
-- `.inkwell-editor-limit-toast` — Built-in over-limit toast (opt out via `limitToast={false}`)
+- `.inkwell-editor-limit-toast` — Built-in toast shown when over limit, or exactly at the limit when `enforceCharacterLimit` blocks more typing (opt out via `limitToast={false}`)
 - `.inkwell-editor-limit-toast-icon` — Icon inside the toast
 
 ### Renderer CSS Classes
@@ -686,7 +735,7 @@ Character limit:
 - `.inkwell-renderer` — Wrapper div
 - `.inkwell-renderer-code-block` — Wrapper around each `<pre>` (when `copyButton` enabled)
 - `.inkwell-renderer-copy-btn` — Copy button on code blocks (appears on hover)
-- Standard HTML elements inside: `h1`–`h6`, `p`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `table`, `img`
+- Standard HTML elements inside: `h1`–`h6`, `p`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `img`; GFM table syntax is rendered as plain text instead of `<table>`
 
 ### Plugin CSS Classes
 
@@ -700,7 +749,7 @@ Bubble menu:
 
 Completions use the editor's native placeholder. Style completion text with `.inkwell-editor [data-slate-placeholder="true"]`. The accept hint is part of the placeholder text itself, for example `[tab ↹] Suggested text`; there is no separate completion hint element.
 
-Plugin picker (shared by snippets, mentions, and any custom picker plugin built on `PluginMenuPrimitive`):
+Plugin picker (shared by snippets, emoji, mentions, and any custom picker plugin built on `PluginMenuPrimitive`):
 - `.inkwell-plugin-picker-popup`
 - `.inkwell-plugin-picker`
 - `.inkwell-plugin-picker-search`
@@ -733,13 +782,14 @@ Plugin creators:
 
 Plugin utilities:
 - `defaultBubbleMenuItems`
+- `defaultEmojis`
 - `pluginClass`
-- `PluginMenuPrimitive` — shared picker primitive used by `createSnippetsPlugin` and `createMentionsPlugin`. Query is driven by editor text after the trigger; use it to build your own picker plugins with the same keyboard, focus, and class-namespace contract.
+- `PluginMenuPrimitive` — shared picker primitive used by `createSnippetsPlugin`, `createEmojiPlugin`, and `createMentionsPlugin`. Query is driven by editor text after the trigger; use it to build your own picker plugins with the same keyboard, focus, and class-namespace contract.
 - `pluginPickerClass` — the `.inkwell-plugin-picker-*` class-name map produced by `PluginMenuPrimitive`.
 
 Serialization:
 - `serializeToMarkdown(html: string): string`
-- `parseMarkdown(markdown: string, components?, rehypePlugins?): ReactNode`
+- `parseMarkdown(markdown: string, components?, rehypePlugins?, mentions?): ReactNode`
 - `deserialize(markdown: string, decorations?): InkwellElement[]`
 
 Types:
@@ -753,11 +803,13 @@ Types:
 - `InkwellSetMarkdownOptions`
 - `InkwellRendererProps`
 - `InkwellPlugin`
+- `InkwellPluginPlaceholder`
 - `InkwellDecorations`
 - `InkwellComponents`
 - `BubbleMenuItem`
 - `BubbleMenuItemProps`
 - `CollaborationConfig`
+- `AttachmentsPluginOptions`
 - `CompletionPluginOptions`
 - `EmojiItem`
 - `EmojiPluginOptions`

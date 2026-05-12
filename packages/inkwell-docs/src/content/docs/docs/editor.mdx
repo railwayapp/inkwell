@@ -91,14 +91,17 @@ All formatting is enabled by default.
 
 ### Block formatting
 
-Type these at the beginning of a line:
+Use these Markdown patterns at the start of a line. Headings, lists,
+blockquotes, and code fences also have typing triggers; block images are
+recognized when Markdown is loaded, pasted, or inserted.
 
-| Pattern                | Result             |
-| ---------------------- | ------------------ |
-| `# ` through `###### ` | Headings (h1–h6)   |
-| `- `, `* `, or `+ `    | List items         |
-| `> `                   | Blockquotes        |
-| ` ``` `                | Fenced code blocks |
+| Pattern                       | Result                                  |
+| ----------------------------- | --------------------------------------- |
+| `# ` through `###### `        | Headings (h1–h6)                        |
+| `- `, `* `, `+ `, or `1. `    | List items (ordered markers increment)  |
+| `> `                          | Blockquotes                             |
+| ` ``` `                       | Fenced code blocks                      |
+| `![alt](url)` on its own line | Block image                             |
 
 ### Inline formatting
 
@@ -144,12 +147,13 @@ const { EditorInstance } = useInkwell({
 return <EditorInstance />;
 ```
 
-| Decoration              | Default | Controls                             |
-| ----------------------- | ------- | ------------------------------------ |
-| `heading1` – `heading6` | `true`  | Individual heading levels            |
-| `lists`                 | `true`  | Unordered list items (`-`, `*`, `+`) |
-| `blockquotes`           | `true`  | Blockquotes (`>`)                    |
-| `codeBlocks`            | `true`  | Fenced code blocks (` ``` `)         |
+| Decoration              | Default | Controls                                                 |
+| ----------------------- | ------- | -------------------------------------------------------- |
+| `heading1` – `heading6` | `true`  | Individual heading levels                                |
+| `lists`                 | `true`  | Unordered, ordered, and indented list items (`-`, `*`, `+`, `1.`) |
+| `blockquotes`           | `true`  | Blockquotes (`>`)                                        |
+| `codeBlocks`            | `true`  | Fenced code blocks (` ``` `)                             |
+| `images`                | `true`  | Block images (`![alt](url)` on their own line)           |
 
 When a decoration is disabled, its syntax is treated as plain text with
 no visual formatting.
@@ -292,7 +296,7 @@ function or a `[plugin, options]` tuple. See
 **Type:** `number`
 
 Tracks the current character count and adds `inkwell-editor-over-limit` to
-the wrapper when exceeded. When set, the editor also renders a built-in
+the wrapper when exceeded. When set, the editor can also render a built-in
 [limit toast](#limittoast) at the top-right unless disabled.
 
 ### `enforceCharacterLimit`
@@ -325,9 +329,8 @@ Called when `submitOnEnter` handles Enter.
 
 **Type:** `boolean` — default: `true`
 
-When a `characterLimit` is configured, the editor renders a small toast at
-the top-right of `.inkwell-editor-wrapper` whenever the document hits the
-limit. Visibility:
+When a `characterLimit` is configured, the editor can render a small toast at
+the top-right of `.inkwell-editor-wrapper`. Visibility:
 
 - `characterCount > characterLimit` → shows `"Over limit by N"`.
 - `enforceCharacterLimit && characterCount >= characterLimit` → shows

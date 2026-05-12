@@ -25,9 +25,11 @@ const LIST_MARKER_RE = /^(\s*)(\d+\.|[-*+]) /;
  * - Shift+Enter on blockquote → soft break (stay in blockquote)
  * - Typing "> " at start of paragraph → convert to blockquote
  * - Typing "# " at start of paragraph → convert to heading
+ * - Typing `- `, `1. `, or indented list markers → convert to list-item
  * - Typing ``` at start of paragraph → convert to code-fence
  * - Closing ``` on code-line → convert to code-fence, exit code block
- * - Paste → parse as markdown, insert structured nodes
+ * - Enter on image → insert a paragraph after the void image block
+ * - Paste → parse as markdown, insert structured nodes (including images)
  *
  * The `decorationsRef` allows the latest element config to be read
  * from within closures that outlive the initial call.

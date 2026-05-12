@@ -14,8 +14,10 @@ import { InkwellRenderer } from "@railway/inkwell";
 <InkwellRenderer content="# Hello **world**" />;
 ```
 
-The renderer supports the full CommonMark spec plus GitHub Flavored
-Markdown extensions (tables, strikethrough, task lists).
+The renderer supports CommonMark plus GitHub Flavored Markdown features such
+as strikethrough, task lists, and autolinks. GFM table syntax is
+intentionally rendered as plain text; Inkwell does not emit `<table>`
+elements by default.
 
 ## Custom components
 
@@ -47,8 +49,8 @@ Each component receives the original element's props and children.
 ```
 
 You can override any HTML element: `h1`–`h6`, `p`, `a`, `img`,
-`blockquote`, `pre`, `code`, `ul`, `ol`, `li`, `table`, `strong`, `em`,
-`del`, and more.
+`blockquote`, `pre`, `code`, `ul`, `ol`, `li`, `strong`, `em`, `del`,
+and more.
 
 ## Syntax highlighting
 
@@ -106,6 +108,15 @@ reveal the button.
 ```tsx
 <InkwellRenderer content={content} copyButton={false} />
 ```
+
+### `mentions`
+
+**Type:** `MentionRenderer[]`
+
+Text patterns to hydrate into custom React nodes during rendering. Each
+entry provides a `pattern` regular expression and `resolve(match)` callback;
+matches are replaced in rendered text. This is useful for persisted markers
+inserted by the mentions plugin.
 
 ### `className`
 

@@ -28,7 +28,8 @@ Each block-level element renders with a CSS class:
 | `.inkwell-editor-heading` | All headings (always combined with a level class below) |
 | `.inkwell-editor-heading-1` through `-heading-6` | Specific heading level |
 | `.inkwell-editor-blockquote` | Blockquotes |
-| `.inkwell-editor-list-item` | List items |
+| `.inkwell-editor-list-item` | List items (`data-list`, `data-ordered="true"` for ordered markers, `data-indent` for two-space indent levels) |
+| `.inkwell-editor-image` | Block image wrapper (`data-selected` when selected) |
 | `.inkwell-editor-code-fence` | Code fence delimiter lines |
 | `.inkwell-editor-code-line` | Lines inside a fenced code block |
 
@@ -75,15 +76,15 @@ Applied when a `characterLimit` is configured on the editor:
 | Selector | Element |
 |----------|---------|
 | `.inkwell-editor-wrapper.inkwell-editor-over-limit` | Wrapper while `characterCount > characterLimit`. Use to flag the surface (e.g. red outline). |
-| `.inkwell-editor-limit-toast` | Built-in toast surfaced at the top-right of the editor when the limit is reached. Opt out via `limitToast={false}`. |
+| `.inkwell-editor-limit-toast` | Built-in toast shown when the document is over limit, or exactly at the limit when `enforceCharacterLimit` blocks more typing. Opt out via `limitToast={false}`. |
 | `.inkwell-editor-limit-toast-icon` | The leading icon inside the toast. |
 
 ## Renderer
 
 The renderer wraps output in `<div class="inkwell-renderer">`. Inside,
 standard HTML elements are used: `h1`–`h6`, `p`, `blockquote`, `ul`,
-`ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `table`,
-`img`.
+`ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `img`.
+GFM table syntax is rendered as plain text rather than `<table>` elements.
 
 Target them with descendant selectors:
 
@@ -120,7 +121,7 @@ a container and a copy button:
 
 Completions use the editor's native placeholder. Style completion text with your existing placeholder styles on `.inkwell-editor [data-slate-placeholder="true"]`. The accept hint is part of the placeholder text itself, for example `[tab ↹] Suggested text`; there is no separate completion hint element.
 
-### Plugin picker (snippets, mentions, etc.)
+### Plugin picker (snippets, emoji, mentions, etc.)
 
 All picker-based plugins share a single set of classes so the menu UI
 is consistent regardless of which plugin opened it.
@@ -200,6 +201,16 @@ your design system.
 .inkwell-editor-list-item {
   padding-left: 1em;
 }
+.inkwell-editor-list-item[data-indent="1"] { padding-left: 2.5em; }
+.inkwell-editor-list-item[data-indent="2"] { padding-left: 4em; }
+
+.inkwell-editor-image {
+  margin: 0.75em 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.inkwell-editor-image[data-selected] { outline: 2px solid #6366f1; }
+.inkwell-editor-image img { display: block; max-width: 100%; height: auto; }
 
 .inkwell-editor-code-fence { color: #9ca3af; }
 .inkwell-editor-code-line {
@@ -236,6 +247,7 @@ your design system.
 .inkwell-renderer ul { list-style: disc; }
 .inkwell-renderer ol { list-style: decimal; }
 .inkwell-renderer li { margin: 0.25em 0; }
+.inkwell-renderer img { max-width: 100%; height: auto; border-radius: 8px; }
 
 .inkwell-renderer code {
   background: #f3f4f6;

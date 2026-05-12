@@ -1534,7 +1534,7 @@ describe("InkwellEditor — imperative API and state", () => {
     await flushEffects();
 
     await act(async () => {
-      ref.current?.setContent("replacement", { emitChange: false });
+      ref.current?.setContent("replacement");
     });
 
     expect(onChange).not.toHaveBeenCalled();
@@ -1544,7 +1544,7 @@ describe("InkwellEditor — imperative API and state", () => {
     );
   });
 
-  it("clears content and emits onChange by default", async () => {
+  it("clears content without emitting onChange", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onChange = vi.fn();
     render(<InkwellEditor ref={ref} content="hello" onChange={onChange} />);
@@ -1555,7 +1555,7 @@ describe("InkwellEditor — imperative API and state", () => {
     });
 
     expect(ref.current?.getState().content).toBe("");
-    expect(onChange).toHaveBeenLastCalledWith("");
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("focuses through the ref handle", async () => {

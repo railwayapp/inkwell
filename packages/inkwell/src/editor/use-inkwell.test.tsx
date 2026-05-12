@@ -51,7 +51,7 @@ describe("useInkwell", () => {
       fireEvent.click(screen.getByText("Replace"));
     });
 
-    expect(onChange).toHaveBeenLastCalledWith("updated");
+    expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByTestId("content-state")).toHaveTextContent("updated");
     expect(screen.getByRole("textbox")).toHaveTextContent("updated");
   });

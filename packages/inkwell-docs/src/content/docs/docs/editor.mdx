@@ -61,9 +61,13 @@ The `editor` object returned by `useInkwell` exposes `getState()`, `focus()`,
 editor.getState().content;
 editor.getState();
 editor.focus({ at: "end" });
-editor.setContent("Replacement", { emitChange: false });
+editor.setContent("Replacement");
 editor.insertContent(" **more**");
 ```
+
+`setContent()` and `clear()` replace editor content without calling `onChange`.
+`insertContent()` behaves like an edit at the current selection and flows through
+normal change handling.
 
 If you are building a custom abstraction around the low-level component,
 the same methods are available through

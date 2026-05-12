@@ -76,9 +76,11 @@ Most applications should use `useInkwell`. The lower-level `InkwellEditor` compo
 - `getState(): InkwellEditorState`
 - `getState().content: string`
 - `focus(options?: { at?: "start" | "end" }): void`
-- `clear(options?: { emitChange?: boolean; select?: "start" | "end" | "preserve" }): void`
-- `setContent(content: string, options?: { emitChange?: boolean; select?: "start" | "end" | "preserve" }): void`
+- `clear(options?: { select?: "start" | "end" | "preserve" }): void`
+- `setContent(content: string, options?: { select?: "start" | "end" | "preserve" }): void`
 - `insertContent(content: string): void`
+
+`setContent()` and `clear()` replace editor content without calling `onChange`. `insertContent()` behaves like an edit at the current selection and flows through normal change handling.
 
 ### Formatting
 

@@ -617,7 +617,6 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
 
     const replaceContent = useCallback(
       (content: string, options?: InkwellSetContentOptions) => {
-        const emitChange = options?.emitChange ?? true;
         const select = options?.select ?? "start";
         const newValue = deserialize(content, resolvedDecorations);
 
@@ -629,12 +628,10 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         const nextContent = serializeContent();
         lastContent.current = nextContent;
         editor.onChange();
-        if (emitChange) onChange?.(nextContent);
       },
       [
         bumpStateVersion,
         editor,
-        onChange,
         resolvedDecorations,
         selectEditor,
         serializeContent,

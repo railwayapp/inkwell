@@ -44,8 +44,6 @@ export interface InkwellEditorFocusOptions {
 }
 
 export interface InkwellSetContentOptions {
-  /** Whether to call `onChange` after replacing content. Defaults to true. */
-  emitChange?: boolean;
   /** Where to place the caret after replacing content. Defaults to "start". */
   select?: "start" | "end" | "preserve";
 }

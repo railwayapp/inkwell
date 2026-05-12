@@ -9,6 +9,7 @@ export function InkwellRenderer({
   components,
   rehypePlugins,
   copyButton = true,
+  mentions,
 }: InkwellRendererProps): ReactNode {
   const mergedComponents = useMemo(() => {
     if (!copyButton) return components;
@@ -16,8 +17,13 @@ export function InkwellRenderer({
   }, [copyButton, components]);
 
   const rendered = useMemo(
-    () => parseMarkdown(content, mergedComponents, rehypePlugins),
-    [content, mergedComponents, rehypePlugins],
+    () =>
+      parseMarkdown(content, {
+        components: mergedComponents,
+        rehypePlugins,
+        mentions,
+      }),
+    [content, mergedComponents, rehypePlugins, mentions],
   );
 
   return (

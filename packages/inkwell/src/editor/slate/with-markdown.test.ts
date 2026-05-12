@@ -2,13 +2,14 @@ import { createEditor, Editor, Node, Transforms } from "slate";
 import { withHistory } from "slate-history";
 import { withReact } from "slate-react";
 import { describe, expect, it } from "vitest";
-import type { InkwellDecorations } from "../../types";
+import type { ResolvedInkwellFeatures } from "../../types";
 import { deserialize } from "./deserialize";
+import { serialize } from "./serialize";
 import type { InkwellElement } from "./types";
 import { withMarkdown } from "./with-markdown";
 import { generateId, withNodeId } from "./with-node-id";
 
-function createTestEditor(decorations?: InkwellDecorations) {
+function createTestEditor(decorations?: Partial<ResolvedInkwellFeatures>) {
   const decorationsRef = {
     current: {
       heading1: decorations?.heading1 ?? false,
@@ -20,6 +21,7 @@ function createTestEditor(decorations?: InkwellDecorations) {
       lists: decorations?.lists ?? true,
       blockquotes: decorations?.blockquotes ?? true,
       codeBlocks: decorations?.codeBlocks ?? true,
+      images: decorations?.images ?? true,
     },
   };
   return withMarkdown(
@@ -171,10 +173,10 @@ describe("withMarkdown — blockquote triggers", () => {
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertSoftBreak();
 
-    const bqCount = getElements(editor).filter(
-      e => e.type === "blockquote",
-    ).length;
+    const elements = getElements(editor);
+    const bqCount = elements.filter(e => e.type === "blockquote").length;
     expect(bqCount).toBe(2);
+    expect(serialize(elements)).toBe("> first\n>");
   });
 });
 
@@ -365,6 +367,163 @@ describe("withMarkdown — list item triggers", () => {
 
     expect(getElements(editor)[0].type).toBe("paragraph");
     expect(Node.string(getElements(editor)[0])).toBe("");
+  });
+
+  it("`1.` + space converts paragraph to ordered list-item", () => {
+    const editor = createTestEditor({ lists: true });
+    editor.children = deserialize("1.", { lists: false });
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertText(" ");
+
+    expect(getElements(editor)[0].type).toBe("list-item");
+    expect(Node.string(getElements(editor)[0])).toBe("1. ");
+  });
+
+  it("Enter on ordered list item auto-increments the marker", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("1. first");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements[1].type).toBe("list-item");
+    expect(Node.string(elements[1])).toBe("2. ");
+  });
+
+  it("Enter on nested bullet list-item preserves indent", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list-item" as const,
+        id: generateId(),
+        children: [{ text: "  - item" }],
+      },
+    ];
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements[1].type).toBe("list-item");
+    expect(Node.string(elements[1])).toBe("  - ");
+  });
+
+  it("Enter on empty nested list-item outdents instead of reverting", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list-item" as const,
+        id: generateId(),
+        children: [{ text: "  - " }],
+      },
+    ];
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+
+    const first = getElements(editor)[0];
+    expect(first.type).toBe("list-item");
+    expect(Node.string(first)).toBe("- ");
+  });
+
+  it("Enter on empty indented ordered list-item outdents and resets to 1.", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list-item" as const,
+        id: generateId(),
+        children: [{ text: "  3. " }],
+      },
+    ];
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+
+    const first = getElements(editor)[0];
+    expect(first.type).toBe("list-item");
+    expect(Node.string(first)).toBe("1. ");
+  });
+});
+
+describe("withMarkdown — image element", () => {
+  it("marks image elements as void", () => {
+    const editor = createTestEditor();
+    const imgEl: InkwellElement = {
+      type: "image",
+      id: generateId(),
+      url: "https://x.png",
+      alt: "img",
+      children: [{ text: "" }],
+    };
+    editor.children = [imgEl];
+    editor.onChange();
+    expect(editor.isVoid(imgEl)).toBe(true);
+  });
+
+  it("does not mark non-image elements as void", () => {
+    const editor = createTestEditor();
+    const pEl: InkwellElement = {
+      type: "paragraph",
+      id: generateId(),
+      children: [{ text: "hello" }],
+    };
+    editor.children = [pEl];
+    editor.onChange();
+    expect(editor.isVoid(pEl)).toBe(false);
+  });
+
+  it("Enter on image inserts a paragraph after it", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "image" as const,
+        id: generateId(),
+        url: "https://x.png",
+        alt: "img",
+        children: [{ text: "" }],
+      },
+    ];
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("image");
+    expect(elements[1].type).toBe("paragraph");
+  });
+
+  it("deletes image via Transforms.removeNodes", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "paragraph" as const,
+        id: generateId(),
+        children: [{ text: "before" }],
+      },
+      {
+        type: "image" as const,
+        id: generateId(),
+        url: "https://x.png",
+        alt: "img",
+        children: [{ text: "" }],
+      },
+    ];
+    editor.onChange();
+
+    Transforms.removeNodes(editor, { at: [1] });
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
   });
 });
 

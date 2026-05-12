@@ -22,29 +22,29 @@ describe("serialize", () => {
   });
 
   it("serializes heading with correct # prefix", () => {
-    expect(serialize([el("heading", "Title", { level: 1 })])).toBe("# Title");
-    expect(serialize([el("heading", "Sub", { level: 2 })])).toBe("## Sub");
-    expect(serialize([el("heading", "H3", { level: 3 })])).toBe("### H3");
+    expect(serialize([el("heading", "# Title", { level: 1 })])).toBe("# Title");
+    expect(serialize([el("heading", "## Sub", { level: 2 })])).toBe("## Sub");
+    expect(serialize([el("heading", "### H3", { level: 3 })])).toBe("### H3");
   });
 
   it("defaults heading level to 1 when undefined", () => {
-    expect(serialize([el("heading", "No level")])).toBe("# No level");
+    expect(serialize([el("heading", "# No level")])).toBe("# No level");
   });
 
   it("serializes blockquote with > prefix", () => {
-    expect(serialize([el("blockquote", "quoted")])).toBe("> quoted");
+    expect(serialize([el("blockquote", "> quoted")])).toBe("> quoted");
   });
 
   it("serializes empty blockquote", () => {
-    expect(serialize([el("blockquote", "")])).toBe(">");
+    expect(serialize([el("blockquote", ">")])).toBe(">");
   });
 
   it("escapes leading > in blockquote content", () => {
-    expect(serialize([el("blockquote", "> nested")])).toBe("> \\> nested");
+    expect(serialize([el("blockquote", "> nested")])).toBe("> nested");
   });
 
   it("serializes multi-line blockquote with > separators", () => {
-    expect(serialize([el("blockquote", "line 1\nline 2")])).toBe(
+    expect(serialize([el("blockquote", "> line 1\n>\n> line 2")])).toBe(
       "> line 1\n>\n> line 2",
     );
   });
@@ -73,7 +73,7 @@ describe("serialize", () => {
   });
 
   it("joins consecutive blockquotes with single newline", () => {
-    const nodes = [el("blockquote", "a"), el("blockquote", "b")];
+    const nodes = [el("blockquote", "> a"), el("blockquote", "> b")];
     expect(serialize(nodes)).toBe("> a\n> b");
   });
 
@@ -86,8 +86,18 @@ describe("serialize", () => {
     expect(serialize(nodes)).toBe("- a\n- b\n- c");
   });
 
+  it("round-trips ordered list markers", () => {
+    const nodes = [el("list-item", "1. a"), el("list-item", "2. b")];
+    expect(serialize(nodes)).toBe("1. a\n2. b");
+  });
+
+  it("preserves nested-list indentation", () => {
+    const nodes = [el("list-item", "- a"), el("list-item", "  - b")];
+    expect(serialize(nodes)).toBe("- a\n  - b");
+  });
+
   it("joins different types with double newline", () => {
-    const nodes = [el("paragraph", "text"), el("blockquote", "quote")];
+    const nodes = [el("paragraph", "text"), el("blockquote", "> quote")];
     expect(serialize(nodes)).toBe("text\n\n> quote");
   });
 
@@ -101,6 +111,26 @@ describe("serialize", () => {
     expect(result).toBe("first\n\nsecond");
   });
 
+  it("serializes image element as markdown syntax", () => {
+    const nodes = [
+      el("image", "![caption](https://x.png)", {
+        url: "https://x.png",
+        alt: "caption",
+      }),
+    ];
+    expect(serialize(nodes)).toBe("![caption](https://x.png)");
+  });
+
+  it("serializes image with empty alt", () => {
+    const nodes = [el("image", "![](x.png)", { url: "x.png" })];
+    expect(serialize(nodes)).toBe("![](x.png)");
+  });
+
+  it("synthesizes image source for plugin-created image nodes", () => {
+    const nodes = [el("image", "", { url: "x.png", alt: "caption" })];
+    expect(serialize(nodes)).toBe("![caption](x.png)");
+  });
+
   it("handles empty document", () => {
     const nodes = [el("paragraph", "")];
     expect(serialize(nodes)).toBe("");
@@ -110,11 +140,11 @@ describe("serialize", () => {
     const md = "## Title\n\n**bold** and _italic_\n\n> quote\n\n- item";
     // We can't import deserialize here (circular), so test serialize directly
     const nodes = [
-      el("heading", "Title", { level: 2 }),
+      el("heading", "## Title", { level: 2 }),
       el("paragraph", ""),
       el("paragraph", "**bold** and _italic_"),
       el("paragraph", ""),
-      el("blockquote", "quote"),
+      el("blockquote", "> quote"),
       el("paragraph", ""),
       el("list-item", "- item"),
     ];

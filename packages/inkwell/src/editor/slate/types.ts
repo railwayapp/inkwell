@@ -11,7 +11,8 @@ export type ElementType =
   | "code-line"
   | "blockquote"
   | "list-item"
-  | "heading";
+  | "heading"
+  | "image";
 
 /**
  * A block-level element in the editor
@@ -26,6 +27,14 @@ export interface InkwellElement extends BaseElement {
    * Heading level (1-6). Only present on `heading` elements.
    */
   level?: number;
+  /**
+   * Image URL. Only present on `image` elements.
+   */
+  url?: string;
+  /**
+   * Image alt text. Only present on `image` elements.
+   */
+  alt?: string;
   children: InkwellText[];
 }
 

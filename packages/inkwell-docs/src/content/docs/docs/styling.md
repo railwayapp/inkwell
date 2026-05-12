@@ -2,9 +2,13 @@
 title: "Styling"
 ---
 
-Inkwell applies CSS classes to every element but ships no default styles.
-You have full control over the look and feel of both the editor and the
-rendered output.
+Inkwell ships default editor, plugin, and renderer styles. Import them once in your app entry point:
+
+```tsx
+import "@railway/inkwell/styles.css";
+```
+
+The defaults are intentionally easy to override: every element also gets a stable CSS class, so you still have full control over the look and feel of both the editor and the rendered output.
 
 ## Editor
 
@@ -24,7 +28,8 @@ Each block-level element renders with a CSS class:
 | `.inkwell-editor-heading` | All headings (always combined with a level class below) |
 | `.inkwell-editor-heading-1` through `-heading-6` | Specific heading level |
 | `.inkwell-editor-blockquote` | Blockquotes |
-| `.inkwell-editor-list-item` | List items |
+| `.inkwell-editor-list-item` | List items (`data-list`, `data-ordered="true"` for ordered markers, `data-indent` for two-space indent levels) |
+| `.inkwell-editor-image` | Block image wrapper (`data-selected` when selected) |
 | `.inkwell-editor-code-fence` | Code fence delimiter lines |
 | `.inkwell-editor-code-line` | Lines inside a fenced code block |
 
@@ -64,12 +69,22 @@ Used when [collaboration](/docs/collaboration) is enabled:
 The cursor color is applied inline from `user.color`, so your CSS only
 needs to handle positioning and opacity.
 
+### Character limit
+
+Applied when a `characterLimit` is configured on the editor:
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-editor-wrapper.inkwell-editor-over-limit` | Wrapper while `characterCount > characterLimit`. Use to flag the surface (e.g. red outline). |
+| `.inkwell-editor-limit-toast` | Toast rendered by `createCharacterLimitPlugin()` when the document is over limit, or exactly at the limit when `enforceCharacterLimit` blocks more typing. |
+| `.inkwell-editor-limit-toast-icon` | The leading icon inside the toast. |
+
 ## Renderer
 
 The renderer wraps output in `<div class="inkwell-renderer">`. Inside,
 standard HTML elements are used: `h1`–`h6`, `p`, `blockquote`, `ul`,
-`ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `table`,
-`img`.
+`ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `img`.
+GFM table syntax is rendered as source text rather than `<table>` elements.
 
 Target them with descendant selectors:
 
@@ -102,18 +117,26 @@ a container and a copy button:
 | `.inkwell-plugin-bubble-menu-item-italic` | Italic button label |
 | `.inkwell-plugin-bubble-menu-item-strike` | Strikethrough button label |
 
-### Snippets
+### Completions
+
+Completions use the editor's native placeholder. Style completion text with your existing placeholder styles on `.inkwell-editor [data-slate-placeholder="true"]`. The accept hint is part of the placeholder text itself, for example `[tab ↹] Suggested text`; there is no separate completion hint element.
+
+### Plugin picker (snippets, emoji, mentions, etc.)
+
+All picker-based plugins share a single set of classes so the menu UI
+is consistent regardless of which plugin opened it.
 
 | Selector | Element |
 |----------|---------|
-| `.inkwell-plugin-snippets-popup` | Positioned container |
-| `.inkwell-plugin-snippets-picker` | Picker wrapper |
-| `.inkwell-plugin-snippets-search` | Search input |
-| `.inkwell-plugin-snippets-item` | Snippet row |
-| `.inkwell-plugin-snippets-item-active` | Highlighted row |
-| `.inkwell-plugin-snippets-title` | Snippet title |
-| `.inkwell-plugin-snippets-preview` | Snippet preview text |
-| `.inkwell-plugin-snippets-empty` | Empty state message |
+| `.inkwell-plugin-picker-popup` | Positioned container |
+| `.inkwell-plugin-picker` | Picker wrapper |
+| `.inkwell-plugin-picker-search` | Inline query display (characters typed after the trigger) |
+| `.inkwell-plugin-picker-item` | Item row |
+| `.inkwell-plugin-picker-item-active` | Highlighted row |
+| `.inkwell-plugin-picker-title` | Item title |
+| `.inkwell-plugin-picker-subtitle` | Item subtitle |
+| `.inkwell-plugin-picker-preview` | Item preview text |
+| `.inkwell-plugin-picker-empty` | Empty state message |
 
 ## Code highlighting
 
@@ -178,6 +201,16 @@ your design system.
 .inkwell-editor-list-item {
   padding-left: 1em;
 }
+.inkwell-editor-list-item[data-indent="1"] { padding-left: 2.5em; }
+.inkwell-editor-list-item[data-indent="2"] { padding-left: 4em; }
+
+.inkwell-editor-image {
+  margin: 0.75em 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.inkwell-editor-image[data-selected] { outline: 2px solid #6366f1; }
+.inkwell-editor-image img { display: block; max-width: 100%; height: auto; }
 
 .inkwell-editor-code-fence { color: #9ca3af; }
 .inkwell-editor-code-line {
@@ -214,6 +247,7 @@ your design system.
 .inkwell-renderer ul { list-style: disc; }
 .inkwell-renderer ol { list-style: decimal; }
 .inkwell-renderer li { margin: 0.25em 0; }
+.inkwell-renderer img { max-width: 100%; height: auto; border-radius: 8px; }
 
 .inkwell-renderer code {
   background: #f3f4f6;
@@ -306,7 +340,7 @@ your design system.
 
 /* ── Snippets plugin ── */
 
-.inkwell-plugin-snippets-picker {
+.inkwell-plugin-picker {
   background: #18181b;
   border: 1px solid #3f3f46;
   border-radius: 8px;
@@ -316,7 +350,7 @@ your design system.
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
-.inkwell-plugin-snippets-search {
+.inkwell-plugin-picker-search {
   width: 100%;
   padding: 8px 12px;
   background: #09090b;
@@ -327,13 +361,13 @@ your design system.
   outline: none;
 }
 
-.inkwell-plugin-snippets-item {
+.inkwell-plugin-picker-item {
   padding: 8px 12px;
   cursor: pointer;
 }
 
-.inkwell-plugin-snippets-item:hover,
-.inkwell-plugin-snippets-item-active {
+.inkwell-plugin-picker-item:hover,
+.inkwell-plugin-picker-item-active {
   background: #27272a;
 }
 ```

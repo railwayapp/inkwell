@@ -2,11 +2,11 @@
 title: "Getting Started"
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 Inkwell is a Markdown editor and renderer for React. You write and edit
-content in a visual WYSIWYG interface, but the underlying data is always
-plain Markdown. Markdown in, Markdown out.
+content in a visual WYSIWYG interface, but the underlying content is always
+the Markdown source. The Markdown source is the text.
 
 Built on [Slate.js](https://www.slatejs.org/), with an extensible plugin
 system and optional real-time collaboration via [Yjs](https://yjs.dev/).
@@ -17,24 +17,32 @@ For LLMs, see [/llms.txt](/llms.txt).
 
 <Tabs>
   <TabItem label="npm">
+
     ```bash
     npm install @railway/inkwell
     ```
+
   </TabItem>
   <TabItem label="pnpm">
+
     ```bash
     pnpm add @railway/inkwell
     ```
+
   </TabItem>
   <TabItem label="yarn">
+
     ```bash
     yarn add @railway/inkwell
     ```
+
   </TabItem>
   <TabItem label="bun">
+
     ```bash
     bun add @railway/inkwell
     ```
+
   </TabItem>
 </Tabs>
 
@@ -42,8 +50,7 @@ Requires React 19 or later as a peer dependency.
 
 ## Your first editor
 
-`InkwellEditor` is a controlled component. Pass it a Markdown string and
-an `onChange` handler.
+Render `InkwellEditor` with a content string and an `onChange` handler.
 
 ```tsx
 import { InkwellEditor } from "@railway/inkwell";
@@ -51,6 +58,7 @@ import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello **world**");
+
   return <InkwellEditor content={content} onChange={setContent} />;
 }
 ```
@@ -83,7 +91,7 @@ function Preview({ content }: { content: string }) {
 Pair them together for a live preview:
 
 ```tsx
-import { InkwellEditor, InkwellRenderer } from "@railway/inkwell";
+import { InkwellRenderer, InkwellEditor } from "@railway/inkwell";
 import { useState } from "react";
 
 function EditorWithPreview() {
@@ -100,28 +108,15 @@ function EditorWithPreview() {
 
 ## Styling
 
-Inkwell applies CSS classes to every element but ships no default styles.
-You control how things look. Here's a minimal starting point:
+Inkwell ships default editor, plugin, and renderer styles. Import them once
+in your app entry point:
 
-```css
-.inkwell-editor {
-  min-height: 200px;
-  padding: 1.5rem;
-  outline: none;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1rem;
-  line-height: 1.7;
-}
-
-.inkwell-renderer {
-  font-size: 1rem;
-  line-height: 1.7;
-}
+```tsx
+import "@railway/inkwell/styles.css";
 ```
 
-See the [Styling](/docs/styling) guide for the full list of CSS classes
-and a complete example stylesheet.
+You can override any class to match your product. See the
+[Styling](/docs/styling) guide for the full list of CSS classes.
 
 ## Next steps
 

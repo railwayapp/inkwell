@@ -1,12 +1,17 @@
 import {
   type CollaborationConfig,
+  createAttachmentsPlugin,
+  createCompletionsPlugin,
+  createEmojiPlugin,
+  createMentionsPlugin,
+  createSlashCommandsPlugin,
   createSnippetsPlugin,
-  deserialize,
   InkwellEditor,
   type InkwellPlugin,
   InkwellRenderer,
+  type MentionItem,
+  type MentionRenderer,
 } from "@railway/inkwell";
-import { slateNodesToInsertDelta } from "@slate-yjs/core";
 import {
   Component,
   type ErrorInfo,
@@ -18,6 +23,54 @@ import {
 } from "react";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
+
+const DEFAULT_CHARACTER_LIMIT = 2000;
+const CHARACTER_LIMIT_MIN = 50;
+const CHARACTER_LIMIT_MAX = 20000;
+
+const DEMO_USERS: MentionItem[] = [
+  { id: "alice", title: "Alice Anderson" },
+  { id: "bob", title: "Bob Brown" },
+  { id: "carol", title: "Carol Chen" },
+  { id: "dave", title: "Dave Davies" },
+  { id: "eve", title: "Eve Edwards" },
+];
+
+const MENTION_RENDERERS: MentionRenderer[] = [
+  {
+    pattern: /@user\[([a-z]+)\]/g,
+    resolve: match => {
+      const id = match[1];
+      const user = DEMO_USERS.find(u => u.id === id);
+      return (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "0 0.45rem",
+            background: "hsla(270, 60%, 52%, 0.18)",
+            color: "hsl(270, 70%, 92%)",
+            border: "1px solid hsla(270, 60%, 52%, 0.4)",
+            borderRadius: "9999px",
+            fontWeight: 500,
+            fontSize: "0.92em",
+            lineHeight: 1.6,
+          }}
+        >
+          @{user?.title ?? id}
+        </span>
+      );
+    },
+  },
+];
+
+const DEMO_COMPLETION = `Welcome to Inkwell — a Markdown editor that keeps your content portable.
+
+Try accepting this completion, then edit the Markdown directly:
+
+- Formatting stays readable
+- The stored value is the Markdown source
+- Plugins can add focused writing workflows`;
 
 const DEMO_SNIPPETS = [
   {
@@ -43,7 +96,11 @@ interface PluginDef {
   summary: string;
   usage: ReactNode;
   /** Omitted for built-in plugins that are toggled via a dedicated editor prop. */
-  create?: () => InkwellPlugin;
+  create?: (ctx: {
+    getCompletion: () => string | null;
+    dismissCompletion: () => void;
+    restoreCompletion: (completion: string) => void;
+  }) => InkwellPlugin;
 }
 
 const BUBBLE_MENU_ID = "bubble-menu";
@@ -76,6 +133,136 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
     ),
     create: () => createSnippetsPlugin({ snippets: DEMO_SNIPPETS }),
   },
+  {
+    id: "emoji",
+    label: "Emoji",
+    summary: "Searchable emoji picker triggered by colon shortcodes.",
+    usage: (
+      <>
+        Press <Kbd>:</Kbd> and type a shortcode like <code>rocket</code>, then
+        use <Kbd>↑</Kbd>/<Kbd>↓</Kbd> and <Kbd>Enter</Kbd> to insert.
+      </>
+    ),
+    create: () => createEmojiPlugin(),
+  },
+  {
+    id: "completions",
+    label: "Completions",
+    summary: "Placeholder completions for suggested text flows.",
+    usage: (
+      <>
+        Clear the editor to reveal a placeholder suggestion. Press{" "}
+        <Kbd>Tab</Kbd>
+        to accept it, type anything or press <Kbd>Esc</Kbd> to dismiss it, then
+        undo back to empty to restore it.
+      </>
+    ),
+    create: ({ getCompletion, dismissCompletion, restoreCompletion }) =>
+      createCompletionsPlugin({
+        getCompletion,
+        loadingText: "Drafting a suggested reply…",
+        onAccept: dismissCompletion,
+        onDismiss: dismissCompletion,
+        onRestore: restoreCompletion,
+      }),
+  },
+  {
+    id: "slash-commands",
+    label: "Slash Commands",
+    summary:
+      "Chat-style command palette with choice-backed arguments and ready-to-submit state.",
+    usage: (
+      <>
+        Type <Kbd>/</Kbd> to open commands, choose <code>/label</code>, then
+        pick a label. When the command is complete, <Kbd>Enter</Kbd> executes
+        via the slash plugin's structured <code>onExecute</code> callback.
+      </>
+    ),
+    create: () =>
+      createSlashCommandsPlugin({
+        commands: [
+          {
+            name: "label",
+            description: "Apply a document label",
+            aliases: ["l"],
+            arg: {
+              name: "label",
+              description: "Label to apply",
+              choices: [
+                { value: "idea", label: "Idea" },
+                { value: "bug", label: "Bug" },
+                { value: "question", label: "Question" },
+                { value: "archived", label: "Archived", disabled: true },
+              ],
+            },
+          },
+          {
+            name: "outline",
+            description: "Insert an outline starter",
+            aliases: ["o"],
+          },
+          {
+            name: "summary",
+            description: "Prepare a short summary",
+          },
+        ],
+        onExecute: () => {},
+      }),
+  },
+  {
+    id: "mentions",
+    label: "Mentions",
+    summary:
+      "Searchable user picker. Inserts a `@user[<id>]` marker that renders as a chip in the rendered output.",
+    usage: (
+      <>
+        Press <Kbd>@</Kbd> to open the picker. Type to filter, <Kbd>↑</Kbd>/
+        <Kbd>↓</Kbd> to navigate, <Kbd>Enter</Kbd> to insert. Switch to{" "}
+        <strong>Render</strong> to see the marker hydrate into a styled chip.
+      </>
+    ),
+    create: () =>
+      createMentionsPlugin<MentionItem>({
+        name: "mentions",
+        trigger: "@",
+        marker: "user",
+        search: query =>
+          DEMO_USERS.filter(u =>
+            u.title.toLowerCase().includes(query.toLowerCase()),
+          ),
+        renderItem: (item, active) => (
+          <div
+            style={{
+              padding: "0.4rem 0.6rem",
+              fontSize: "0.78rem",
+              color: active ? "hsl(270, 70%, 95%)" : "hsl(270, 50%, 75%)",
+            }}
+          >
+            <strong>{item.title}</strong>{" "}
+            <span style={{ color: "hsl(270, 30%, 60%)" }}>@{item.id}</span>
+          </div>
+        ),
+        emptyMessage: "No matching users",
+      }),
+  },
+  {
+    id: "attachments",
+    label: "Attachments",
+    summary:
+      "Paste or drop image files into the editor. The plugin uploads each file via your `onUpload` and inserts a block image.",
+    usage: (
+      <>
+        Drop or paste an image. The demo uses a temporary blob URL — wire up{" "}
+        <code>onUpload</code> to your storage in production.
+      </>
+    ),
+    create: () =>
+      createAttachmentsPlugin({
+        accept: "image/*",
+        onUpload: async file => URL.createObjectURL(file),
+        onError: (_err, _file) => {},
+      }),
+  },
 ];
 
 function Kbd({ children }: { children: ReactNode }) {
@@ -83,15 +270,15 @@ function Kbd({ children }: { children: ReactNode }) {
     <kbd
       style={{
         display: "inline-block",
-        padding: "0.05rem 0.35rem",
-        fontSize: "0.68rem",
+        padding: "0.1rem 0.4rem",
+        fontSize: "0.75rem",
         fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
         fontWeight: 500,
-        color: "hsl(270, 70%, 92%)",
-        background: "hsla(270, 50%, 32%, 0.6)",
-        border: "1px solid hsl(270, 45%, 32%)",
+        color: "hsl(220, 12%, 94%)",
+        background: "hsl(220, 10%, 22%)",
+        border: "1px solid hsl(220, 10%, 32%)",
         borderRadius: "4px",
-        boxShadow: "inset 0 -1px 0 hsla(0, 0%, 0%, 0.3)",
+        boxShadow: "inset 0 -1px 0 hsla(0, 0%, 0%, 0.35)",
         lineHeight: 1.3,
       }}
     >
@@ -100,180 +287,525 @@ function Kbd({ children }: { children: ReactNode }) {
   );
 }
 
-const DEFAULT_ENABLED = new Set([BUBBLE_MENU_ID]);
+/** Enable every plugin by default so the demo shows full functionality. */
+const DEFAULT_ENABLED = new Set(AVAILABLE_PLUGINS.map(p => p.id));
 
-function PluginChip({
-  plugin,
-  isOn,
-  onToggle,
+/* ------------------------------------------------------------------ */
+/* Shared UI primitives — used by both Plugins and Settings so the     */
+/* configuration card reads as a single coherent system.               */
+/* ------------------------------------------------------------------ */
+
+// Neutral dark/gray palette for the configuration modal. Kept separate
+// from the editor's purple theme so the modal reads as a calm
+// system-style surface rather than competing with the page.
+const SURFACE = {
+  border: "hsl(220, 8%, 22%)",
+  borderStrong: "hsl(220, 8%, 36%)",
+  bg: "hsl(220, 10%, 10%)",
+  bgSoft: "hsla(220, 10%, 16%, 0.7)",
+  bgHint: "hsla(220, 10%, 18%, 0.6)",
+  textHi: "hsl(220, 12%, 96%)",
+  text: "hsl(220, 10%, 88%)",
+  textDim: "hsl(220, 8%, 72%)",
+  textVeryDim: "hsl(220, 6%, 56%)",
+  accentSoft: "hsla(220, 10%, 26%, 0.6)",
+};
+
+function Switch({
+  on,
+  onChange,
+  label,
 }: {
-  plugin: PluginDef;
-  isOn: boolean;
-  onToggle: () => void;
+  on: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
 }) {
-  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      style={{
+        position: "relative",
+        width: 30,
+        height: 17,
+        flexShrink: 0,
+        borderRadius: 9999,
+        border: `1px solid ${on ? SURFACE.borderStrong : SURFACE.border}`,
+        background: on ? "hsl(220, 10%, 38%)" : SURFACE.bgSoft,
+        cursor: "pointer",
+        padding: 0,
+        transition: "background 0.18s ease, border-color 0.18s ease",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: 1,
+          left: on ? 14 : 1,
+          width: 13,
+          height: 13,
+          borderRadius: "50%",
+          background: on ? "hsl(220, 12%, 96%)" : "hsl(220, 8%, 50%)",
+          boxShadow: "none",
+          transition: "left 0.18s ease, background 0.18s ease",
+        }}
+      />
+    </button>
+  );
+}
+
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+}: {
+  value: T;
+  onChange: (next: T) => void;
+  options: { value: T; label: string }[];
+  ariaLabel: string;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      style={{
+        display: "inline-flex",
+        padding: 2,
+        borderRadius: 8,
+        border: `1px solid ${SURFACE.border}`,
+        background: SURFACE.bgSoft,
+      }}
+    >
+      {options.map(opt => {
+        const selected = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: "0.25rem 0.7rem",
+              border: "none",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontSize: "0.7rem",
+              fontWeight: 600,
+              color: selected ? SURFACE.textHi : SURFACE.textDim,
+              background: selected ? SURFACE.accentSoft : "transparent",
+              boxShadow: selected
+                ? `inset 0 0 0 1px ${SURFACE.borderStrong}`
+                : "none",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function NumberInput({
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  suffix,
+  ariaLabel,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  ariaLabel: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
+  const setBy = (delta: number) => onChange(clamp(value + delta));
+
+  const stepBtn: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 26,
+    height: 30,
+    border: "none",
+    background: "transparent",
+    color: SURFACE.textDim,
+    fontSize: "0.95rem",
+    fontWeight: 500,
+    cursor: "pointer",
+    userSelect: "none",
+    transition: "color 0.12s ease, background 0.12s ease",
+  };
 
   return (
     <div
-      style={{ position: "relative", display: "inline-block" }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "stretch",
+        height: 30,
+        borderRadius: 8,
+        border: `1px solid ${focused ? SURFACE.borderStrong : SURFACE.border}`,
+        background: SURFACE.bgSoft,
+        overflow: "hidden",
+        boxShadow: focused ? `0 0 0 3px ${SURFACE.accentSoft}` : "none",
+        transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+      }}
+      onMouseDownCapture={() => {
+        // Prevent the dialog from registering an unintended close when
+        // the user mousedowns on the spacing inside the control.
+      }}
     >
       <button
         type="button"
-        onClick={onToggle}
-        onFocus={() => setHovered(true)}
-        onBlur={() => setHovered(false)}
-        aria-pressed={isOn}
-        aria-describedby={`plugin-${plugin.id}-tooltip`}
+        aria-label={`Decrease ${ariaLabel.toLowerCase()}`}
+        onClick={() => setBy(-step)}
+        disabled={value <= min}
         style={{
-          padding: "0.3rem 0.7rem",
-          fontSize: "0.72rem",
-          fontWeight: 500,
-          cursor: "pointer",
-          borderRadius: "9999px",
-          border: `1px solid ${
-            isOn ? "hsl(270, 60%, 52%)" : "hsl(270, 45%, 24%)"
-          }`,
-          background: isOn
-            ? "hsla(270, 60%, 52%, 0.22)"
-            : "hsla(270, 40%, 16%, 0.5)",
-          color: isOn ? "hsl(270, 70%, 95%)" : "hsl(270, 40%, 65%)",
-          boxShadow: isOn ? "0 0 14px hsla(270, 60%, 52%, 0.4)" : "none",
-          transition: "all 0.2s ease",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "0.4rem",
-          backdropFilter: "blur(8px)",
+          ...stepBtn,
+          borderRight: `1px solid ${SURFACE.border}`,
+          opacity: value <= min ? 0.35 : 1,
+          cursor: value <= min ? "not-allowed" : "pointer",
         }}
       >
+        −
+      </button>
+      <input
+        type="number"
+        aria-label={ariaLabel}
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onChange={e => {
+          const next = Number(e.target.value);
+          if (Number.isFinite(next)) onChange(clamp(next));
+        }}
+        className="demo-number-input"
+        style={{
+          width: 76,
+          padding: "0 0.4rem",
+          border: "none",
+          background: "transparent",
+          color: SURFACE.textHi,
+          fontSize: "0.82rem",
+          fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: 500,
+          textAlign: "right",
+          outline: "none",
+          appearance: "textfield",
+          MozAppearance: "textfield",
+        }}
+      />
+      {suffix && (
         <span
           style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: isOn ? "hsl(270, 70%, 80%)" : "hsl(270, 45%, 32%)",
-            boxShadow: isOn ? "0 0 6px hsl(270, 70%, 75%)" : "none",
-            transition: "all 0.2s ease",
+            display: "inline-flex",
+            alignItems: "center",
+            paddingRight: "0.55rem",
+            fontSize: "0.7rem",
+            color: SURFACE.textVeryDim,
+            fontFamily:
+              '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+            letterSpacing: "0.04em",
+            textTransform: "lowercase",
           }}
-        />
-        {plugin.label}
-      </button>
-      <div
-        id={`plugin-${plugin.id}-tooltip`}
-        role="tooltip"
+        >
+          {suffix}
+        </span>
+      )}
+      <button
+        type="button"
+        aria-label={`Increase ${ariaLabel.toLowerCase()}`}
+        onClick={() => setBy(step)}
+        disabled={value >= max}
         style={{
-          position: "absolute",
-          bottom: "calc(100% + 10px)",
-          left: "50%",
-          width: 260,
-          padding: "0.7rem 0.85rem",
-          fontSize: "0.72rem",
-          lineHeight: 1.55,
-          color: "hsl(270, 70%, 92%)",
-          background: "hsla(270, 40%, 10%, 0.95)",
-          border: "1px solid hsl(270, 45%, 28%)",
-          borderRadius: 10,
-          backdropFilter: "blur(14px)",
+          ...stepBtn,
+          borderLeft: `1px solid ${SURFACE.border}`,
+          opacity: value >= max ? 0.35 : 1,
+          cursor: value >= max ? "not-allowed" : "pointer",
+        }}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.04a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.04a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function Modal({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  // Capture focus when the dialog opens; restore it to the previously
+  // focused element when it closes.
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const dialog = dialogRef.current;
+    // Focus the first focusable child if any, otherwise the dialog
+    // itself (we add tabIndex={-1} so it can receive focus).
+    const firstFocusable = dialog?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    (firstFocusable ?? dialog)?.focus();
+    return () => {
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [open]);
+
+  // Trap Tab inside the dialog while open.
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== "Tab") return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter(el => !el.hasAttribute("aria-hidden"));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div
+      role="presentation"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        background: "hsla(220, 12%, 5%, 0.72)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1.5rem",
+        animation: "inkwell-demo-modal-fade 0.16s ease-out",
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        className="demo-modal-dialog"
+        onClick={e => e.stopPropagation()}
+        onKeyDown={onKeyDown}
+        style={{
+          width: "100%",
+          maxWidth: 600,
+          maxHeight: "min(760px, 90vh)",
+          overflowY: "auto",
+          borderRadius: 12,
+          border: `1px solid ${SURFACE.border}`,
+          background: SURFACE.bg,
           boxShadow:
-            "0 12px 32px -6px rgba(0, 0, 0, 0.55), 0 0 0 1px hsla(270, 60%, 52%, 0.12)",
-          pointerEvents: hovered ? "auto" : "none",
-          opacity: hovered ? 1 : 0,
-          transform: `translateX(-50%) translateY(${hovered ? 0 : 4}px)`,
-          transition: "opacity 0.18s ease-out, transform 0.18s ease-out",
-          zIndex: 20,
+            "0 24px 60px -12px hsla(0, 0%, 0%, 0.6), 0 0 0 1px hsla(220, 10%, 60%, 0.05)",
         }}
       >
         <div
           style={{
-            fontSize: "0.8rem",
-            fontWeight: 600,
-            color: "hsl(270, 80%, 96%)",
-            marginBottom: "0.35rem",
             display: "flex",
             alignItems: "center",
-            gap: "0.4rem",
+            justifyContent: "space-between",
+            padding: "1rem 1.25rem",
+            borderBottom: `1px solid ${SURFACE.border}`,
           }}
         >
-          <span
+          <div
             style={{
-              width: 5,
-              height: 5,
-              borderRadius: "50%",
-              background: isOn ? "hsl(270, 70%, 80%)" : "hsl(270, 45%, 40%)",
-              boxShadow: isOn ? "0 0 6px hsl(270, 70%, 75%)" : "none",
-            }}
-          />
-          {plugin.label}
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: "0.62rem",
-              fontWeight: 500,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: isOn ? "hsl(270, 70%, 85%)" : "hsl(270, 35%, 55%)",
+              fontSize: "1rem",
+              fontWeight: 600,
+              color: SURFACE.textHi,
+              letterSpacing: "-0.005em",
             }}
           >
-            {isOn ? "On" : "Off"}
-          </span>
+            {title}
+          </div>
+          <button
+            type="button"
+            aria-label="Close settings"
+            onClick={onClose}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              border: `1px solid ${SURFACE.border}`,
+              background: "transparent",
+              color: SURFACE.textDim,
+              cursor: "pointer",
+            }}
+          >
+            <CloseIcon />
+          </button>
         </div>
-        <div style={{ marginBottom: "0.55rem", color: "hsl(270, 65%, 88%)" }}>
-          {plugin.summary}
-        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: "0.72rem",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.14em",
+        color: SURFACE.textDim,
+        padding: "1.1rem 1.25rem 0.5rem",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Row({
+  title,
+  description,
+  hint,
+  control,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  /** Optional extra usage hint shown indented under the description. */
+  hint?: ReactNode | null;
+  control: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: "1.25rem",
+        alignItems: "start",
+        padding: "0.95rem 1.25rem",
+        borderTop: `1px solid ${SURFACE.border}`,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
         <div
           style={{
-            fontSize: "0.62rem",
-            color: "hsl(270, 40%, 62%)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
+            fontSize: "0.95rem",
             fontWeight: 600,
-            marginBottom: "0.3rem",
+            color: SURFACE.textHi,
+            marginBottom: description ? "0.3rem" : 0,
+            lineHeight: 1.4,
           }}
         >
-          How to use
+          {title}
         </div>
-        <div style={{ color: "hsl(270, 60%, 86%)" }}>{plugin.usage}</div>
-        {/* Invisible bridge covering the gap between tooltip and button */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            height: 16,
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 0,
-            height: 0,
-            borderLeft: "6px solid transparent",
-            borderRight: "6px solid transparent",
-            borderTop: "6px solid hsl(270, 45%, 28%)",
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: "calc(100% - 1px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 0,
-            height: 0,
-            borderLeft: "5px solid transparent",
-            borderRight: "5px solid transparent",
-            borderTop: "5px solid hsla(270, 40%, 10%, 0.95)",
-          }}
-        />
+        {description && (
+          <div
+            style={{
+              fontSize: "0.85rem",
+              lineHeight: 1.6,
+              color: SURFACE.text,
+            }}
+          >
+            {description}
+          </div>
+        )}
+        {hint && (
+          <div
+            style={{
+              marginTop: "0.55rem",
+              padding: "0.5rem 0.7rem",
+              fontSize: "0.8rem",
+              lineHeight: 1.6,
+              color: SURFACE.textDim,
+              background: SURFACE.bgHint,
+              borderRadius: 6,
+              borderLeft: `2px solid ${SURFACE.border}`,
+            }}
+          >
+            {hint}
+          </div>
+        )}
       </div>
+      <div style={{ flexShrink: 0, paddingTop: "0.15rem" }}>{control}</div>
     </div>
   );
 }
@@ -306,17 +838,9 @@ function usePluginSelector() {
     });
   };
 
-  const plugins = useMemo(
-    () =>
-      AVAILABLE_PLUGINS.filter(p => p.create && enabled.has(p.id)).map(p =>
-        p.create!(),
-      ),
-    [enabled],
-  );
-
   const bubbleMenuEnabled = enabled.has(BUBBLE_MENU_ID);
 
-  return { plugins, enabled, toggle, bubbleMenuEnabled };
+  return { enabled, toggle, bubbleMenuEnabled };
 }
 
 class ErrorBoundary extends Component<
@@ -351,13 +875,26 @@ class ErrorBoundary extends Component<
 
 const INITIAL_MARKDOWN = `# Welcome to Inkwell
 
-Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration support.
+Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration.
 
 ## Features
 
 - Standard configurable _WYSIWYG_ features
+  - **Bold**, _italic_, ~~strike~~, \`code\`, links
 - Extensible **plugin system** with batteries included
 - **Real-time** collaboration via [Yjs](https://yjs.dev/)
+- Block images, ordered + nested lists, mentions, attachments
+
+## Try it out
+
+1. Type \`-\` or \`1.\` followed by space to start a list
+2. Indent with two leading spaces for nested items
+3. Press \`[\` for snippets, \`@\` to mention @user[alice], or \`:\` for emoji
+4. Clear the editor to reveal a placeholder completion, then press Tab to accept it
+5. Type \`/label\` to try slash commands
+6. Drop or paste an image — the Attachments plugin will insert it
+
+![A keyboard at golden hour](https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&h=300&fit=crop)
 
 ## Example
 
@@ -367,13 +904,7 @@ import { useState } from "react";
 
 function App() {
   const [content, setContent] = useState("# Hello");
-
-  return (
-    <InkwellEditor
-      content={content}
-      onChange={setContent}
-    />
-  );
+  return <InkwellEditor content={content} onChange={setContent} />;
 }
 \`\`\``;
 
@@ -445,13 +976,7 @@ function useCollab(name: string, color: string) {
       setStatus(s as "connecting" | "connected" | "disconnected");
     });
 
-    provider.on("sync", (synced: boolean) => {
-      if (synced && sharedType.length === 0) {
-        const nodes = deserialize(COLLAB_INITIAL_CONTENT);
-        const delta = slateNodesToInsertDelta(nodes);
-        sharedType.applyDelta(delta);
-      }
-    });
+    provider.on("sync", () => {});
 
     // Track connected peers via awareness
     const updatePeerCount = () => {
@@ -552,13 +1077,29 @@ function CollabEditor({
           </span>
         )}
       </div>
-      <InkwellEditor
-        content={INITIAL_MARKDOWN}
+      <ConnectedCollabEditor
         collaboration={collaboration}
-        placeholder="Start collaborating..."
         bubbleMenu={bubbleMenu}
       />
     </div>
+  );
+}
+
+function ConnectedCollabEditor({
+  collaboration,
+  bubbleMenu,
+}: {
+  collaboration: CollaborationConfig;
+  bubbleMenu: boolean;
+}) {
+  return (
+    <InkwellEditor
+      content={COLLAB_INITIAL_CONTENT}
+      collaboration={collaboration}
+      placeholder="Start collaborating..."
+      bubbleMenu={bubbleMenu}
+      styles={{ editor: { minHeight: "100%", width: "100%" } }}
+    />
   );
 }
 
@@ -570,26 +1111,84 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "collab", label: "Collab" },
 ];
 
+const SETTINGS_HASH = "demo-settings";
+
+/** Parses `window.location.hash` into the active tab and whether the settings
+ *  modal should be open. `#demo-settings` always takes precedence over the
+ *  tab hashes (`#render`, `#collab`) while the modal is open. */
+function parseHash(hash: string): { tab: Tab; settingsOpen: boolean } {
+  const value = hash.replace(/^#/, "");
+  if (value === SETTINGS_HASH) return { tab: "editor", settingsOpen: true };
+  if (value === "render") return { tab: "preview", settingsOpen: false };
+  if (value === "collab") return { tab: "collab", settingsOpen: false };
+  return { tab: "editor", settingsOpen: false };
+}
+
+function hashFor(tab: Tab, settingsOpen: boolean): string {
+  if (settingsOpen) return `#${SETTINGS_HASH}`;
+  if (tab === "preview") return "#render";
+  if (tab === "collab") return "#collab";
+  return "";
+}
+
 export function Demo() {
   const [editorContent, setEditorContent] = useState(INITIAL_MARKDOWN);
-  const [activeTab, setActiveTab] = useState<Tab>(() => {
-    if (typeof window === "undefined") return "editor";
-    const hash = window.location.hash.slice(1);
-    if (hash === "render" || hash === "collab")
-      return hash === "render" ? "preview" : "collab";
-    return "editor";
-  });
+  const initialHash =
+    typeof window === "undefined"
+      ? { tab: "editor" as Tab, settingsOpen: false }
+      : parseHash(window.location.hash);
+  const [activeTab, setActiveTab] = useState<Tab>(initialHash.tab);
+  const [settingsOpen, setSettingsOpen] = useState(initialHash.settingsOpen);
 
-  const switchTab = (tab: Tab) => {
-    setActiveTab(tab);
-    const hash =
-      tab === "editor" ? "" : tab === "preview" ? "#render" : "#collab";
+  const writeHash = (tab: Tab, open: boolean) => {
+    const hash = hashFor(tab, open);
     window.history.replaceState(
       null,
       "",
       hash || window.location.pathname + window.location.search,
     );
   };
+
+  const switchTab = (tab: Tab) => {
+    setActiveTab(tab);
+    // Switching tabs implicitly closes the settings modal so users land on
+    // the editor surface they just selected.
+    setSettingsOpen(false);
+    writeHash(tab, false);
+  };
+
+  const openSettings = () => {
+    setSettingsOpen(true);
+    writeHash(activeTab, true);
+  };
+
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    writeHash(activeTab, false);
+  };
+
+  // Keep the modal + tab in sync with browser back/forward navigation so a
+  // direct visit to `#demo-settings` (or popstate to it) opens the modal.
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = parseHash(window.location.hash);
+      setActiveTab(next.tab);
+      setSettingsOpen(next.settingsOpen);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // Close the modal on Escape, while it is open.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeSettings();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsOpen]);
   const [collabUser] = useState(() => ({
     name: randomName(),
     color: randomColor(),
@@ -597,67 +1196,151 @@ export function Demo() {
 
   const collab = useCollab(collabUser.name, collabUser.color);
   const {
-    plugins: selectedPlugins,
     enabled: enabledPluginIds,
     toggle: togglePlugin,
     bubbleMenuEnabled,
   } = usePluginSelector();
 
+  const [characterCount, setCharacterCount] = useState(
+    () => INITIAL_MARKDOWN.length,
+  );
+  const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
+  const [characterLimit, setCharacterLimit] = useState(DEFAULT_CHARACTER_LIMIT);
+  const [demoStyle, setDemoStyle] = useState<"custom" | "default">("custom");
+  const [completion, setCompletion] = useState<string | null>(DEMO_COMPLETION);
+  const editorContentRef = useRef(editorContent);
+  const completionRef = useRef(completion);
+  editorContentRef.current = editorContent;
+  completionRef.current = completion;
+  const overLimit = characterCount > characterLimit;
+  const selectedPlugins = useMemo(
+    () =>
+      AVAILABLE_PLUGINS.filter(p => p.create && enabledPluginIds.has(p.id)).map(
+        p => {
+          // The filter above guarantees `create` is defined; capture it in
+          // a local so we don't need the non-null assertion.
+          const create = p.create;
+          if (!create) throw new Error("plugin missing create");
+          return create({
+            getCompletion: () =>
+              editorContentRef.current.trim().length === 0
+                ? completionRef.current
+                : null,
+            dismissCompletion: () => setCompletion(null),
+            restoreCompletion: nextCompletion => setCompletion(nextCompletion),
+          });
+        },
+      ),
+    [enabledPluginIds],
+  );
+  const editor = (
+    <InkwellEditor
+      content={editorContent}
+      onChange={setEditorContent}
+      placeholder="Start writing Markdown..."
+      plugins={selectedPlugins}
+      bubbleMenu={bubbleMenuEnabled}
+      characterLimit={characterLimit}
+      enforceCharacterLimit={enforceCharacterLimit}
+      onCharacterCount={setCharacterCount}
+      styles={{ editor: { minHeight: "100%", width: "100%" } }}
+    />
+  );
+
   return (
     <ErrorBoundary>
       <div>
+        {/* Top bar: mode tabs on the left, settings gear on the right.
+            The gear lives outside the editor surface so opening settings
+            never visually interferes with the content area. */}
         <div
-          style={{ display: "flex", gap: "0.25rem", marginBottom: "0.75rem" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "0.75rem",
+          }}
         >
-          {TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => switchTab(key)}
-              style={{
-                padding: "0.4rem 0",
-                fontSize: "0.8rem",
-                fontWeight: activeTab === key ? 600 : 400,
-                cursor: "pointer",
-                border: "none",
-                borderBottom:
-                  activeTab === key
-                    ? "2px solid hsl(270, 60%, 52%)"
-                    : "2px solid transparent",
-                background: "transparent",
-                color:
-                  activeTab === key
-                    ? "hsl(270, 70%, 95%)"
-                    : "hsl(270, 30%, 50%)",
-                marginRight: "1rem",
-                transition: "all 0.2s ease",
-              }}
-            >
-              {label}
-            </button>
-          ))}
+          <div
+            role="tablist"
+            aria-label="Demo mode"
+            style={{ display: "flex" }}
+          >
+            {TABS.map(({ key, label }) => {
+              const selected = activeTab === key;
+              return (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => switchTab(key)}
+                  style={{
+                    padding: "0.4rem 0",
+                    fontSize: "0.8rem",
+                    fontWeight: selected ? 600 : 400,
+                    cursor: "pointer",
+                    border: "none",
+                    borderBottom: selected
+                      ? `2px solid ${SURFACE.borderStrong}`
+                      : "2px solid transparent",
+                    background: "transparent",
+                    color: selected ? SURFACE.textHi : SURFACE.textDim,
+                    marginRight: "1rem",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            aria-label="Open demo settings"
+            aria-haspopup="dialog"
+            aria-expanded={settingsOpen}
+            onClick={openSettings}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              padding: "0.35rem 0.65rem",
+              borderRadius: 6,
+              border: `1px solid ${
+                settingsOpen ? SURFACE.borderStrong : SURFACE.border
+              }`,
+              background: settingsOpen ? SURFACE.accentSoft : "transparent",
+              color: settingsOpen ? SURFACE.textHi : SURFACE.textDim,
+              cursor: "pointer",
+              fontSize: "0.72rem",
+              fontWeight: 500,
+              transition: "all 0.15s ease",
+            }}
+          >
+            <GearIcon />
+            <span>Settings</span>
+          </button>
         </div>
 
+        {/* Editor / preview / collab surface */}
         <div
+          data-demo-style={demoStyle}
           className="demo-tab-content"
           style={{
             borderRadius: "10px",
-            background: "hsl(270, 38%, 10%)",
+            background: SURFACE.bg,
             height: "760px",
             overflowY: "auto",
           }}
         >
-          {activeTab === "editor" && (
-            <InkwellEditor
-              content={editorContent}
-              onChange={setEditorContent}
-              placeholder="Start writing Markdown..."
-              plugins={selectedPlugins}
-              bubbleMenu={bubbleMenuEnabled}
-            />
-          )}
+          {activeTab === "editor" && editor}
           {activeTab === "preview" && (
             <div style={{ padding: "1.5rem" }}>
-              <InkwellRenderer content={editorContent} copyButton />
+              <InkwellRenderer
+                content={editorContent}
+                copyButton
+                mentions={MENTION_RENDERERS}
+              />
             </div>
           )}
           {activeTab === "collab" && (
@@ -673,36 +1356,172 @@ export function Demo() {
           )}
         </div>
 
-        <div
-          style={{
-            marginTop: "0.75rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            flexWrap: "wrap",
-          }}
+        {/* Settings live behind the gear button + modal. Hash `#demo-settings`
+            opens it; closing restores the active tab's hash. */}
+        <Modal
+          open={settingsOpen}
+          onClose={closeSettings}
+          title="Demo settings"
         >
-          <span
+          <SectionHeader>Plugins</SectionHeader>
+          {AVAILABLE_PLUGINS.map(plugin => {
+            const isOn = enabledPluginIds.has(plugin.id);
+            return (
+              <Row
+                key={plugin.id}
+                title={plugin.label}
+                description={plugin.summary}
+                // Only show the verbose usage hint when the plugin is on,
+                // so the modal stays scannable when scrolling through it.
+                hint={isOn ? plugin.usage : null}
+                control={
+                  <Switch
+                    on={isOn}
+                    onChange={() => togglePlugin(plugin.id)}
+                    label={`${plugin.label} plugin`}
+                  />
+                }
+              />
+            );
+          })}
+
+          <SectionHeader>Settings</SectionHeader>
+
+          <Row
+            title="Editor styles"
+            description={
+              <>
+                Switch between the demo's purple theme and the unstyled defaults
+                shipped with{" "}
+                <code
+                  style={{
+                    fontFamily:
+                      '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+                    fontSize: "0.78em",
+                    background: "hsl(220, 10%, 22%)",
+                    padding: "0 0.3rem",
+                    borderRadius: 3,
+                    color: SURFACE.textHi,
+                  }}
+                >
+                  @railway/inkwell/styles.css
+                </code>
+                .
+              </>
+            }
+            control={
+              <Segmented<"custom" | "default">
+                ariaLabel="Editor styles"
+                value={demoStyle}
+                onChange={setDemoStyle}
+                options={[
+                  { value: "custom", label: "Demo" },
+                  { value: "default", label: "Defaults" },
+                ]}
+              />
+            }
+          />
+
+          <Row
+            title="Character limit"
+            description={
+              <>
+                Maximum document length reported via{" "}
+                <code
+                  style={{
+                    fontFamily:
+                      '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+                    fontSize: "0.78em",
+                    background: "hsl(220, 10%, 22%)",
+                    padding: "0 0.3rem",
+                    borderRadius: 3,
+                    color: SURFACE.textHi,
+                  }}
+                >
+                  onCharacterCount
+                </code>
+                .
+              </>
+            }
+            control={
+              <NumberInput
+                ariaLabel="Character limit"
+                value={characterLimit}
+                onChange={setCharacterLimit}
+                min={CHARACTER_LIMIT_MIN}
+                max={CHARACTER_LIMIT_MAX}
+                step={50}
+                suffix="chars"
+              />
+            }
+          />
+
+          <Row
+            title="Enforce character limit"
+            description="When on, the editor clamps typing and pasted input at the character limit."
+            control={
+              <Switch
+                on={enforceCharacterLimit}
+                onChange={setEnforceCharacterLimit}
+                label="Enforce character limit"
+              />
+            }
+          />
+
+          {/* Inline progress bar lives flush against the bottom of the card
+              so the count stays visible regardless of which section is open. */}
+          <div
             style={{
-              fontSize: "0.7rem",
-              color: "hsl(270, 30%, 50%)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontWeight: 500,
-              marginRight: "0.25rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              padding: "0.65rem 1rem",
+              borderTop: `1px solid ${SURFACE.border}`,
+              background: SURFACE.bgSoft,
             }}
           >
-            Plugins
-          </span>
-          {AVAILABLE_PLUGINS.map(plugin => (
-            <PluginChip
-              key={plugin.id}
-              plugin={plugin}
-              isOn={enabledPluginIds.has(plugin.id)}
-              onToggle={() => togglePlugin(plugin.id)}
-            />
-          ))}
-        </div>
+            <div
+              style={{
+                flex: 1,
+                position: "relative",
+                height: 4,
+                borderRadius: 9999,
+                background: "hsl(220, 10%, 22%)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  right: "auto",
+                  width: `${Math.min(
+                    100,
+                    (characterCount / characterLimit) * 100,
+                  )}%`,
+                  background: overLimit
+                    ? "hsl(0, 75%, 60%)"
+                    : "linear-gradient(90deg, hsl(220, 10%, 55%), hsl(220, 12%, 75%))",
+                  transition: "width 0.18s ease, background 0.2s ease",
+                }}
+              />
+            </div>
+            <span
+              aria-live="polite"
+              style={{
+                fontFamily:
+                  '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+                fontSize: "0.72rem",
+                fontVariantNumeric: "tabular-nums",
+                color: overLimit ? "hsl(0, 75%, 72%)" : SURFACE.textDim,
+                minWidth: "6.5rem",
+                textAlign: "right",
+              }}
+            >
+              {characterCount} / {characterLimit}
+            </span>
+          </div>
+        </Modal>
       </div>
     </ErrorBoundary>
   );

@@ -2,7 +2,7 @@
 title: "Collaboration"
 ---
 
-Inkwell supports real-time collaborative editing via
+Inkwell includes real-time collaborative editing via
 [Yjs](https://yjs.dev/). Multiple users can edit the same document
 simultaneously with automatic conflict resolution and live cursors.
 
@@ -35,11 +35,7 @@ import { WebsocketProvider } from "y-websocket";
 
 const doc = new Y.Doc();
 const sharedType = doc.get("content", Y.XmlText);
-const provider = new WebsocketProvider(
-  "wss://your-server.com",
-  "room-id",
-  doc,
-);
+const provider = new WebsocketProvider("wss://your-server.com", "room-id", doc);
 ```
 
 ### 3. Pass the collaboration config
@@ -62,8 +58,12 @@ function CollabEditor() {
 ```
 
 When `collaboration` is provided, the Yjs document becomes the source of
-truth. The `content` prop is only used to seed an empty document on first
+truth. The `content` option is only used to seed an empty document on first
 load.
+
+The `collaboration` object is mount-only. To switch from standalone editing to
+collaboration, leave collaboration, change documents, or change user metadata,
+remount the editor with a React `key` tied to that identity.
 
 ### 4. Autosave (optional)
 
@@ -71,29 +71,31 @@ load.
 for persistence:
 
 ```tsx
-<InkwellEditor
-  content=""
-  collaboration={config}
-  onChange={(md) => saveToDatabase(md)}
-/>
+return (
+  <InkwellEditor
+    content=""
+    collaboration={config}
+    onChange={md => saveToDatabase(md)}
+  />
+);
 ```
 
 ## Providers
 
-Yjs supports many network providers. Inkwell works with all of them — you
+Yjs works with many network providers. Inkwell works with all of them — you
 choose how documents sync.
 
-| Provider | Protocol | Use case |
-|----------|----------|----------|
-| [y-websocket](https://github.com/yjs/y-websocket) | WebSocket | Self-hosted sync server |
-| [y-webrtc](https://github.com/yjs/y-webrtc) | WebRTC | Peer-to-peer, no server needed |
-| [Liveblocks](https://liveblocks.io/docs/api-reference/liveblocks-yjs) | Managed | Hosted infrastructure |
+| Provider                                                              | Protocol  | Use case                       |
+| --------------------------------------------------------------------- | --------- | ------------------------------ |
+| [y-websocket](https://github.com/yjs/y-websocket)                     | WebSocket | Self-hosted sync server        |
+| [y-webrtc](https://github.com/yjs/y-webrtc)                           | WebRTC    | Peer-to-peer, no server needed |
+| [Liveblocks](https://liveblocks.io/docs/api-reference/liveblocks-yjs) | Managed   | Hosted infrastructure          |
 
 ## Collaboration config
 
-| Field | Type | Description |
-|-------|------|-------------|
+| Field        | Type        | Description                                                                    |
+| ------------ | ----------- | ------------------------------------------------------------------------------ |
 | `sharedType` | `Y.XmlText` | Yjs shared type for the document. Create with `doc.get("content", Y.XmlText)`. |
-| `awareness` | `Awareness` | Awareness instance from your provider. Handles cursor sharing. |
-| `user.name` | `string` | Display name shown on remote cursors. |
-| `user.color` | `string` | Cursor and selection highlight color. Any CSS color value. |
+| `awareness`  | `Awareness` | Awareness instance from your provider. Handles cursor sharing.                 |
+| `user.name`  | `string`    | Display name shown on remote cursors.                                          |
+| `user.color` | `string`    | Cursor and selection highlight color. Any CSS color value.                     |

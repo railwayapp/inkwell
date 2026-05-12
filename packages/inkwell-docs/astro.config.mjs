@@ -11,6 +11,10 @@ export default defineConfig({
     starlight({
       title: "Inkwell",
       favicon: "/favicon.svg",
+      // globals.css starts with `@import "@railway/inkwell/styles.css"` so
+      // the package defaults load first. Demo overrides below are scoped
+      // under `[data-demo-style="custom"]`, so in default mode only the
+      // package defaults apply.
       customCss: ["./src/styles/globals.css"],
       components: {
         PageSidebar: "./src/components/page-sidebar.astro",

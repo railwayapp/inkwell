@@ -3,6 +3,7 @@
 import {
   CursorEditor,
   relativePositionToSlatePoint,
+  slateNodesToInsertDelta,
   withCursors,
   withYHistory,
   withYjs,
@@ -10,9 +11,11 @@ import {
 } from "@slate-yjs/core";
 import {
   Fragment,
-  type ReactNode,
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,495 +29,1184 @@ import {
   Range,
   Transforms,
 } from "slate";
-import { withHistory } from "slate-history";
+import { HistoryEditor, withHistory } from "slate-history";
 import { Editable, ReactEditor, Slate, withReact } from "slate-react";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import type {
-  InkwellDecorations,
+  InkwellEditorFocusOptions,
+  InkwellEditorHandle,
   InkwellEditorProps,
+  InkwellEditorState,
   InkwellPlugin,
+  InkwellPluginEditor,
+  InkwellPluginPlaceholder,
+  PluginKeyDownContext,
+  ResolvedInkwellFeatures,
+  SubscribeForwardedKey,
 } from "../types";
 import { computeDecorations } from "./slate/decorations";
 import { deserialize } from "./slate/deserialize";
+import { resolveFeatures } from "./slate/features";
 import { RenderElement } from "./slate/render-element";
 import { RenderLeaf } from "./slate/render-leaf";
 import { serialize } from "./slate/serialize";
-import type { InkwellElement, InkwellText } from "./slate/types";
+import type {
+  InkwellElement,
+  InkwellEditor as InkwellSlateEditor,
+  InkwellText,
+} from "./slate/types";
+import { withCharacterLimit } from "./slate/with-character-limit";
 import { withMarkdown } from "./slate/with-markdown";
 import { generateId, withNodeId } from "./slate/with-node-id";
 
 const IS_SERVER = typeof window === "undefined";
+const EMPTY_PLUGINS: InkwellPlugin[] = [];
 
-const DEFAULT_DECORATIONS: Required<InkwellDecorations> = {
-  heading1: true,
-  heading2: true,
-  heading3: true,
-  heading4: true,
-  heading5: true,
-  heading6: true,
-  lists: true,
-  blockquotes: true,
-  codeBlocks: true,
-};
-
-export function InkwellEditor({
-  content,
-  onChange,
-  className,
-  placeholder,
-  plugins: userPlugins = [],
-  rehypePlugins,
-  decorations,
-  collaboration,
-  bubbleMenu = true,
-}: InkwellEditorProps): ReactNode {
-  const resolvedDecorations = useMemo(
-    () => ({ ...DEFAULT_DECORATIONS, ...decorations }),
-    [decorations],
-  );
-  const decorationsRef = useRef(resolvedDecorations);
-  decorationsRef.current = resolvedDecorations;
-
-  const plugins = useMemo(() => {
-    const builtIn = bubbleMenu ? [createBubbleMenuPlugin()] : [];
-    return [...builtIn, ...userPlugins];
-  }, [userPlugins, bubbleMenu]);
-
-  const editor = useMemo(() => {
-    if (IS_SERVER) return null;
-
-    const base = withNodeId(withReact(createEditor()));
-
-    if (collaboration) {
-      const { sharedType, awareness, user } = collaboration;
-      const yjsEditor = withYjs(base, sharedType, { autoConnect: false });
-      const cursorEditor = withCursors(yjsEditor, awareness, {
-        data: user,
-      });
-      const historyEditor = withYHistory(cursorEditor);
-      return withMarkdown(historyEditor, decorationsRef);
-    }
-
-    return withMarkdown(withHistory(base), decorationsRef);
-  }, []);
-
-  if (!editor) return null;
-
-  useEffect(() => {
-    if (!collaboration || !YjsEditor.isYjsEditor(editor)) return;
-    YjsEditor.connect(editor);
-    return () => {
-      YjsEditor.disconnect(editor);
-    };
-  }, [editor, collaboration]);
-
-  const [cursorVersion, setCursorVersion] = useState(0);
-
-  useEffect(() => {
-    if (!collaboration || !CursorEditor.isCursorEditor(editor)) return;
-    const handleChange = () => setCursorVersion(v => v + 1);
-    CursorEditor.on(editor, "change", handleChange);
-    return () => {
-      CursorEditor.off(editor, "change", handleChange);
-    };
-  }, [editor, collaboration]);
-
-  const remoteCursorRanges = useMemo(() => {
-    if (!collaboration || !CursorEditor.isCursorEditor(editor)) return [];
-
-    const ranges: (Range & InkwellText)[] = [];
-    const states = CursorEditor.cursorStates(editor);
-
-    for (const [, state] of Object.entries(states)) {
-      if (!state.relativeSelection) continue;
-      const data = state.data as { name: string; color: string } | undefined;
-      if (!data) continue;
-
-      try {
-        const { anchor, focus } = state.relativeSelection;
-        const anchorPoint = relativePositionToSlatePoint(
-          collaboration.sharedType,
-          editor,
-          anchor,
-        );
-        const focusPoint = relativePositionToSlatePoint(
-          collaboration.sharedType,
-          editor,
-          focus,
-        );
-        if (!anchorPoint || !focusPoint) continue;
-
-        const range: Range = { anchor: anchorPoint, focus: focusPoint };
-
-        if (Range.isCollapsed(range)) {
-          // Collapsed cursor — render as caret
-          ranges.push({
-            ...range,
-            remoteCursor: data.color,
-            remoteCursorCaret: true,
-          } as Range & InkwellText);
-        } else {
-          // Selection range — render as highlight
-          ranges.push({
-            ...range,
-            remoteCursor: data.color,
-          } as Range & InkwellText);
-        }
-      } catch {
-        // Position conversion can fail if document is mid-sync
+function replaceEditorChildren(
+  editor: InkwellSlateEditor,
+  nodes: Descendant[],
+  withoutSaving: boolean,
+) {
+  const replace = () => {
+    Editor.withoutNormalizing(editor, () => {
+      for (let index = editor.children.length - 1; index >= 0; index--) {
+        Transforms.removeNodes(editor, { at: [index] });
       }
-    }
+      Transforms.insertNodes(editor, nodes, { at: [0] });
+    });
+  };
 
-    return ranges;
-  }, [editor, collaboration, cursorVersion]);
+  if (withoutSaving && HistoryEditor.isHistoryEditor(editor)) {
+    HistoryEditor.withoutSaving(editor, replace);
+    return;
+  }
 
-  const initialValue = useMemo(
-    () =>
-      collaboration
-        ? [
-            {
-              type: "paragraph" as const,
-              id: generateId(),
-              children: [{ text: "" }],
-            },
-          ]
-        : deserialize(content, resolvedDecorations),
-    [],
-  );
+  replace();
+}
 
-  const lastContent = useRef<string>(content);
-  const isInternalChange = useRef(false);
+/**
+ * Public wrapper. Returns `null` during SSR so all hooks in the client
+ * component below are always called in the same order on the client.
+ */
+export const InkwellEditor = forwardRef<
+  InkwellEditorHandle,
+  InkwellEditorProps
+>(function InkwellEditor(props, ref) {
+  if (IS_SERVER) return null;
+  return <InkwellEditorClient {...props} ref={ref} />;
+});
 
-  useEffect(() => {
-    if (collaboration) return; // Yjs is source of truth in collab mode
-
-    if (isInternalChange.current) {
-      isInternalChange.current = false;
-      return;
-    }
-    if (content === lastContent.current) return;
-
-    const newValue = deserialize(content, resolvedDecorations);
-    editor.children = newValue;
-
-    // Reset selection to start to avoid stale selection errors
-    Transforms.select(editor, Editor.start(editor, []));
-    editor.onChange();
-    lastContent.current = content;
-  }, [content, editor, collaboration]);
-
-  const handleChange = useCallback(
-    (value: Descendant[]) => {
-      // Only serialize when the document actually changed
-      const isAstChange = editor.operations.some(
-        op => op.type !== "set_selection",
-      );
-      if (!isAstChange) return;
-      if (!onChange) return;
-
-      const md = serialize(value as InkwellElement[]);
-      if (collaboration) {
-        // In collab mode, always fire onChange (no echo prevention needed)
-        onChange(md);
-      } else {
-        // In standalone mode, prevent echo loops
-        if (md !== lastContent.current) {
-          lastContent.current = md;
-          isInternalChange.current = true;
-          onChange(md);
-        }
-      }
+const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
+  function InkwellEditorClient(
+    {
+      content = "",
+      onChange,
+      onStateChange,
+      className,
+      classNames,
+      styles,
+      placeholder,
+      editable = true,
+      plugins: userPlugins = EMPTY_PLUGINS,
+      rehypePlugins,
+      features,
+      collaboration,
+      bubbleMenu = true,
+      characterLimit,
+      enforceCharacterLimit = false,
+      onCharacterCount,
+      submitOnEnter = false,
+      onSubmit,
     },
-    [editor, onChange, collaboration],
-  );
+    ref,
+  ) {
+    const resolvedFeatures = useMemo(
+      () => resolveFeatures(features),
+      [features],
+    );
+    const featuresRef = useRef<ResolvedInkwellFeatures>(resolvedFeatures);
+    featuresRef.current = resolvedFeatures;
 
-  const decorate = useCallback(
-    (entry: NodeEntry) => {
-      const ranges = computeDecorations(entry, editor, rehypePlugins);
+    const plugins = useMemo(() => {
+      const builtIn = bubbleMenu ? [createBubbleMenuPlugin()] : [];
+      // User plugins win when names collide — a custom `bubble-menu` plugin
+      // replaces the built-in toolbar. Plugin names must stay unique inside
+      // the editor so React keys stay stable.
+      const userNames = new Set(userPlugins.map(p => p.name));
+      const survivingBuiltIns = builtIn.filter(p => !userNames.has(p.name));
+      return [...survivingBuiltIns, ...userPlugins];
+    }, [userPlugins, bubbleMenu]);
 
-      // Add remote cursor decorations that overlap this node
-      if (remoteCursorRanges.length > 0) {
-        const [, path] = entry;
-        for (const cursorRange of remoteCursorRanges) {
-          try {
-            const intersection = Range.intersection(
-              cursorRange,
-              Editor.range(editor, path),
-            );
-            if (intersection) {
-              ranges.push({
-                ...intersection,
-                remoteCursor: cursorRange.remoteCursor,
-                remoteCursorCaret: cursorRange.remoteCursorCaret,
-              } as Range & InkwellText);
-            }
-          } catch {
-            // Range intersection can fail during document changes
+    const characterLimitRef = useRef({
+      limit: characterLimit,
+      enforce: enforceCharacterLimit,
+    });
+    characterLimitRef.current = {
+      limit: characterLimit,
+      enforce: enforceCharacterLimit,
+    };
+
+    const initialCollaborationRef = useRef(collaboration);
+
+    const editor = useMemo<InkwellSlateEditor>(() => {
+      const base = withNodeId(withReact(createEditor()));
+
+      if (collaboration) {
+        const { sharedType, awareness, user } = collaboration;
+        if (content && sharedType.length === 0) {
+          sharedType.applyDelta(
+            slateNodesToInsertDelta(deserialize(content, resolvedFeatures)),
+          );
+        }
+        const yjsEditor = withYjs(base, sharedType, { autoConnect: false });
+        const cursorEditor = withCursors(yjsEditor, awareness, {
+          data: user,
+        });
+        const historyEditor = withYHistory(cursorEditor);
+        return withCharacterLimit(
+          withMarkdown(historyEditor, featuresRef),
+          characterLimitRef,
+        );
+      }
+
+      return withCharacterLimit(
+        withMarkdown(withHistory(base), featuresRef),
+        characterLimitRef,
+      );
+    }, []);
+
+    useEffect(() => {
+      if (collaboration !== initialCollaborationRef.current) {
+        // biome-ignore lint/suspicious/noConsole: Dev-facing mount-only configuration warning.
+        console.warn(
+          "InkwellEditor: collaboration is mount-only. Remount the editor with a React key to change collaboration mode, document, or user metadata.",
+        );
+      }
+    }, [collaboration]);
+
+    useEffect(() => {
+      if (!collaboration || !YjsEditor.isYjsEditor(editor)) return;
+      YjsEditor.connect(editor);
+      return () => {
+        YjsEditor.disconnect(editor);
+      };
+    }, [editor, collaboration]);
+
+    const [cursorVersion, setCursorVersion] = useState(0);
+
+    useEffect(() => {
+      if (!collaboration || !CursorEditor.isCursorEditor(editor)) return;
+      const handleChange = () => setCursorVersion(v => v + 1);
+      CursorEditor.on(editor, "change", handleChange);
+      return () => {
+        CursorEditor.off(editor, "change", handleChange);
+      };
+    }, [editor, collaboration]);
+
+    const remoteCursorRanges = useMemo(() => {
+      if (!collaboration || !CursorEditor.isCursorEditor(editor)) return [];
+
+      const ranges: (Range & InkwellText)[] = [];
+      const states = CursorEditor.cursorStates(editor);
+
+      for (const [, state] of Object.entries(states)) {
+        if (!state.relativeSelection) continue;
+        const data = state.data as { name: string; color: string } | undefined;
+        if (!data) continue;
+
+        try {
+          const { anchor, focus } = state.relativeSelection;
+          const anchorPoint = relativePositionToSlatePoint(
+            collaboration.sharedType,
+            editor,
+            anchor,
+          );
+          const focusPoint = relativePositionToSlatePoint(
+            collaboration.sharedType,
+            editor,
+            focus,
+          );
+          if (!anchorPoint || !focusPoint) continue;
+
+          const range: Range = { anchor: anchorPoint, focus: focusPoint };
+
+          if (Range.isCollapsed(range)) {
+            // Collapsed cursor — render as caret
+            ranges.push({
+              ...range,
+              remoteCursor: data.color,
+              remoteCursorCaret: true,
+            } as Range & InkwellText);
+          } else {
+            // Selection range — render as highlight
+            ranges.push({
+              ...range,
+              remoteCursor: data.color,
+            } as Range & InkwellText);
           }
+        } catch {
+          // Position conversion can fail if document is mid-sync
         }
       }
 
       return ranges;
-    },
-    [editor, rehypePlugins, remoteCursorRanges],
-  );
+    }, [editor, collaboration, cursorVersion]);
 
-  const [activePlugin, setActivePlugin] = useState<InkwellPlugin | null>(null);
-  const pluginPositionRef = useRef<{ top: number; left: number }>({
-    top: 0,
-    left: 0,
-  });
+    const initialValue = useMemo(
+      () =>
+        collaboration
+          ? [
+              {
+                type: "paragraph" as const,
+                id: generateId(),
+                children: [{ text: "" }],
+              },
+            ]
+          : deserialize(content, resolvedFeatures),
+      [],
+    );
 
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const editorElRef = useRef<HTMLDivElement | null>(null);
+    const lastContent = useRef<string>(content);
+    const isInternalChange = useRef(false);
+    const suppressImperativeOnChange = useRef(false);
+    const [characterCount, setCharacterCount] = useState(
+      () => serialize(initialValue as InkwellElement[]).length,
+    );
+    const [isFocused, setIsFocused] = useState(false);
+    const focusStateFrameRef = useRef<number | null>(null);
+    const [stateVersion, setStateVersion] = useState(0);
 
-  const getCursorPosition = useCallback(() => {
-    try {
-      const domSelection = window.getSelection();
-      if (!domSelection || domSelection.rangeCount === 0)
-        return { top: 0, left: 0 };
-      const range = domSelection.getRangeAt(0);
-      let rect = range.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0 && domSelection.anchorNode) {
-        const node =
-          domSelection.anchorNode instanceof HTMLElement
-            ? domSelection.anchorNode
-            : domSelection.anchorNode.parentElement;
-        if (node) rect = node.getBoundingClientRect();
-      }
-      const wrapperEl = wrapperRef.current;
-      if (!wrapperEl) return { top: 0, left: 0 };
-      const wrapperRect = wrapperEl.getBoundingClientRect();
-      return {
-        top: rect.bottom - wrapperRect.top + 4,
-        left: rect.left - wrapperRect.left,
-      };
-    } catch {
-      return { top: 0, left: 0 };
-    }
-  }, []);
+    const bumpStateVersion = useCallback(() => {
+      setStateVersion(version => version + 1);
+    }, []);
 
-  const wrapSelection = useCallback(
-    (before: string, after: string) => {
-      const { selection } = editor;
-      if (!selection) return;
-      const selectedText = Editor.string(editor, selection);
-
-      // If already wrapped, unwrap
-      if (
-        selectedText.startsWith(before) &&
-        selectedText.endsWith(after) &&
-        selectedText.length >= before.length + after.length
-      ) {
-        Transforms.delete(editor);
-        Transforms.insertText(
-          editor,
-          selectedText.slice(before.length, -after.length || undefined),
-        );
-        return;
+    // Some browsers can fail to visibly paint the caret on first click if
+    // React re-renders during the native contenteditable focus/selection path.
+    // Defer focus UI state one frame so browser selection settles first.
+    const scheduleFocusedState = useCallback((nextFocused: boolean) => {
+      if (focusStateFrameRef.current !== null) {
+        cancelAnimationFrame(focusStateFrameRef.current);
       }
 
-      // Check if the surrounding text contains the markers (selection is inside markers)
-      const { anchor, focus } = selection;
-      const [start, end] = Range.isForward(selection)
-        ? [anchor, focus]
-        : [focus, anchor];
-      const beforeStart = {
-        path: start.path,
-        offset: Math.max(0, start.offset - before.length),
-      };
-      const afterEnd = { path: end.path, offset: end.offset + after.length };
-
-      try {
-        const textBefore = Editor.string(editor, {
-          anchor: beforeStart,
-          focus: start,
-        });
-        const textAfter = Editor.string(editor, {
-          anchor: end,
-          focus: afterEnd,
-        });
-
-        if (textBefore === before && textAfter === after) {
-          // Remove surrounding markers
-          const expandedRange = { anchor: beforeStart, focus: afterEnd };
-          Transforms.select(editor, expandedRange);
-          Transforms.delete(editor);
-          Transforms.insertText(editor, selectedText);
-          return;
-        }
-      } catch {
-        // Range might be out of bounds — fall through to wrap
-      }
-
-      // Wrap with markers
-      Transforms.delete(editor);
-      Transforms.insertText(editor, `${before}${selectedText}${after}`);
-    },
-    [editor],
-  );
-
-  const insertTextAtCursor = useCallback(
-    (text: string) => {
-      ReactEditor.focus(editor);
-      const nodes = deserialize(text);
-      // Use insertFragment to merge the first node into the current block
-      // instead of splitting and creating a blank line
-      Transforms.insertFragment(editor, nodes);
-    },
-    [editor],
-  );
-
-  const dismissPlugin = useCallback(() => {
-    setActivePlugin(null);
-    ReactEditor.focus(editor);
-  }, [editor]);
-
-  const handlePluginSelect = useCallback(
-    (text: string) => {
-      const triggerKey = activePlugin?.trigger?.key;
-      const isCharTrigger = triggerKey && !triggerKey.includes("+");
-      dismissPlugin();
-      requestAnimationFrame(() => {
-        ReactEditor.focus(editor);
-        // If character trigger, delete the trigger character
-        if (isCharTrigger) {
-          Transforms.delete(editor, {
-            distance: 1,
-            unit: "character",
-            reverse: true,
-          });
-        }
-        insertTextAtCursor(text);
+      focusStateFrameRef.current = requestAnimationFrame(() => {
+        focusStateFrameRef.current = null;
+        setIsFocused(nextFocused);
       });
-    },
-    [dismissPlugin, insertTextAtCursor, activePlugin, editor],
-  );
+    }, []);
 
-  const makePluginProps = (plugin: InkwellPlugin) => ({
-    active: plugin.trigger ? activePlugin === plugin : true,
-    query: "",
-    onSelect: handlePluginSelect,
-    onDismiss: dismissPlugin,
-    position: pluginPositionRef.current,
-    editorRef: editorElRef,
-    wrapSelection,
-  });
-
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      // If a plugin is active, Escape dismisses it
-      if (activePlugin) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          dismissPlugin();
+    useEffect(
+      () => () => {
+        if (focusStateFrameRef.current !== null) {
+          cancelAnimationFrame(focusStateFrameRef.current);
         }
+      },
+      [],
+    );
+
+    const updateCharacterCount = useCallback(() => {
+      const length = serialize(editor.children as InkwellElement[]).length;
+      setCharacterCount(length);
+      onCharacterCount?.(length, characterLimit);
+      return length;
+    }, [editor, onCharacterCount, characterLimit]);
+
+    const serializeContent = useCallback(
+      () => serialize(editor.children as InkwellElement[]),
+      [editor],
+    );
+    const pluginEditorRef = useRef<InkwellPluginEditor | null>(null);
+
+    const handleChange = useCallback(
+      (value: Descendant[]) => {
+        // Only serialize when the document actually changed
+        const isAstChange = editor.operations.some(
+          op => op.type !== "set_selection",
+        );
+        if (!isAstChange) return;
+
+        updateCharacterCount();
+        bumpStateVersion();
+
+        const currentPluginEditor = pluginEditorRef.current;
+        if (currentPluginEditor) {
+          for (const plugin of plugins) {
+            plugin.onEditorChange?.(currentPluginEditor);
+          }
+        }
+
+        const nextContent = serialize(value as InkwellElement[]);
+        if (collaboration) {
+          if (suppressImperativeOnChange.current) return;
+          onChange?.(nextContent);
+        } else {
+          // In standalone mode, prevent echo loops
+          if (nextContent !== lastContent.current) {
+            lastContent.current = nextContent;
+            isInternalChange.current = true;
+            onChange?.(nextContent);
+          }
+        }
+      },
+      [
+        bumpStateVersion,
+        collaboration,
+        editor,
+        onChange,
+        plugins,
+        updateCharacterCount,
+      ],
+    );
+
+    const overLimit =
+      characterLimit !== undefined && characterCount > characterLimit;
+
+    const getEditorState = useCallback((): InkwellEditorState => {
+      const content = serializeContent();
+      return {
+        content,
+        isEmpty: content.trim().length === 0,
+        isFocused,
+        isEditable: editable,
+        characterCount,
+        characterLimit,
+        overLimit,
+        isEnforcingCharacterLimit: enforceCharacterLimit,
+      };
+    }, [
+      characterCount,
+      characterLimit,
+      editable,
+      enforceCharacterLimit,
+      editor,
+      isFocused,
+      overLimit,
+      serializeContent,
+    ]);
+
+    useEffect(() => {
+      if (collaboration) return; // Yjs is source of truth in collab mode
+
+      if (isInternalChange.current) {
+        isInternalChange.current = false;
         return;
       }
+      if (content === lastContent.current) return;
 
-      // Dispatch to plugin onKeyDown handlers. Short-circuit if a plugin
-      // calls preventDefault so trigger matching doesn't run for the same event.
-      for (const plugin of plugins) {
-        plugin.onKeyDown?.(event, { wrapSelection });
-        if (event.defaultPrevented) return;
+      const newValue = deserialize(content, resolvedFeatures);
+      replaceEditorChildren(editor, newValue, true);
+
+      // Reset selection to start to avoid stale selection errors
+      Transforms.select(editor, Editor.start(editor, []));
+      lastContent.current = content;
+      updateCharacterCount();
+      bumpStateVersion();
+      editor.onChange();
+    }, [
+      bumpStateVersion,
+      collaboration,
+      content,
+      editor,
+      resolvedFeatures,
+      updateCharacterCount,
+    ]);
+
+    useEffect(() => {
+      onStateChange?.(getEditorState());
+    }, [getEditorState, onStateChange, stateVersion]);
+
+    const decorate = useCallback(
+      (entry: NodeEntry) => {
+        const ranges = computeDecorations(entry, editor, rehypePlugins);
+
+        // Add remote cursor decorations that overlap this node
+        if (remoteCursorRanges.length > 0) {
+          const [, path] = entry;
+          for (const cursorRange of remoteCursorRanges) {
+            try {
+              const intersection = Range.intersection(
+                cursorRange,
+                Editor.range(editor, path),
+              );
+              if (intersection) {
+                ranges.push({
+                  ...intersection,
+                  remoteCursor: cursorRange.remoteCursor,
+                  remoteCursorCaret: cursorRange.remoteCursorCaret,
+                } as Range & InkwellText);
+              }
+            } catch {
+              // Range intersection can fail during document changes
+            }
+          }
+        }
+
+        return ranges;
+      },
+      [editor, rehypePlugins, remoteCursorRanges],
+    );
+
+    // ─── Plugin activation + key forwarding ───────────────────────────────────
+    //
+    // Two ways a plugin becomes "active":
+    //
+    // 1. Trigger-based (e.g. `@` for mentions): the editor matches the
+    //    character or modifier combo and stores the matched plugin in
+    //    `activePlugin`.
+    // 2. Self-claimed (e.g. slash commands): the plugin's `onKeyDown` calls
+    //    `activate` from the keydown context. This is necessary for
+    //    plugins that conditionally activate based on context (only at the
+    //    start of a blank line, etc.) without consuming a single global
+    //    trigger character.
+    //
+    // While a plugin is active:
+    //
+    // - The Slate editable still owns DOM focus.
+    // - Navigation keys + typed printable characters are forwarded to
+    //   subscribers registered via `subscribeForwardedKey`, scoped per
+    //   plugin name. Listeners only see keys when their plugin is the
+    //   active one (no cross-editor cross-talk).
+    // - Trigger matching is skipped, so e.g. typing `:` while slash
+    //   commands are open does not open the emoji picker on top.
+    const [activePlugin, setActivePluginState] = useState<InkwellPlugin | null>(
+      null,
+    );
+    const [activePluginQuery, setActivePluginQuery] = useState("");
+    const activePluginQueryRef = useRef("");
+    const activePluginRef = useRef<InkwellPlugin | null>(null);
+    activePluginRef.current = activePlugin;
+    const pluginPositionRef = useRef<{ top: number; left: number }>({
+      top: 0,
+      left: 0,
+    });
+    const forwardedKeyListenersRef = useRef<
+      Map<string, Set<(key: string) => void>>
+    >(new Map());
+
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const editorElRef = useRef<HTMLDivElement | null>(null);
+
+    // Stable `subscribeForwardedKey` factory. Returned to plugins via render
+    // props; identity is stable per plugin name so subscribers can use it
+    // safely in effect deps.
+    const subscribeForwardedKeyFor = useCallback(
+      (pluginName: string): SubscribeForwardedKey =>
+        listener => {
+          const map = forwardedKeyListenersRef.current;
+          let listeners = map.get(pluginName);
+          if (!listeners) {
+            listeners = new Set();
+            map.set(pluginName, listeners);
+          }
+          listeners.add(listener);
+          return () => {
+            listeners?.delete(listener);
+            if (listeners && listeners.size === 0) map.delete(pluginName);
+          };
+        },
+      [],
+    );
+
+    const emitForwardedKey = useCallback((pluginName: string, key: string) => {
+      const listeners = forwardedKeyListenersRef.current.get(pluginName);
+      if (!listeners || listeners.size === 0) return;
+      for (const listener of listeners) listener(key);
+    }, []);
+
+    const canonicalizeEmptyEditor = useCallback(() => {
+      if (Node.string(editor).trim().length !== 0) return;
+
+      const onlyChild = editor.children[0] as InkwellElement | undefined;
+      const isCanonicalEmptyParagraph =
+        editor.children.length === 1 &&
+        onlyChild?.type === "paragraph" &&
+        Node.string(onlyChild).length === 0;
+      if (isCanonicalEmptyParagraph) return;
+
+      Editor.withoutNormalizing(editor, () => {
+        for (let index = editor.children.length - 1; index >= 0; index--) {
+          Transforms.removeNodes(editor, { at: [index] });
+        }
+        Transforms.insertNodes(editor, {
+          type: "paragraph",
+          id: generateId(),
+          children: [{ text: "" }],
+        } satisfies InkwellElement);
+      });
+    }, [editor]);
+
+    const selectEditor = useCallback(
+      (at: InkwellEditorFocusOptions["at"] = "end") => {
+        try {
+          Transforms.select(
+            editor,
+            at === "start" ? Editor.start(editor, []) : Editor.end(editor, []),
+          );
+        } catch {
+          // Empty/transient Slate trees can fail selection math during setup.
+        }
+      },
+      [editor],
+    );
+
+    const focusEditor = useCallback(
+      (options?: InkwellEditorFocusOptions) => {
+        ReactEditor.focus(editor);
+        if (options?.at) selectEditor(options.at);
+      },
+      [editor, selectEditor],
+    );
+
+    const replaceContent = useCallback(
+      (
+        content: string,
+        options?: { select?: "start" | "end" | "preserve" },
+      ) => {
+        const select = options?.select ?? "start";
+        const newValue = deserialize(content, resolvedFeatures);
+
+        suppressImperativeOnChange.current = true;
+        replaceEditorChildren(editor, newValue, true);
+        updateCharacterCount();
+        bumpStateVersion();
+
+        if (select !== "preserve") selectEditor(select);
+        const nextContent = serializeContent();
+        lastContent.current = nextContent;
+        editor.onChange();
+        queueMicrotask(() => {
+          suppressImperativeOnChange.current = false;
+        });
+      },
+      [
+        bumpStateVersion,
+        editor,
+        resolvedFeatures,
+        selectEditor,
+        serializeContent,
+        updateCharacterCount,
+      ],
+    );
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        getState: getEditorState,
+        focus: focusEditor,
+        clear: options => replaceContent("", options),
+        setContent: replaceContent,
+        insertContent: content => {
+          focusEditor();
+          const nodes = deserialize(content, resolvedFeatures);
+          Transforms.insertFragment(editor, nodes);
+        },
+      }),
+      [
+        editor,
+        focusEditor,
+        getEditorState,
+        replaceContent,
+        resolvedFeatures,
+        serializeContent,
+      ],
+    );
+
+    const getCursorPosition = useCallback(() => {
+      try {
+        const domSelection = window.getSelection();
+        if (!domSelection || domSelection.rangeCount === 0)
+          return { top: 0, left: 0 };
+        const range = domSelection.getRangeAt(0);
+        let rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0 && domSelection.anchorNode) {
+          const node =
+            domSelection.anchorNode instanceof HTMLElement
+              ? domSelection.anchorNode
+              : domSelection.anchorNode.parentElement;
+          if (node) rect = node.getBoundingClientRect();
+        }
+        const wrapperEl = wrapperRef.current;
+        if (!wrapperEl) return { top: 0, left: 0 };
+        const wrapperRect = wrapperEl.getBoundingClientRect();
+        return {
+          top: rect.bottom - wrapperRect.top + 4,
+          left: rect.left - wrapperRect.left,
+        };
+      } catch {
+        return { top: 0, left: 0 };
       }
+    }, []);
 
-      // Check plugin triggers
-      for (const plugin of plugins) {
-        const t = plugin.trigger;
-        if (!t) continue;
+    const wrapSelection = useCallback(
+      (before: string, after: string) => {
+        const { selection } = editor;
+        if (!selection) return;
+        const selectedText = Editor.string(editor, selection);
 
-        const parts = t.key
-          .toLowerCase()
-          .split("+")
-          .map(s => s.trim());
-        const key = parts[parts.length - 1];
-        const mods = new Set(parts.slice(0, -1));
-        const hasModifiers = mods.size > 0;
-        const needCtrl = mods.has("control") || mods.has("ctrl");
-        const needMeta =
-          mods.has("meta") || mods.has("cmd") || mods.has("command");
-        const needAlt = mods.has("alt");
-        const needShift = mods.has("shift");
-
-        const keyMatch = event.key.toLowerCase() === key;
-        const modMatch = hasModifiers
-          ? event.ctrlKey === needCtrl &&
-            event.metaKey === needMeta &&
-            event.altKey === needAlt &&
-            event.shiftKey === needShift
-          : !event.ctrlKey && !event.metaKey;
-
-        if (keyMatch && modMatch) {
-          if (hasModifiers) event.preventDefault();
-          pluginPositionRef.current = getCursorPosition();
-          setActivePlugin(plugin);
+        // If already wrapped, unwrap
+        if (
+          selectedText.startsWith(before) &&
+          selectedText.endsWith(after) &&
+          selectedText.length >= before.length + after.length
+        ) {
+          Transforms.delete(editor);
+          Transforms.insertText(
+            editor,
+            selectedText.slice(before.length, -after.length || undefined),
+          );
           return;
         }
-      }
 
-      // Cmd+A on empty editor: no-op
-      if (
-        event.key === "a" &&
-        (event.metaKey || event.ctrlKey) &&
-        !Node.string(editor).trim()
-      ) {
-        event.preventDefault();
-        return;
+        // Check if the surrounding text contains the markers (selection is inside markers)
+        const { anchor, focus } = selection;
+        const [start, end] = Range.isForward(selection)
+          ? [anchor, focus]
+          : [focus, anchor];
+        const beforeStart = {
+          path: start.path,
+          offset: Math.max(0, start.offset - before.length),
+        };
+        const afterEnd = { path: end.path, offset: end.offset + after.length };
+
+        try {
+          const textBefore = Editor.string(editor, {
+            anchor: beforeStart,
+            focus: start,
+          });
+          const textAfter = Editor.string(editor, {
+            anchor: end,
+            focus: afterEnd,
+          });
+
+          if (textBefore === before && textAfter === after) {
+            // Remove surrounding markers
+            const expandedRange = { anchor: beforeStart, focus: afterEnd };
+            Transforms.select(editor, expandedRange);
+            Transforms.delete(editor);
+            Transforms.insertText(editor, selectedText);
+            return;
+          }
+        } catch {
+          // Range might be out of bounds — fall through to wrap
+        }
+
+        // Wrap with markers
+        Transforms.delete(editor);
+        Transforms.insertText(editor, `${before}${selectedText}${after}`);
+      },
+      [editor],
+    );
+
+    const insertTextAtCursor = useCallback(
+      (text: string) => {
+        ReactEditor.focus(editor);
+        const nodes = deserialize(text, resolvedFeatures);
+        // Use insertFragment to merge the first node into the current block
+        // instead of splitting and creating a blank line
+        Transforms.insertFragment(editor, nodes);
+      },
+      [editor, resolvedFeatures],
+    );
+
+    const getCurrentBlockPath = useCallback(() => {
+      const { selection } = editor;
+      if (!selection || !Range.isCollapsed(selection)) return null;
+      return selection.anchor.path.slice(0, 1);
+    }, [editor]);
+
+    const getRangeContent = useCallback(
+      (range: Range) => {
+        try {
+          return Editor.string(editor, range);
+        } catch {
+          return null;
+        }
+      },
+      [editor],
+    );
+
+    const getCurrentBlockContent = useCallback(() => {
+      const path = getCurrentBlockPath();
+      if (!path) return null;
+      try {
+        return Editor.string(editor, path);
+      } catch {
+        return null;
       }
-    },
-    [
-      plugins,
-      activePlugin,
-      editor,
-      getCursorPosition,
-      dismissPlugin,
+    }, [editor, getCurrentBlockPath]);
+
+    const getCurrentBlockContentBeforeCursor = useCallback(() => {
+      const { selection } = editor;
+      if (!selection || !Range.isCollapsed(selection)) return null;
+      const anchor = selection.anchor;
+      return getRangeContent({
+        anchor: { path: anchor.path, offset: 0 },
+        focus: anchor,
+      });
+    }, [editor, getRangeContent]);
+
+    const replaceCurrentBlockContent = useCallback(
+      (nextContent: string) => {
+        const path = getCurrentBlockPath();
+        if (!path) return;
+        const start = Editor.start(editor, path);
+        const end = Editor.end(editor, path);
+        Transforms.select(editor, { anchor: start, focus: end });
+        Transforms.insertText(editor, nextContent);
+        Transforms.select(editor, Editor.end(editor, path));
+      },
+      [editor, getCurrentBlockPath],
+    );
+
+    const clearCurrentBlock = useCallback(() => {
+      const path = getCurrentBlockPath();
+      if (!path) return;
+      try {
+        const start = Editor.start(editor, path);
+        const end = Editor.end(editor, path);
+        Transforms.select(editor, { anchor: start, focus: end });
+        Transforms.delete(editor);
+        editor.onChange();
+      } catch {
+        // The block may have already been removed by an external edit.
+      }
+    }, [editor, getCurrentBlockPath]);
+
+    const insertImage = useCallback(
+      (image: { id?: string; url: string; alt: string }) => {
+        const id = image.id ?? generateId();
+        Transforms.insertNodes(editor, {
+          type: "image",
+          id,
+          url: image.url,
+          alt: image.alt,
+          children: [{ text: "" }],
+        } satisfies InkwellElement);
+        return id;
+      },
+      [editor],
+    );
+
+    const updateImage = useCallback(
+      (id: string, image: { url?: string; alt?: string }) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (
+            Editor.isEditor(node) ||
+            !("type" in node) ||
+            node.type !== "image" ||
+            node.id !== id
+          ) {
+            continue;
+          }
+          Transforms.setNodes(editor, image, { at: path });
+          break;
+        }
+      },
+      [editor],
+    );
+
+    const removeImage = useCallback(
+      (id: string) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (
+            Editor.isEditor(node) ||
+            !("type" in node) ||
+            node.type !== "image" ||
+            node.id !== id
+          ) {
+            continue;
+          }
+          Transforms.removeNodes(editor, { at: path });
+          break;
+        }
+      },
+      [editor],
+    );
+
+    const pluginEditorImplRef = useRef<InkwellPluginEditor | null>(null);
+    const getPluginEditorImpl = useCallback(() => {
+      const impl = pluginEditorImplRef.current;
+      if (!impl) throw new Error("Inkwell plugin editor is not ready");
+      return impl;
+    }, []);
+    const pluginEditor = useMemo<InkwellPluginEditor>(
+      () => ({
+        getState: () => getPluginEditorImpl().getState(),
+        isEmpty: () => getPluginEditorImpl().isEmpty(),
+        focus: options => getPluginEditorImpl().focus(options),
+        clear: options => getPluginEditorImpl().clear(options),
+        setContent: (content, options) =>
+          getPluginEditorImpl().setContent(content, options),
+        insertContent: content => getPluginEditorImpl().insertContent(content),
+        getContentBeforeCursor: () =>
+          getPluginEditorImpl().getContentBeforeCursor(),
+        getCurrentBlockContent: () =>
+          getPluginEditorImpl().getCurrentBlockContent(),
+        getCurrentBlockContentBeforeCursor: () =>
+          getPluginEditorImpl().getCurrentBlockContentBeforeCursor(),
+        replaceCurrentBlockContent: content =>
+          getPluginEditorImpl().replaceCurrentBlockContent(content),
+        clearCurrentBlock: () => getPluginEditorImpl().clearCurrentBlock(),
+        wrapSelection: (before, after) =>
+          getPluginEditorImpl().wrapSelection(before, after),
+        insertImage: image => getPluginEditorImpl().insertImage(image),
+        updateImage: (id, image) =>
+          getPluginEditorImpl().updateImage(id, image),
+        removeImage: id => getPluginEditorImpl().removeImage(id),
+      }),
+      [getPluginEditorImpl],
+    );
+
+    pluginEditorImplRef.current = {
+      getState: getEditorState,
+      isEmpty: () => serializeContent().trim().length === 0,
+      focus: focusEditor,
+      clear: options => replaceContent("", options),
+      setContent: replaceContent,
+      insertContent: insertTextAtCursor,
+      getContentBeforeCursor: () => {
+        const { selection } = editor;
+        if (!selection || !Range.isCollapsed(selection)) return null;
+        return getRangeContent({
+          anchor: Editor.start(editor, []),
+          focus: selection.anchor,
+        });
+      },
+      getCurrentBlockContent,
+      getCurrentBlockContentBeforeCursor,
+      replaceCurrentBlockContent,
+      clearCurrentBlock,
       wrapSelection,
-    ],
-  );
+      insertImage,
+      updateImage,
+      removeImage,
+    };
 
-  return (
-    <div
-      ref={wrapperRef}
-      className={`inkwell-editor-wrapper ${className ?? ""}`}
-    >
-      {activePlugin && (
-        <div
-          className="inkwell-plugin-backdrop"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 999,
-            background: "transparent",
-          }}
-          onMouseDown={dismissPlugin}
-        />
-      )}
-      {plugins.map(plugin => {
-        const props = makePluginProps(plugin);
-        if (!props.active) return null;
-        return <Fragment key={plugin.name}>{plugin.render(props)}</Fragment>;
-      })}
-      <Slate
-        editor={editor}
-        initialValue={initialValue}
-        onChange={handleChange}
+    useEffect(() => {
+      const { insertData } = editor;
+      editor.insertData = (data: DataTransfer) => {
+        const baseContext = {
+          editor: pluginEditor,
+          insertData,
+        };
+
+        for (const plugin of plugins) {
+          if (plugin.onInsertData?.(data, baseContext)) return;
+        }
+
+        insertData(data);
+      };
+
+      const cleanups: Array<() => void> = [];
+      for (const plugin of plugins) {
+        if (!plugin.setup) continue;
+        const cleanup = plugin.setup(pluginEditor);
+        if (typeof cleanup === "function") cleanups.push(cleanup);
+      }
+
+      return () => {
+        editor.insertData = insertData;
+        for (let i = cleanups.length - 1; i >= 0; i--) cleanups[i]();
+      };
+    }, [editor, plugins, pluginEditor, wrapSelection]);
+
+    pluginEditorRef.current = pluginEditor;
+
+    const dismissPlugin = useCallback(() => {
+      activePluginRef.current = null;
+      setActivePluginState(null);
+      activePluginQueryRef.current = "";
+      setActivePluginQuery("");
+      ReactEditor.focus(editor);
+    }, [editor]);
+
+    const activatePlugin = useCallback(
+      (plugin: InkwellPlugin, options?: { query?: string }) => {
+        const initialQuery = options?.query ?? "";
+        activePluginQueryRef.current = initialQuery;
+        setActivePluginQuery(initialQuery);
+        pluginPositionRef.current = getCursorPosition();
+        activePluginRef.current = plugin;
+        setActivePluginState(plugin);
+      },
+      [getCursorPosition],
+    );
+
+    const handlePluginSelect = useCallback(
+      (text: string) => {
+        const activation = activePlugin?.activation;
+        const triggerKey =
+          activation?.type === "trigger" ? activation.key : undefined;
+        const isCharTrigger = triggerKey && !triggerKey.includes("+");
+        const queryLength = activePluginQueryRef.current.length;
+        dismissPlugin();
+        requestAnimationFrame(() => {
+          ReactEditor.focus(editor);
+          if (isCharTrigger) {
+            Transforms.delete(editor, {
+              distance: 1 + queryLength,
+              unit: "character",
+              reverse: true,
+            });
+          }
+          insertTextAtCursor(text);
+        });
+      },
+      [dismissPlugin, insertTextAtCursor, activePlugin, editor],
+    );
+
+    const isActivatablePlugin = (plugin: InkwellPlugin) =>
+      (plugin.activation?.type ?? "always") !== "always";
+    const makePluginProps = (plugin: InkwellPlugin) => ({
+      active: isActivatablePlugin(plugin) ? activePlugin === plugin : true,
+      query: activePlugin === plugin ? activePluginQuery : "",
+      onSelect: handlePluginSelect,
+      onDismiss: dismissPlugin,
+      position: pluginPositionRef.current,
+      editorRef: editorElRef,
+      editor: pluginEditor,
+      wrapSelection,
+      subscribeForwardedKey: subscribeForwardedKeyFor(plugin.name),
+    });
+
+    const makeKeyDownContext = useCallback(
+      (plugin: InkwellPlugin): PluginKeyDownContext => ({
+        editor: pluginEditor,
+        wrapSelection,
+        activate: options => activatePlugin(plugin, options),
+        dismiss: dismissPlugin,
+      }),
+      [activatePlugin, dismissPlugin, pluginEditor, wrapSelection],
+    );
+
+    const handleKeyDown = useCallback(
+      (event: React.KeyboardEvent<HTMLDivElement>) => {
+        // If a plugin is active, keep keyboard interaction inside that plugin.
+        // The plugin picker may not have focus yet (for character triggers, the
+        // editor receives the trigger key first), so forward navigation, submit,
+        // editing, and printable keys via the editor-scoped emitter so the
+        // picker can react without owning DOM focus.
+        if (activePlugin) {
+          // Plugins customize their own active-state behavior via
+          // `onActiveKeyDown`. Returning `false` dismisses the plugin and lets
+          // the key flow into the editor (e.g. emoji closes on space).
+          // Calling `event.preventDefault()` consumes the key entirely.
+          const activeResult = activePlugin.onActiveKeyDown?.(
+            event,
+            makeKeyDownContext(activePlugin),
+          );
+          if (activeResult === false) {
+            dismissPlugin();
+            // Fall through — the dismissing key still gets a chance at
+            // trigger matching below (so typing `:` after a closed emoji
+            // can reopen the picker, for example).
+          } else {
+            if (event.defaultPrevented) return;
+
+            if (event.key === "Escape") {
+              event.preventDefault();
+              dismissPlugin();
+              return;
+            }
+
+            const isPrintable =
+              !event.metaKey &&
+              !event.ctrlKey &&
+              !event.altKey &&
+              event.key.length === 1;
+            const shouldForward =
+              event.key === "ArrowDown" ||
+              event.key === "ArrowUp" ||
+              event.key === "Enter" ||
+              event.key === "Backspace" ||
+              isPrintable;
+
+            if (shouldForward) {
+              if (event.key === "Enter") {
+                event.preventDefault();
+              } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+              } else if (event.key === "Backspace") {
+                if (activePluginQueryRef.current.length === 0) {
+                  dismissPlugin();
+                  return;
+                }
+                const nextQuery = activePluginQueryRef.current.slice(0, -1);
+                activePluginQueryRef.current = nextQuery;
+                setActivePluginQuery(nextQuery);
+              } else if (isPrintable) {
+                const nextQuery = `${activePluginQueryRef.current}${event.key}`;
+                activePluginQueryRef.current = nextQuery;
+                setActivePluginQuery(nextQuery);
+              }
+
+              emitForwardedKey(activePlugin.name, event.key);
+            }
+            return;
+          }
+        }
+
+        // Dispatch to plugin onKeyDown handlers. Short-circuit if a plugin
+        // calls preventDefault so trigger matching doesn't run for the same event.
+        // A plugin that calls `ctx.activate(...)` here claims activation;
+        // subsequent plugins still get a chance to run unless preventDefault was
+        // called.
+        for (const plugin of plugins) {
+          plugin.onKeyDown?.(event, makeKeyDownContext(plugin));
+          if (event.defaultPrevented) return;
+          // If the keydown handler claimed activation, stop further matching
+          // so the same event doesn't also fire a trigger.
+          if (activePluginRef.current) return;
+        }
+
+        if (submitOnEnter && event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          onSubmit?.(serializeContent());
+          return;
+        }
+
+        // Check plugin triggers
+        for (const plugin of plugins) {
+          const activation = plugin.activation;
+          if (activation?.type !== "trigger") continue;
+
+          const parts = activation.key
+            .toLowerCase()
+            .split("+")
+            .map(s => s.trim());
+          const key = parts[parts.length - 1];
+          const mods = new Set(parts.slice(0, -1));
+          const hasModifiers = mods.size > 0;
+          const needCtrl = mods.has("control") || mods.has("ctrl");
+          const needMeta =
+            mods.has("meta") || mods.has("cmd") || mods.has("command");
+          const needAlt = mods.has("alt");
+          const needShift = mods.has("shift");
+
+          const keyMatch = event.key.toLowerCase() === key;
+          const modMatch = hasModifiers
+            ? event.ctrlKey === needCtrl &&
+              event.metaKey === needMeta &&
+              event.altKey === needAlt &&
+              event.shiftKey === needShift
+            : !event.ctrlKey && !event.metaKey;
+
+          if (keyMatch && modMatch) {
+            if (
+              plugin.shouldTrigger &&
+              !plugin.shouldTrigger(event, makeKeyDownContext(plugin))
+            ) {
+              continue;
+            }
+            if (hasModifiers) event.preventDefault();
+            activatePlugin(plugin);
+            return;
+          }
+        }
+
+        // Cmd+A on empty editor: no-op
+        if (
+          event.key === "a" &&
+          (event.metaKey || event.ctrlKey) &&
+          !Node.string(editor).trim()
+        ) {
+          event.preventDefault();
+          return;
+        }
+      },
+      [
+        plugins,
+        activePlugin,
+        editor,
+        getCursorPosition,
+        dismissPlugin,
+        makeKeyDownContext,
+        activatePlugin,
+        emitForwardedKey,
+        submitOnEnter,
+        onSubmit,
+        serializeContent,
+      ],
+    );
+
+    const pluginPlaceholder = plugins.reduce<InkwellPluginPlaceholder | null>(
+      (value, plugin) => {
+        if (value) return value;
+        const nextPlaceholder = plugin.getPlaceholder?.(pluginEditor) ?? null;
+        if (!nextPlaceholder) return null;
+        return typeof nextPlaceholder === "string"
+          ? { text: nextPlaceholder }
+          : nextPlaceholder;
+      },
+      null,
+    );
+    const basePlaceholder =
+      pluginPlaceholder?.text ?? placeholder ?? "Start writing...";
+    const resolvedPlaceholder = pluginPlaceholder?.hint
+      ? `${pluginPlaceholder.hint}  ${basePlaceholder}`
+      : basePlaceholder;
+
+    useLayoutEffect(() => {
+      if (!pluginPlaceholder) return;
+      if (Node.string(editor).trim().length !== 0) return;
+
+      canonicalizeEmptyEditor();
+      selectEditor("start");
+    }, [
+      canonicalizeEmptyEditor,
+      editor,
+      pluginPlaceholder,
+      selectEditor,
+      stateVersion,
+    ]);
+
+    return (
+      <div
+        ref={wrapperRef}
+        className={`inkwell-editor-wrapper${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}${classNames?.root ? ` ${classNames.root}` : ""}`}
+        style={styles?.root}
       >
-        <Editable
-          ref={editorElRef}
-          className="inkwell-editor"
-          renderElement={RenderElement}
-          renderLeaf={RenderLeaf}
-          decorate={decorate}
-          placeholder={placeholder ?? "Start writing..."}
-          spellCheck
-          role="textbox"
-          aria-multiline
-          aria-placeholder={placeholder}
-          data-placeholder={placeholder ?? "Start writing..."}
-          onKeyDown={handleKeyDown}
-        />
-      </Slate>
-    </div>
-  );
-}
+        {activePlugin && (
+          <div
+            className="inkwell-plugin-backdrop"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 999,
+              background: "transparent",
+            }}
+            onMouseDown={dismissPlugin}
+          />
+        )}
+        {plugins.map(plugin => {
+          const props = makePluginProps(plugin);
+          if (!props.active || !plugin.render) return null;
+          return <Fragment key={plugin.name}>{plugin.render(props)}</Fragment>;
+        })}
+        <Slate
+          editor={editor}
+          initialValue={initialValue}
+          onChange={handleChange}
+        >
+          <Editable
+            ref={editorElRef}
+            className={`inkwell-editor${classNames?.editor ? ` ${classNames.editor}` : ""}`}
+            style={styles?.editor}
+            renderElement={RenderElement}
+            renderLeaf={RenderLeaf}
+            decorate={decorate}
+            placeholder={resolvedPlaceholder}
+            spellCheck
+            role="textbox"
+            aria-multiline
+            aria-placeholder={resolvedPlaceholder}
+            data-placeholder={resolvedPlaceholder}
+            readOnly={!editable}
+            onFocus={() => scheduleFocusedState(true)}
+            onBlur={() => scheduleFocusedState(false)}
+            onKeyDown={handleKeyDown}
+          />
+        </Slate>
+      </div>
+    );
+  },
+);

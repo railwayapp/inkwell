@@ -2,7 +2,7 @@
 title: "Renderer"
 ---
 
-`InkwellRenderer` converts a Markdown string into React elements. It
+`InkwellRenderer` converts a Markdown source string into React elements. It
 produces semantic HTML, has no browser dependencies, and works in any
 React environment including server-side rendering.
 
@@ -11,11 +11,13 @@ React environment including server-side rendering.
 ```tsx
 import { InkwellRenderer } from "@railway/inkwell";
 
-<InkwellRenderer content="# Hello **world**" />
+<InkwellRenderer content="# Hello **world**" />;
 ```
 
-The renderer supports the full CommonMark spec plus GitHub Flavored
-Markdown extensions (tables, strikethrough, task lists).
+The renderer handles CommonMark plus GitHub Flavored Markdown features such
+as strikethrough, task lists, and autolinks. GFM table syntax is
+intentionally rendered as source text; Inkwell does not emit `<table>`
+elements by default.
 
 ## Custom components
 
@@ -47,8 +49,8 @@ Each component receives the original element's props and children.
 ```
 
 You can override any HTML element: `h1`–`h6`, `p`, `a`, `img`,
-`blockquote`, `pre`, `code`, `ul`, `ol`, `li`, `table`, `strong`, `em`,
-`del`, and more.
+`blockquote`, `pre`, `code`, `ul`, `ol`, `li`, `strong`, `em`, `del`,
+and more.
 
 ## Syntax highlighting
 
@@ -68,10 +70,10 @@ import rehypeShiki from "@shikijs/rehype";
 <InkwellRenderer
   content={content}
   rehypePlugins={[[rehypeShiki, { theme: "github-dark" }]]}
-/>
+/>;
 ```
 
-The same `rehypePlugins` prop is available on
+The same `rehypePlugins` option is available in
 [`InkwellEditor`](/docs/editor#syntax-highlighting).
 
 ## Props reference
@@ -80,7 +82,7 @@ The same `rehypePlugins` prop is available on
 
 **Type:** `string`
 
-The Markdown string to render.
+The Markdown source string to render.
 
 ### `components`
 
@@ -94,7 +96,7 @@ A map of HTML element names to React components. See
 **Type:** `RehypePluginConfig[]`
 
 Custom rehype plugins for the Markdown rendering pipeline. Accepts a
-plugin function or a `[plugin, options]` tuple.
+plugin function or a tuple such as `[plugin, ...options]`.
 
 ### `copyButton`
 
@@ -107,8 +109,42 @@ reveal the button.
 <InkwellRenderer content={content} copyButton={false} />
 ```
 
+### `mentions`
+
+**Type:** `MentionRenderer[]`
+
+Text patterns to hydrate into custom React nodes during rendering. Each
+entry provides a `pattern` regular expression and `resolve(match)` callback;
+matches are replaced in rendered text. This is useful for persisted markers
+inserted by the mentions plugin.
+
 ### `className`
 
 **Type:** `string`
 
 CSS class applied to the wrapper `<div>`.
+
+## Utilities
+
+Use the renderer utilities when you need the same parsing or HTML conversion
+without rendering `<InkwellRenderer />` directly.
+
+```tsx
+import { htmlToMarkdown, parseMarkdown } from "@railway/inkwell";
+
+const previewNodes = parseMarkdown(content, {
+  components,
+  rehypePlugins: [[rehypeShiki, { theme: "github-dark" }]],
+  mentions,
+});
+const markdown = htmlToMarkdown(html);
+```
+
+### `parseMarkdown(content, options)`
+
+Parses Markdown source into React nodes using the same component overrides,
+rehype plugin pipeline, and mention hydration options as `InkwellRenderer`.
+
+### `htmlToMarkdown(html)`
+
+Converts an HTML string into Markdown source.

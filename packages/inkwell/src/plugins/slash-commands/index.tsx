@@ -135,7 +135,9 @@ const getCurrentBlockText = (editor: InkwellEditor): string => {
   }
 };
 
-const getTextBeforeCursorInBlock = (editor: InkwellEditor): string | null => {
+const getContentBeforeCursorInBlock = (
+  editor: InkwellEditor,
+): string | null => {
   const { selection } = editor;
   if (!selection || !Range.isCollapsed(selection)) return null;
   const anchor = selection.anchor;
@@ -529,7 +531,7 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
         !event.ctrlKey &&
         !event.altKey
       ) {
-        const beforeCursor = getTextBeforeCursorInBlock(editor);
+        const beforeCursor = getContentBeforeCursorInBlock(editor);
         const blockText = getCurrentBlockText(editor);
         if (
           beforeCursor !== null &&
@@ -592,7 +594,7 @@ export const createSlashCommandsPlugin = <T extends SlashCommandItem>({
       }
 
       if (event.key === "Backspace") {
-        const beforeCursor = getTextBeforeCursorInBlock(editor);
+        const beforeCursor = getContentBeforeCursorInBlock(editor);
         if (beforeCursor === "/") {
           // The user backspaced over the trigger — close the menu.
           ctx.setActivePlugin(null);

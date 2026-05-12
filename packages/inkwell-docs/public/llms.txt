@@ -2,7 +2,7 @@
 
 > Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration support.
 
-Inkwell gives you a visual editing experience where the underlying data is always a plain Markdown string. Markdown in, Markdown out. It includes an extensible plugin system and optional real-time collaboration via Yjs.
+Inkwell gives you a visual editing experience where the underlying content is always the Markdown source string. The Markdown source is the text. It includes an extensible plugin system and optional real-time collaboration via Yjs.
 
 - Package: `@railway/inkwell`
 - Peer dependency: React 19+
@@ -26,7 +26,7 @@ npm install @railway/inkwell
 
 ## Editor
 
-`useInkwell` is the recommended editor API. Give it a Markdown string and an `onChange` handler, render the returned `EditorInstance`, and use the grouped `editor` controller for imperative actions.
+`useInkwell` is the recommended editor API. Give it a content string and an `onChange` handler, render the returned `EditorInstance`, and use the grouped `editor` controller for imperative actions.
 
 ```tsx
 import { useInkwell } from "@railway/inkwell";
@@ -50,9 +50,9 @@ Most applications should use `useInkwell`. The lower-level `InkwellEditor` compo
 
 ### Editor Options
 
-- `content: string` — Markdown string. Drives the editor unless collaboration is enabled.
-- `onChange?: (markdown: string) => void` — Called on every document change with the updated Markdown.
-- `onStateChange?: (state: InkwellEditorState) => void` — Called with `{ markdown, text, isEmpty, isFocused, isEditable, characterCount, characterLimit, overLimit }` when editor state changes.
+- `content: string` — Markdown source content. Drives the editor unless collaboration is enabled.
+- `onChange?: (content: string) => void` — Called on every document change with the updated content.
+- `onStateChange?: (state: InkwellEditorState) => void` — Called with `{ content, isEmpty, isFocused, isEditable, characterCount, characterLimit, overLimit }` when editor state changes.
 - `placeholder?: string` — Text shown when the editor is empty.
 - `className?: string` — CSS class applied to the outer wrapper element.
 - `style?: React.CSSProperties` — Inline styles applied to the editable surface. Use for sizing such as `height`, `minHeight`, or `width`.
@@ -63,23 +63,22 @@ Most applications should use `useInkwell`. The lower-level `InkwellEditor` compo
 - `collaboration?: CollaborationConfig` — Enable real-time collaborative editing via Yjs.
 - `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for code block highlighting.
 - `characterLimit?: number` — Tracks character count and adds `inkwell-editor-over-limit` when exceeded.
-- `enforceCharacterLimit?: boolean` (default: `false`) — Blocks text input, pasted plain text, plugin insertions, and `editor.insertMarkdown()` past `characterLimit`; overlong text is truncated to remaining capacity.
+- `enforceCharacterLimit?: boolean` (default: `false`) — Blocks text input, pasted content, plugin insertions, and `editor.insertContent()` past `characterLimit`; overlong text is truncated to remaining capacity.
 - `onCharacterCount?: (count: number, limit?: number) => void` — Called when character count changes.
-- `submitOnEnter?: boolean` (default: `false`) — When true, Enter calls `onSubmit(markdown)` instead of inserting a newline; Shift+Enter still inserts a newline.
-- `onSubmit?: (markdown: string) => void` — Called when `submitOnEnter` handles Enter.
+- `submitOnEnter?: boolean` (default: `false`) — When true, Enter calls `onSubmit(content)` instead of inserting a newline; Shift+Enter still inserts a newline.
+- `onSubmit?: (content: string) => void` — Called when `submitOnEnter` handles Enter.
 - `limitToast?: boolean` (default: `true`) — Renders a built-in toast (`.inkwell-editor-limit-toast`) at the top-right of `.inkwell-editor-wrapper` when `characterCount > characterLimit`, and also at `characterCount === characterLimit` when `enforceCharacterLimit` blocks further typing. Set to `false` to render your own indicator instead.
 
 ### Editor Controller
 
 `useInkwell` returns `editor`. If you are building a custom abstraction around the low-level `InkwellEditor` component, its `ref={useRef<InkwellEditorHandle>(null)}` exposes the same methods:
 
-- `getMarkdown(): string`
-- `getText(): string`
 - `getState(): InkwellEditorState`
+- `getState().content: string`
 - `focus(options?: { at?: "start" | "end" }): void`
 - `clear(options?: { emitChange?: boolean; select?: "start" | "end" | "preserve" }): void`
-- `setMarkdown(markdown: string, options?: { emitChange?: boolean; select?: "start" | "end" | "preserve" }): void`
-- `insertMarkdown(markdown: string): void`
+- `setContent(content: string, options?: { emitChange?: boolean; select?: "start" | "end" | "preserve" }): void`
+- `insertContent(content: string): void`
 
 ### Formatting
 
@@ -156,7 +155,7 @@ return <EditorInstance />;
 
 ## Renderer
 
-`InkwellRenderer` converts Markdown to React elements. Produces semantic HTML, no browser dependencies, works with SSR. It supports CommonMark plus GFM strikethrough, task lists, and autolinks; GFM table syntax is rendered as plain text and does not emit `<table>` elements by default.
+`InkwellRenderer` converts Markdown to React elements. Produces semantic HTML, no browser dependencies, works with SSR. It supports CommonMark plus GFM strikethrough, task lists, and autolinks; GFM table syntax is rendered as source text and does not emit `<table>` elements by default.
 
 ```tsx
 import { InkwellRenderer } from "@railway/inkwell";
@@ -166,7 +165,7 @@ import { InkwellRenderer } from "@railway/inkwell";
 
 ### Renderer Props
 
-- `content: string` — The Markdown string to render.
+- `content: string` — The Markdown source string to render.
 - `components?: InkwellComponents` — Override how specific HTML elements render.
 - `rehypePlugins?: RehypePluginConfig[]` — Custom rehype plugins for the rendering pipeline.
 - `copyButton?: boolean` (default: `true`) — Show a copy button on fenced code blocks.
@@ -319,7 +318,7 @@ interface BubbleMenuItem {
 
 ### Built-in: Snippets
 
-Searchable picker for inserting Markdown templates:
+Searchable picker for inserting content templates:
 
 ```tsx
 import { createSnippetsPlugin, useInkwell } from "@railway/inkwell";
@@ -734,7 +733,7 @@ Character limit:
 - `.inkwell-renderer` — Wrapper div
 - `.inkwell-renderer-code-block` — Wrapper around each `<pre>` (when `copyButton` enabled)
 - `.inkwell-renderer-copy-btn` — Copy button on code blocks (appears on hover)
-- Standard HTML elements inside: `h1`–`h6`, `p`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `img`; GFM table syntax is rendered as plain text instead of `<table>`
+- Standard HTML elements inside: `h1`–`h6`, `p`, `blockquote`, `ul`, `ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `img`; GFM table syntax is rendered as source text instead of `<table>`
 
 ### Plugin CSS Classes
 
@@ -789,7 +788,7 @@ Plugin utilities:
 Serialization:
 - `serializeToMarkdown(html: string): string`
 - `parseMarkdown(markdown: string, components?, rehypePlugins?, mentions?): ReactNode`
-- `deserialize(markdown: string, decorations?): InkwellElement[]`
+- `deserialize(content: string, decorations?): InkwellElement[]`
 
 Types:
 - `UseInkwellOptions`
@@ -799,7 +798,7 @@ Types:
 - `InkwellEditorHandle`
 - `InkwellEditorProps`
 - `InkwellEditorState`
-- `InkwellSetMarkdownOptions`
+- `InkwellSetContentOptions`
 - `InkwellRendererProps`
 - `InkwellPlugin`
 - `InkwellPluginPlaceholder`

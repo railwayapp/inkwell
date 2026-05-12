@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Inkwell is a WYSIWYG markdown editor for React, built on Slate.js. The editor uses a decoration-based approach where the text content IS the markdown — visual formatting is computed at render time, never stored in the data model. Supports real-time collaboration via Yjs.
+Inkwell is a WYSIWYG markdown editor for React, built on Slate.js. The editor uses a decoration-based approach where the content IS the Markdown source — visual formatting is computed at render time, never stored in the data model. Supports real-time collaboration via Yjs.
 
 ## Monorepo Structure
 
@@ -139,7 +139,7 @@ Only `@railway/inkwell` is published; `inkwell-docs` and `inkwell-demo-collab-se
 
 ### API — Hook and Components
 
-The recommended editor API is `useInkwell(options)`, which returns `{ state, EditorInstance, editor }`. Render `<EditorInstance />` and use the grouped `editor` controller for focus, clearing, replacing Markdown, insertion, and state inspection.
+The recommended editor API is `useInkwell(options)`, which returns `{ state, EditorInstance, editor }`. Render `<EditorInstance />` and use the grouped `editor` controller for focus, clearing, content replacement, insertion, and state inspection.
 
 The library also exports components directly for lower-level integrations. Most application code should prefer `useInkwell`; use `<InkwellEditor />` only when building a custom abstraction that needs to own component rendering directly.
 
@@ -153,11 +153,11 @@ The library also exports components directly for lower-level integrations. Most 
 - **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createCompletionsPlugin`, `createEmojiPlugin`, `createMentionsPlugin`, `createSlashCommandsPlugin`, `createSnippetsPlugin`
 - **Plugin utilities**: `defaultBubbleMenuItems`, `defaultEmojis`, `pluginClass`, `PluginMenuPrimitive`, `pluginPickerClass`
 - **Serialization**: `serializeToMarkdown`, `parseMarkdown`, `deserialize`
-- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `InkwellPluginPlaceholder`, `AttachmentsPluginOptions`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `CompletionPluginOptions`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`, `SubscribeForwardedKey`
+- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetContentOptions`, `InkwellRendererProps`, `InkwellPlugin`, `InkwellPluginPlaceholder`, `AttachmentsPluginOptions`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `CompletionPluginOptions`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`, `SubscribeForwardedKey`
 
 ### Editor Rendering Model (Slate.js)
 
-Decoration-based: text content IS the markdown. Visual formatting computed at render time.
+Decoration-based: content IS the Markdown source. Visual formatting computed at render time.
 
 **Block elements** (configurable via `decorations` prop, all enabled by default):
 
@@ -172,7 +172,7 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
   via `BubbleMenuItem[]`. Pass `bubbleMenu={false}` to disable. Default
   items: bold/italic/strike. Each item is a React component receiving
   `{ wrapSelection }`.
-- **Snippets** — picker plugin for inserting Markdown templates.
+- **Snippets** — picker plugin for inserting content templates.
 - **Emoji** — searchable picker opened by `:` at token boundaries, backed by
   `defaultEmojis` by default and customizable with `emojis`, async `search`,
   `renderItem`, `trigger`, and `emptyMessage`.
@@ -199,8 +199,8 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
   the introduced slash-command line, while Escape in the execute phase cancels
   and clears that line. The plugin uses `ctx.setActivePlugin` from
   `PluginKeyDownContext` to claim editor activation (no character trigger),
-  and writes the slash line directly through the captured editor — no
-  `getMarkdown`/`setMarkdown` round-trip is required from the host.
+  and writes the slash line directly through the captured editor — no content
+  round-trip is required from the host.
 
 All picker-style plugins (snippets, emoji, mentions, anything custom) render
 through the shared `PluginMenuPrimitive` so the menu UI, keyboard nav,

@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { Node } from "slate";
 import type {
   InkwellEditorController,
   InkwellEditorHandle,
@@ -16,23 +15,16 @@ import type {
   UseInkwellResult,
 } from "../types";
 import { InkwellEditor } from "./inkwell-editor";
-import { deserialize } from "./slate/deserialize";
 
 const getInitialState = (options: UseInkwellOptions): InkwellEditorState => {
-  const nodes = deserialize(options.content, options.decorations);
-  const text = nodes.reduce(
-    (value, node) => `${value}${Node.string(node)}`,
-    "",
-  );
-  const characterCount = text.length;
+  const characterCount = options.content.length;
   const overLimit =
     options.characterLimit !== undefined &&
     characterCount > options.characterLimit;
 
   return {
-    markdown: options.content,
-    text,
-    isEmpty: text.trim().length === 0,
+    content: options.content,
+    isEmpty: options.content.trim().length === 0,
     isFocused: false,
     isEditable: options.editable ?? true,
     characterCount,
@@ -58,14 +50,6 @@ export const useInkwell = (options: UseInkwellOptions): UseInkwellResult => {
 
   const editor = useMemo<InkwellEditorController>(
     () => ({
-      getMarkdown: () => {
-        const current = editorRef.current;
-        return current ? current.getMarkdown() : stateRef.current.markdown;
-      },
-      getText: () => {
-        const current = editorRef.current;
-        return current ? current.getText() : stateRef.current.text;
-      },
       getState: () => {
         const current = editorRef.current;
         return current ? current.getState() : stateRef.current;
@@ -76,11 +60,11 @@ export const useInkwell = (options: UseInkwellOptions): UseInkwellResult => {
       clear: options => {
         editorRef.current?.clear(options);
       },
-      setMarkdown: (markdown, options) => {
-        editorRef.current?.setMarkdown(markdown, options);
+      setContent: (content, options) => {
+        editorRef.current?.setContent(content, options);
       },
-      insertMarkdown: markdown => {
-        editorRef.current?.insertMarkdown(markdown);
+      insertContent: content => {
+        editorRef.current?.insertContent(content);
       },
     }),
     [],

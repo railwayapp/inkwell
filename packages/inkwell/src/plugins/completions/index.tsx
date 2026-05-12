@@ -27,7 +27,7 @@ export interface CompletionPluginOptions {
   onRestore?: (completion: string) => void;
   /** Whether undo-to-empty should restore the accepted completion. Defaults to true. */
   restoreOnUndo?: boolean;
-  /** Reserved for API compatibility. Native placeholders are plain text. */
+  /** Reserved for API compatibility. Native placeholders are source text. */
   rehypePlugins?: RehypePluginConfig[];
 }
 

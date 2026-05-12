@@ -38,7 +38,7 @@ describe("deserialize", () => {
     });
     expect(result[0].type).toBe("heading");
     expect(result[0].level).toBe(2);
-    expect(result[0].children[0].text).toBe("Title");
+    expect(result[0].children[0].text).toBe("## Title");
   });
 
   it("deserializes h1 through h6", () => {
@@ -93,12 +93,12 @@ describe("deserialize", () => {
   it("deserializes blockquotes", () => {
     const result = deserialize("> quoted text");
     expect(result[0].type).toBe("blockquote");
-    expect(result[0].children[0].text).toBe("quoted text");
+    expect(result[0].children[0].text).toBe("> quoted text");
   });
 
-  it("strips > prefix from blockquote text", () => {
+  it("preserves > prefix in blockquote source content", () => {
     const result = deserialize("> hello");
-    expect(result[0].children[0].text).toBe("hello");
+    expect(result[0].children[0].text).toBe("> hello");
   });
 
   it("treats blockquotes as paragraphs when disabled", () => {
@@ -194,7 +194,7 @@ describe("deserialize", () => {
     expect(result[0].type).toBe("image");
     expect(result[0].alt).toBe("a cat");
     expect(result[0].url).toBe("https://img/cat.png");
-    expect(result[0].children[0].text).toBe("");
+    expect(result[0].children[0].text).toBe("![a cat](https://img/cat.png)");
   });
 
   it("leaves inline-mid-paragraph image syntax as paragraph text", () => {

@@ -169,10 +169,10 @@ function syncDocs(from: Y.Doc, to: Y.Doc) {
 
 function seedDocument(
   sharedType: Y.XmlText,
-  markdown: string,
+  content: string,
   decorations?: InkwellDecorations,
 ) {
-  const nodes = deserialize(markdown, decorations);
+  const nodes = deserialize(content, decorations);
   const delta = slateNodesToInsertDelta(nodes);
   sharedType.applyDelta(delta);
 }
@@ -195,7 +195,7 @@ function getElements(editor: Editor): InkwellElement[] {
   return editor.children as InkwellElement[];
 }
 
-function getText(editor: Editor): string {
+function getContent(editor: Editor): string {
   return Node.string(editor);
 }
 
@@ -376,7 +376,7 @@ describe("InkwellEditor — markdown content", () => {
     expect(
       editor?.querySelector(".inkwell-editor-heading"),
     ).toBeInTheDocument();
-    expect(editor?.textContent).toBe("Title");
+    expect(editor?.textContent).toBe("# Title");
   });
 
   it("renders links as plain text (no <a>)", () => {
@@ -542,12 +542,12 @@ describe("InkwellEditor — blockquotes", () => {
     expect(bq).toBeInTheDocument();
   });
 
-  it("strips the > prefix from blockquote text content", () => {
+  it("preserves the > prefix in blockquote source content", () => {
     const { container } = render(
       <InkwellEditor content="> hello world" onChange={vi.fn()} />,
     );
     const bq = container.querySelector(".inkwell-editor-blockquote");
-    expect(bq?.textContent).toBe("hello world");
+    expect(bq?.textContent).toBe("> hello world");
   });
 });
 
@@ -809,23 +809,23 @@ describe("InkwellEditor — plugin integration", () => {
       // alongside the keydown events that drive the picker state.
       await act(async () => {
         fireEvent.keyDown(editor, { key: "@" });
-        ref.current?.insertMarkdown("@");
+        ref.current?.insertContent("@");
       });
       await screen.findByText("Alice");
 
       await act(async () => {
         fireEvent.keyDown(editor, { key: "b" });
-        ref.current?.insertMarkdown("b");
+        ref.current?.insertContent("b");
       });
       await act(async () => {
         fireEvent.keyDown(editor, { key: "o" });
-        ref.current?.insertMarkdown("o");
+        ref.current?.insertContent("o");
       });
       await screen.findByText("Bob");
 
       // Pre-select assertion: the document currently contains the typed
       // chars verbatim.
-      expect(ref.current?.getMarkdown()).toBe("Hello @bo");
+      expect(ref.current?.getState().content).toBe("Hello @bo");
 
       await act(async () => {
         fireEvent.keyDown(editor, { key: "Enter" });
@@ -834,7 +834,7 @@ describe("InkwellEditor — plugin integration", () => {
       await waitFor(() => {
         // After selection the trigger and query chars must be removed and
         // the mention marker inserted in their place — not appended.
-        expect(ref.current?.getMarkdown()).toBe("Hello @user[2]");
+        expect(ref.current?.getState().content).toBe("Hello @user[2]");
       });
     },
   );
@@ -922,7 +922,7 @@ describe("InkwellEditor — plugin integration", () => {
 
     act(() => {
       ref.current?.focus({ at: "end" });
-      ref.current?.insertMarkdown("\n");
+      ref.current?.insertContent("\n");
     });
 
     act(() => {
@@ -960,7 +960,7 @@ describe("InkwellEditor — plugin integration", () => {
       });
     });
     await waitFor(() => {
-      expect(ref.current?.getMarkdown()).toBe("Intro");
+      expect(ref.current?.getState().content).toBe("Intro");
     });
   });
 
@@ -984,7 +984,7 @@ describe("InkwellEditor — plugin integration", () => {
 
     act(() => {
       ref.current?.focus({ at: "end" });
-      ref.current?.insertMarkdown("\n");
+      ref.current?.insertContent("\n");
     });
 
     act(() => {
@@ -1011,7 +1011,7 @@ describe("InkwellEditor — plugin integration", () => {
 
     expect(onExecute).not.toHaveBeenCalled();
     await waitFor(() => {
-      expect(ref.current?.getMarkdown()).toBe("Intro");
+      expect(ref.current?.getState().content).toBe("Intro");
     });
   });
 
@@ -1106,7 +1106,7 @@ describe("InkwellEditor — plugin integration", () => {
     ) => {
       await act(async () => {
         ref.current?.focus({ at: "end" });
-        ref.current?.insertMarkdown("\n");
+        ref.current?.insertContent("\n");
       });
       await act(async () => {
         fireEvent.keyDown(editor, { key: "/" });
@@ -1355,7 +1355,7 @@ describe("InkwellEditor — plugin integration", () => {
         });
       });
       await waitFor(() => {
-        expect(ref.current?.getMarkdown()).toBe("Intro\n\nMiddle");
+        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
       });
     });
 
@@ -1380,7 +1380,7 @@ describe("InkwellEditor — plugin integration", () => {
 
       expect(onExecute).not.toHaveBeenCalled();
       await waitFor(() => {
-        expect(ref.current?.getMarkdown()).toBe("Intro\n\nMiddle");
+        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
       });
     });
 
@@ -1395,20 +1395,20 @@ describe("InkwellEditor — plugin integration", () => {
       });
 
       expect(screen.queryByText("/status")).not.toBeInTheDocument();
-      expect(ref.current?.getMarkdown()).toBe("Intro\n\n/");
+      expect(ref.current?.getState().content).toBe("Intro\n\n/");
     });
 
     it("does not open before existing text on the same line", async () => {
       const { ref, editor } = await renderSlashEditor("Top\nBottom");
       act(() => {
-        ref.current?.setMarkdown("Top\n\nBottom", { select: "start" });
+        ref.current?.setContent("Top\n\nBottom", { select: "start" });
       });
       act(() => {
         fireEvent.keyDown(editor, { key: "/" });
       });
 
       expect(screen.queryByText("/status")).not.toBeInTheDocument();
-      expect(ref.current?.getMarkdown()).toBe("Top\n\nBottom");
+      expect(ref.current?.getState().content).toBe("Top\n\nBottom");
     });
   });
 
@@ -1511,15 +1511,13 @@ describe("InkwellEditor — plugin integration", () => {
 });
 
 describe("InkwellEditor — imperative API and state", () => {
-  it("exposes markdown, text, and state through a ref handle", () => {
+  it("exposes content and state through a ref handle", () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     render(<InkwellEditor ref={ref} content="hello" onChange={vi.fn()} />);
 
-    expect(ref.current?.getMarkdown()).toBe("hello");
-    expect(ref.current?.getText()).toBe("hello");
+    expect(ref.current?.getState().content).toBe("hello");
     expect(ref.current?.getState()).toMatchObject({
-      markdown: "hello",
-      text: "hello",
+      content: "hello",
       isEmpty: false,
       isEditable: true,
       characterCount: 5,
@@ -1527,7 +1525,7 @@ describe("InkwellEditor — imperative API and state", () => {
     });
   });
 
-  it("can replace markdown without emitting onChange", async () => {
+  it("can replace content without emitting onChange", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onChange = vi.fn();
     const { container } = render(
@@ -1536,17 +1534,17 @@ describe("InkwellEditor — imperative API and state", () => {
     await flushEffects();
 
     await act(async () => {
-      ref.current?.setMarkdown("replacement", { emitChange: false });
+      ref.current?.setContent("replacement", { emitChange: false });
     });
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(ref.current?.getMarkdown()).toBe("replacement");
+    expect(ref.current?.getState().content).toBe("replacement");
     expect(container.querySelector(".inkwell-editor")?.textContent).toContain(
       "replacement",
     );
   });
 
-  it("clears markdown and emits onChange by default", async () => {
+  it("clears content and emits onChange by default", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onChange = vi.fn();
     render(<InkwellEditor ref={ref} content="hello" onChange={onChange} />);
@@ -1556,7 +1554,7 @@ describe("InkwellEditor — imperative API and state", () => {
       ref.current?.clear();
     });
 
-    expect(ref.current?.getMarkdown()).toBe("");
+    expect(ref.current?.getState().content).toBe("");
     expect(onChange).toHaveBeenLastCalledWith("");
   });
 
@@ -1576,7 +1574,7 @@ describe("InkwellEditor — imperative API and state", () => {
     focusSpy.mockRestore();
   });
 
-  it("inserts markdown through the ref handle", async () => {
+  it("inserts content through the ref handle", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onChange = vi.fn();
     render(<InkwellEditor ref={ref} content="hello" onChange={onChange} />);
@@ -1584,10 +1582,10 @@ describe("InkwellEditor — imperative API and state", () => {
 
     await act(async () => {
       ref.current?.focus({ at: "end" });
-      ref.current?.insertMarkdown(" world");
+      ref.current?.insertContent(" world");
     });
 
-    expect(ref.current?.getMarkdown()).toContain("world");
+    expect(ref.current?.getState().content).toContain("world");
   });
 
   it("reports state changes through onStateChange", () => {
@@ -1602,8 +1600,7 @@ describe("InkwellEditor — imperative API and state", () => {
 
     expect(onStateChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: "hello",
-        text: "hello",
+        content: "hello",
         isEmpty: false,
         characterCount: 5,
         characterLimit: 10,
@@ -2066,7 +2063,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello **world**");
+      expect(getContent(editor)).toBe("hello **world**");
     });
 
     it("wraps plain text with italic markers", () => {
@@ -2087,7 +2084,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "_", "_");
-      expect(getText(editor)).toBe("hello _world_");
+      expect(getContent(editor)).toBe("hello _world_");
     });
 
     it("wraps plain text with strikethrough markers", () => {
@@ -2108,7 +2105,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "~~", "~~");
-      expect(getText(editor)).toBe("hello ~~world~~");
+      expect(getContent(editor)).toBe("hello ~~world~~");
     });
   });
 
@@ -2131,7 +2128,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
 
     it("unwraps italic when selection includes _markers_", () => {
@@ -2152,7 +2149,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "_", "_");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
 
     it("unwraps strikethrough when selection includes ~~markers~~", () => {
@@ -2173,7 +2170,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "~~", "~~");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
   });
 
@@ -2196,7 +2193,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
 
     it("unwraps italic when selecting content inside _markers_", () => {
@@ -2217,7 +2214,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "_", "_");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
 
     it("unwraps strikethrough when selecting content inside ~~markers~~", () => {
@@ -2238,7 +2235,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "~~", "~~");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
   });
 
@@ -2261,7 +2258,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello ****world**");
+      expect(getContent(editor)).toBe("hello ****world**");
     });
 
     it("handles selection at start of line", () => {
@@ -2282,7 +2279,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
 
     it("handles selection at end of line", () => {
@@ -2303,7 +2300,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
 
     it("wraps empty selection (collapsed cursor) by inserting markers", () => {
@@ -2324,7 +2321,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toContain("****");
+      expect(getContent(editor)).toContain("****");
     });
 
     it("does not unwrap partial markers", () => {
@@ -2345,7 +2342,7 @@ describe("wrapSelection — toggle formatting", () => {
       });
 
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello ***world***");
+      expect(getContent(editor)).toBe("hello ***world***");
     });
 
     it("toggle: wrap then unwrap produces original text", () => {
@@ -2365,14 +2362,14 @@ describe("wrapSelection — toggle formatting", () => {
         focus: { path: [0, 0], offset: 11 },
       });
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello **world**");
+      expect(getContent(editor)).toBe("hello **world**");
 
       Transforms.select(editor, {
         anchor: { path: [0, 0], offset: 6 },
         focus: { path: [0, 0], offset: 15 },
       });
       wrapSelection(editor, "**", "**");
-      expect(getText(editor)).toBe("hello world");
+      expect(getContent(editor)).toBe("hello world");
     });
   });
 });
@@ -2570,7 +2567,7 @@ describe("serialize — edge cases", () => {
       },
     ];
     const md = serialize(elements);
-    expect(md).toBe("> \\> nested");
+    expect(md).toBe("> nested");
   });
 
   it("serializes empty blockquote as bare > prefix", () => {
@@ -2578,12 +2575,12 @@ describe("serialize — edge cases", () => {
       { type: "blockquote", id: generateId(), children: [{ text: "" }] },
     ];
     const md = serialize(elements);
-    expect(md).toBe(">");
+    expect(md).toBe("");
   });
 
   it("heading with undefined level falls back to h1", () => {
     const elements: InkwellElement[] = [
-      { type: "heading", id: generateId(), children: [{ text: "No level" }] },
+      { type: "heading", id: generateId(), children: [{ text: "# No level" }] },
     ];
     const md = serialize(elements);
     expect(md).toBe("# No level");
@@ -2595,7 +2592,7 @@ describe("serialize — edge cases", () => {
         type: "heading",
         id: generateId(),
         level: 3,
-        children: [{ text: "H3" }],
+        children: [{ text: "### H3" }],
       },
     ];
     const md = serialize(elements);
@@ -2607,7 +2604,7 @@ describe("serialize — edge cases", () => {
       {
         type: "blockquote",
         id: generateId(),
-        children: [{ text: "line 1\nline 2" }],
+        children: [{ text: "> line 1\n>\n> line 2" }],
       },
     ];
     const md = serialize(elements);
@@ -3319,7 +3316,7 @@ describe("Collaboration — withMarkdown behaviors", () => {
 });
 
 describe("Collaboration — component behavior", () => {
-  it("propagates setMarkdown through Yjs operations", async () => {
+  it("propagates setContent through Yjs operations", async () => {
     const collab = createCollabConfig("hello");
     const refA = createRef<import("../types").InkwellEditorHandle>();
     const refB = createRef<import("../types").InkwellEditorHandle>();
@@ -3329,12 +3326,12 @@ describe("Collaboration — component behavior", () => {
     await flushEffects();
 
     await act(async () => {
-      refA.current?.setMarkdown("from a");
+      refA.current?.setContent("from a");
     });
 
     rerender(<InkwellEditor ref={refB} content="" collaboration={collab} />);
     await waitFor(() => {
-      expect(refB.current?.getMarkdown()).toBe("from a");
+      expect(refB.current?.getState().content).toBe("from a");
     });
   });
 
@@ -3353,7 +3350,7 @@ describe("Collaboration — component behavior", () => {
 
     rerender(<InkwellEditor ref={refB} content="" collaboration={collab} />);
     await waitFor(() => {
-      expect(refB.current?.getMarkdown()).toBe("");
+      expect(refB.current?.getState().content).toBe("");
     });
   });
 
@@ -3367,11 +3364,11 @@ describe("Collaboration — component behavior", () => {
     if (!editor) throw new Error("editor not found");
 
     await act(async () => {
-      ref.current?.setMarkdown("new");
+      ref.current?.setContent("new");
       fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
     });
 
-    expect(ref.current?.getMarkdown()).toBe("new");
+    expect(ref.current?.getState().content).toBe("new");
   });
 
   it("warns when collaboration identity changes after mount", async () => {
@@ -3491,7 +3488,7 @@ describe("InkwellEditor — character limit", () => {
     });
   });
 
-  it("prevents insertMarkdown from exceeding an enforced limit", async () => {
+  it("prevents insertContent from exceeding an enforced limit", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     render(
       <InkwellEditor
@@ -3506,10 +3503,10 @@ describe("InkwellEditor — character limit", () => {
 
     await act(async () => {
       ref.current?.focus({ at: "end" });
-      ref.current?.insertMarkdown(" world");
+      ref.current?.insertContent(" world");
     });
 
-    expect(ref.current?.getText()).toBe("hello w");
+    expect(ref.current?.getState().content).toBe("hello w");
   });
 
   it("prevents plugin insertion from exceeding an enforced limit", async () => {
@@ -3534,14 +3531,14 @@ describe("InkwellEditor — character limit", () => {
     await act(async () => {
       ref.current?.focus({ at: "end" });
       fireEvent.keyDown(editor, { key: "[" });
-      ref.current?.insertMarkdown("[");
+      ref.current?.insertContent("[");
     });
     await screen.findByText("Long");
     await act(async () => {
       fireEvent.keyDown(editor, { key: "Enter" });
     });
 
-    expect(ref.current?.getText().length).toBeLessThanOrEqual(5);
+    expect(ref.current?.getState().content.length).toBeLessThanOrEqual(5);
   });
 
   it("applies over-limit class after controlled over-limit rerender", async () => {

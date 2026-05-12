@@ -55,7 +55,7 @@ export type {
   InkwellPlugin,
   InkwellPluginPlaceholder,
   InkwellRendererProps,
-  InkwellSetMarkdownOptions,
+  InkwellSetContentOptions,
   MentionRenderer,
   PluginKeyDownContext,
   PluginRenderProps,

@@ -4,6 +4,7 @@ import { withReact } from "slate-react";
 import { describe, expect, it } from "vitest";
 import type { InkwellDecorations } from "../../types";
 import { deserialize } from "./deserialize";
+import { serialize } from "./serialize";
 import type { InkwellElement } from "./types";
 import { withMarkdown } from "./with-markdown";
 import { generateId, withNodeId } from "./with-node-id";
@@ -172,10 +173,10 @@ describe("withMarkdown — blockquote triggers", () => {
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertSoftBreak();
 
-    const bqCount = getElements(editor).filter(
-      e => e.type === "blockquote",
-    ).length;
+    const elements = getElements(editor);
+    const bqCount = elements.filter(e => e.type === "blockquote").length;
     expect(bqCount).toBe(2);
+    expect(serialize(elements)).toBe("> first\n>");
   });
 });
 

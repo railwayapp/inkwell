@@ -15,7 +15,7 @@ function createTestEditor(limit: number | undefined, enforce: boolean) {
   );
 }
 
-function getText(editor: Editor): string {
+function getContent(editor: Editor): string {
   return (editor.children as InkwellElement[])
     .map(n => n.children.map(c => ("text" in c ? c.text : "")).join(""))
     .join("");
@@ -30,7 +30,7 @@ describe("withCharacterLimit", () => {
 
     editor.insertText("hello world");
 
-    expect(getText(editor)).toBe("hello world");
+    expect(getContent(editor)).toBe("hello world");
   });
 
   it("does not enforce when enforce=false, even with a limit", () => {
@@ -41,7 +41,7 @@ describe("withCharacterLimit", () => {
 
     editor.insertText("hello world");
 
-    expect(getText(editor)).toBe("hello world");
+    expect(getContent(editor)).toBe("hello world");
   });
 
   it("truncates insertText to fit the remaining budget", () => {
@@ -52,7 +52,7 @@ describe("withCharacterLimit", () => {
 
     editor.insertText("defg");
 
-    expect(getText(editor)).toBe("abcde");
+    expect(getContent(editor)).toBe("abcde");
   });
 
   it("rejects insertText when already at the limit", () => {
@@ -63,7 +63,7 @@ describe("withCharacterLimit", () => {
 
     editor.insertText("x");
 
-    expect(getText(editor)).toBe("abc");
+    expect(getContent(editor)).toBe("abc");
   });
 
   it("allows insertText that exactly fills the limit", () => {
@@ -74,7 +74,7 @@ describe("withCharacterLimit", () => {
 
     editor.insertText("de");
 
-    expect(getText(editor)).toBe("abcde");
+    expect(getContent(editor)).toBe("abcde");
   });
 
   it("truncates pasted data when it would exceed the limit", () => {
@@ -91,7 +91,7 @@ describe("withCharacterLimit", () => {
     } as unknown as DataTransfer;
     editor.insertData(data);
 
-    expect(getText(editor)).toBe("hello");
+    expect(getContent(editor)).toBe("hello");
   });
 
   it(
@@ -112,7 +112,7 @@ describe("withCharacterLimit", () => {
       // pre-insert length is 5 - 3 = 2, so 2 + 1 = 3 fits within limit 5.
       editor.insertText("X");
 
-      expect(getText(editor)).toBe("abX");
+      expect(getContent(editor)).toBe("abX");
     },
   );
 
@@ -136,7 +136,7 @@ describe("withCharacterLimit", () => {
       } as unknown as DataTransfer;
       editor.insertData(data);
 
-      expect(getText(editor)).toBe("xyz");
+      expect(getContent(editor)).toBe("xyz");
     },
   );
 

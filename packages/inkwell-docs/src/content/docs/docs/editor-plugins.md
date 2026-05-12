@@ -228,7 +228,7 @@ interface CompletionPluginOptions {
 
 When `restoreOnUndo` is true (the default), undoing an accepted completion back to an empty document calls `onRestore(completion)`. Use that callback to put the completion back into your host state.
 
-Completion placeholder text is plain text. `acceptHint` controls the prefix prepended to the placeholder text and defaults to `[tab ↹]`. `rehypePlugins` is kept for API compatibility; native placeholders cannot render rich Markdown.
+Completion placeholder text is source content text. `acceptHint` controls the prefix prepended to the placeholder text and defaults to `[tab ↹]`. `rehypePlugins` is kept for API compatibility; native placeholders cannot render rich Markdown.
 
 When a completion placeholder is active, Inkwell normalizes an otherwise empty editor to a single plain paragraph. This prevents placeholders from inheriting stale heading, code, list, or blockquote styles after the user clears existing content.
 
@@ -609,7 +609,7 @@ Your `render` function receives these props:
 | `active`                | `boolean`                               | Whether this plugin is active. Always-on plugins receive `true` every render.                                                     |
 | `query`                 | `string`                                | Text typed since the trigger fired. Useful for filtering results.                                                                 |
 | `position`              | `{ top, left }`                         | Cursor coordinates when the trigger fired. Use for positioning your UI.                                                           |
-| `onSelect`              | `(text: string) => void`                | Insert Markdown at the cursor. For character triggers, removes the trigger character first.                                       |
+| `onSelect`              | `(text: string) => void`                | Insert content at the cursor. For character triggers, removes the trigger character first.                                       |
 | `onDismiss`             | `() => void`                            | Deactivate the plugin and return focus to the editor.                                                                             |
 | `wrapSelection`         | `(before, after) => void`               | Toggle Markdown markers around the current selection.                                                                             |
 | `editorRef`             | `RefObject<HTMLDivElement \| null>`     | Ref to the editor's contenteditable element.                                                                                      |

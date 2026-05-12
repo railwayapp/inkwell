@@ -71,7 +71,7 @@ const DEMO_COMPLETION = `Welcome to Inkwell — a Markdown editor that keeps you
 Try accepting this completion, then edit the Markdown directly:
 
 - Formatting stays readable
-- The stored value is plain Markdown
+- The stored value is the Markdown source
 - Plugins can add focused writing workflows`;
 
 const DEMO_SNIPPETS = [

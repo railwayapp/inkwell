@@ -39,7 +39,7 @@ import type {
   InkwellEditorState,
   InkwellPlugin,
   InkwellPluginPlaceholder,
-  InkwellSetMarkdownOptions,
+  InkwellSetContentOptions,
   PluginKeyDownContext,
   SubscribeForwardedKey,
 } from "../types";
@@ -334,8 +334,8 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
 
     const lastContent = useRef<string>(content);
     const isInternalChange = useRef(false);
-    const [characterCount, setCharacterCount] = useState(() =>
-      initialValue.reduce((sum, n) => sum + Node.string(n).length, 0),
+    const [characterCount, setCharacterCount] = useState(
+      () => serialize(initialValue as InkwellElement[]).length,
     );
     const [isFocused, setIsFocused] = useState(false);
     const focusStateFrameRef = useRef<number | null>(null);
@@ -369,13 +369,13 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     );
 
     const updateCharacterCount = useCallback(() => {
-      const length = Node.string(editor).length;
+      const length = serialize(editor.children as InkwellElement[]).length;
       setCharacterCount(length);
       onCharacterCount?.(length, characterLimit);
       return length;
     }, [editor, onCharacterCount, characterLimit]);
 
-    const serializeMarkdown = useCallback(
+    const serializeContent = useCallback(
       () => serialize(editor.children as InkwellElement[]),
       [editor],
     );
@@ -395,16 +395,16 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           plugin.onEditorChange?.(editor);
         }
 
-        const md = serialize(value as InkwellElement[]);
+        const nextContent = serialize(value as InkwellElement[]);
         if (collaboration) {
           // In collab mode, always fire onChange (no echo prevention needed)
-          onChange?.(md);
+          onChange?.(nextContent);
         } else {
           // In standalone mode, prevent echo loops
-          if (md !== lastContent.current) {
-            lastContent.current = md;
+          if (nextContent !== lastContent.current) {
+            lastContent.current = nextContent;
             isInternalChange.current = true;
-            onChange?.(md);
+            onChange?.(nextContent);
           }
         }
       },
@@ -422,11 +422,10 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       characterLimit !== undefined && characterCount > characterLimit;
 
     const getEditorState = useCallback((): InkwellEditorState => {
-      const text = Node.string(editor);
+      const content = serializeContent();
       return {
-        markdown: serializeMarkdown(),
-        text,
-        isEmpty: text.trim().length === 0,
+        content,
+        isEmpty: content.trim().length === 0,
         isFocused,
         isEditable: editable,
         characterCount,
@@ -440,7 +439,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       editor,
       isFocused,
       overLimit,
-      serializeMarkdown,
+      serializeContent,
     ]);
 
     useEffect(() => {
@@ -616,21 +615,21 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       [editor, selectEditor],
     );
 
-    const replaceMarkdown = useCallback(
-      (markdown: string, options?: InkwellSetMarkdownOptions) => {
+    const replaceContent = useCallback(
+      (content: string, options?: InkwellSetContentOptions) => {
         const emitChange = options?.emitChange ?? true;
         const select = options?.select ?? "start";
-        const newValue = deserialize(markdown, resolvedDecorations);
+        const newValue = deserialize(content, resolvedDecorations);
 
         replaceEditorChildren(editor, newValue, true);
         updateCharacterCount();
         bumpStateVersion();
 
         if (select !== "preserve") selectEditor(select);
-        const nextMarkdown = serializeMarkdown();
-        lastContent.current = nextMarkdown;
+        const nextContent = serializeContent();
+        lastContent.current = nextContent;
         editor.onChange();
-        if (emitChange) onChange?.(nextMarkdown);
+        if (emitChange) onChange?.(nextContent);
       },
       [
         bumpStateVersion,
@@ -638,7 +637,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         onChange,
         resolvedDecorations,
         selectEditor,
-        serializeMarkdown,
+        serializeContent,
         updateCharacterCount,
       ],
     );
@@ -646,15 +645,13 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     useImperativeHandle(
       ref,
       () => ({
-        getMarkdown: serializeMarkdown,
-        getText: () => Node.string(editor),
         getState: getEditorState,
         focus: focusEditor,
-        clear: options => replaceMarkdown("", options),
-        setMarkdown: replaceMarkdown,
-        insertMarkdown: markdown => {
+        clear: options => replaceContent("", options),
+        setContent: replaceContent,
+        insertContent: content => {
           focusEditor();
-          const nodes = deserialize(markdown, resolvedDecorations);
+          const nodes = deserialize(content, resolvedDecorations);
           Transforms.insertFragment(editor, nodes);
         },
       }),
@@ -662,9 +659,9 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         editor,
         focusEditor,
         getEditorState,
-        replaceMarkdown,
+        replaceContent,
         resolvedDecorations,
-        serializeMarkdown,
+        serializeContent,
       ],
     );
 
@@ -932,7 +929,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
 
         if (submitOnEnter && event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
-          onSubmit?.(serializeMarkdown());
+          onSubmit?.(serializeContent());
           return;
         }
 
@@ -995,7 +992,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         emitForwardedKey,
         submitOnEnter,
         onSubmit,
-        serializeMarkdown,
+        serializeContent,
       ],
     );
 

@@ -5,8 +5,8 @@ title: "Getting Started"
 import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 Inkwell is a Markdown editor and renderer for React. You write and edit
-content in a visual WYSIWYG interface, but the underlying data is always
-plain Markdown. Markdown in, Markdown out.
+content in a visual WYSIWYG interface, but the underlying content is always
+the Markdown source. The Markdown source is the text.
 
 Built on [Slate.js](https://www.slatejs.org/), with an extensible plugin
 system and optional real-time collaboration via [Yjs](https://yjs.dev/).
@@ -50,7 +50,7 @@ Requires React 19 or later as a peer dependency.
 
 ## Your first editor
 
-Use `useInkwell` with a Markdown string and an `onChange` handler, then
+Use `useInkwell` with a content string and an `onChange` handler, then
 render the returned `EditorInstance` component.
 
 ```tsx

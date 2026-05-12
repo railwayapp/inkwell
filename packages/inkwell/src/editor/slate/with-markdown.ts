@@ -114,7 +114,13 @@ export function withMarkdown(
     if (element.type === "blockquote") {
       // Empty blockquote → remove it and insert paragraph
       const text = Node.string(node);
-      if (!text.trim()) {
+      if (/^>\s*$/.test(text)) {
+        Transforms.delete(editor, {
+          at: {
+            anchor: Editor.start(editor, path),
+            focus: Editor.end(editor, path),
+          },
+        });
         Transforms.setNodes(editor, {
           type: "paragraph",
         } as Partial<InkwellElement>);
@@ -135,7 +141,13 @@ export function withMarkdown(
 
     // Enter on heading → exit to new paragraph
     if (element.type === "heading") {
-      if (!text.trim()) {
+      if (!text.trim() || /^#{1,6}\s*$/.test(text)) {
+        Transforms.delete(editor, {
+          at: {
+            anchor: Editor.start(editor, path),
+            focus: Editor.end(editor, path),
+          },
+        });
         Transforms.setNodes(editor, {
           type: "paragraph",
         } as Partial<InkwellElement>);
@@ -248,7 +260,7 @@ export function withMarkdown(
         const newBq: InkwellElement = {
           type: "blockquote",
           id: generateId(),
-          children: [{ text: "" }],
+          children: [{ text: "> " }],
         };
         Transforms.insertNodes(editor, newBq, { at: Path.next(path) });
         Transforms.select(editor, Editor.start(editor, Path.next(path)));
@@ -313,13 +325,7 @@ export function withMarkdown(
       text === " " &&
       currentText === ">"
     ) {
-      // Clear the text and convert to blockquote
-      Transforms.delete(editor, {
-        at: {
-          anchor: Editor.start(editor, path),
-          focus: Editor.end(editor, path),
-        },
-      });
+      insertText(text);
       Transforms.setNodes(editor, {
         type: "blockquote",
       } as Partial<InkwellElement>);
@@ -336,12 +342,7 @@ export function withMarkdown(
       deco[headingKey]
     ) {
       const level = headingLevel;
-      Transforms.delete(editor, {
-        at: {
-          anchor: Editor.start(editor, path),
-          focus: Editor.end(editor, path),
-        },
-      });
+      insertText(text);
       Transforms.setNodes(editor, {
         type: "heading",
         level,

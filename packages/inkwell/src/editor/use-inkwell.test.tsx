@@ -6,7 +6,7 @@ const HookEditor = ({
   onChange,
   onStateChange,
 }: {
-  onChange?: (markdown: string) => void;
+  onChange?: (content: string) => void;
   onStateChange?: Parameters<typeof useInkwell>[0]["onStateChange"];
 }) => {
   const { state, EditorInstance, editor } = useInkwell({
@@ -18,9 +18,9 @@ const HookEditor = ({
 
   return (
     <>
-      <div data-testid="markdown-state">{state.markdown}</div>
+      <div data-testid="content-state">{state.content}</div>
       <div data-testid="count-state">{state.characterCount}</div>
-      <button type="button" onClick={() => editor.setMarkdown("updated")}>
+      <button type="button" onClick={() => editor.setContent("updated")}>
         Replace
       </button>
       <button type="button" onClick={() => editor.clear()}>
@@ -35,7 +35,7 @@ describe("useInkwell", () => {
   it("returns state, a grouped editor controller, and a render component", () => {
     render(<HookEditor />);
 
-    expect(screen.getByTestId("markdown-state")).toHaveTextContent("hello");
+    expect(screen.getByTestId("content-state")).toHaveTextContent("hello");
     expect(screen.getByTestId("count-state")).toHaveTextContent("5");
     expect(screen.getByRole("textbox")).toHaveTextContent("hello");
   });
@@ -52,7 +52,7 @@ describe("useInkwell", () => {
     });
 
     expect(onChange).toHaveBeenLastCalledWith("updated");
-    expect(screen.getByTestId("markdown-state")).toHaveTextContent("updated");
+    expect(screen.getByTestId("content-state")).toHaveTextContent("updated");
     expect(screen.getByRole("textbox")).toHaveTextContent("updated");
   });
 
@@ -62,8 +62,7 @@ describe("useInkwell", () => {
 
     expect(onStateChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: "hello",
-        text: "hello",
+        content: "hello",
         characterCount: 5,
         characterLimit: 10,
       }),

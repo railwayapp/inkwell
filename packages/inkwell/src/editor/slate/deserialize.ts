@@ -16,10 +16,10 @@ const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
  * render time, not in the data model.
  */
 export function deserialize(
-  markdown: string,
+  content: string,
   decorations?: InkwellDecorations,
 ): InkwellElement[] {
-  if (!markdown) {
+  if (!content) {
     return [{ type: "paragraph", id: generateId(), children: [{ text: "" }] }];
   }
 
@@ -39,7 +39,7 @@ export function deserialize(
     images: decorations?.images ?? true,
   };
 
-  const lines = markdown.split("\n");
+  const lines = content.split("\n");
   const result: InkwellElement[] = [];
   let inCodeBlock = false;
   let paragraphLines: string[] = [];
@@ -54,7 +54,7 @@ export function deserialize(
           type: "heading",
           id: generateId(),
           level: hMatch[1].length,
-          children: [{ text: line.slice(hMatch[0].length) }],
+          children: [{ text: line }],
         });
         continue;
       }
@@ -66,13 +66,13 @@ export function deserialize(
           id: generateId(),
           alt: imageMatch[1],
           url: imageMatch[2],
-          children: [{ text: "" }],
+          children: [{ text: line }],
         });
       } else if (cfg.blockquotes && /^> /.test(line)) {
         result.push({
           type: "blockquote",
           id: generateId(),
-          children: [{ text: line.slice(2) }],
+          children: [{ text: line }],
         });
       } else if (cfg.lists && LIST_RE.test(line)) {
         result.push({
@@ -138,7 +138,7 @@ export function deserialize(
 
   flushParagraph();
 
-  // Handle unclosed code block — treat accumulated lines as plain text
+  // Handle unclosed code block — treat accumulated lines as source text
   if (inCodeBlock) {
     // The elements already contain the fence + code lines, leave them
   }

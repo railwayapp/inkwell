@@ -84,7 +84,7 @@ Applied when a `characterLimit` is configured on the editor:
 The renderer wraps output in `<div class="inkwell-renderer">`. Inside,
 standard HTML elements are used: `h1`–`h6`, `p`, `blockquote`, `ul`,
 `ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `img`.
-GFM table syntax is rendered as plain text rather than `<table>` elements.
+GFM table syntax is rendered as source text rather than `<table>` elements.
 
 Target them with descendant selectors:
 

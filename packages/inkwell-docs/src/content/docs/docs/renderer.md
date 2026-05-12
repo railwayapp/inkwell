@@ -2,7 +2,7 @@
 title: "Renderer"
 ---
 
-`InkwellRenderer` converts a Markdown string into React elements. It
+`InkwellRenderer` converts a Markdown source string into React elements. It
 produces semantic HTML, has no browser dependencies, and works in any
 React environment including server-side rendering.
 
@@ -16,7 +16,7 @@ import { InkwellRenderer } from "@railway/inkwell";
 
 The renderer supports CommonMark plus GitHub Flavored Markdown features such
 as strikethrough, task lists, and autolinks. GFM table syntax is
-intentionally rendered as plain text; Inkwell does not emit `<table>`
+intentionally rendered as source text; Inkwell does not emit `<table>`
 elements by default.
 
 ## Custom components
@@ -82,7 +82,7 @@ The same `rehypePlugins` option is available in
 
 **Type:** `string`
 
-The Markdown string to render.
+The Markdown source string to render.
 
 ### `components`
 

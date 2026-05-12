@@ -3,12 +3,12 @@ title: "Editor"
 ---
 
 Inkwell is a WYSIWYG Markdown editor for React. The content you see is
-visually formatted, but the underlying data is always a plain Markdown
-string.
+visually formatted, but the underlying content is always the Markdown source
+string. The Markdown source is the text.
 
 ## Usage
 
-The recommended API is `useInkwell`. Give it your Markdown string and an
+The recommended API is `useInkwell`. Give it your content string and an
 `onChange` handler, render the returned `EditorInstance`, and use the
 grouped `editor` controller when you need to inspect or manipulate the
 document.
@@ -36,8 +36,8 @@ function App() {
 }
 ```
 
-`content` accepts any Markdown string. `onChange` fires on every edit with
-the updated Markdown.
+`content` is the Markdown source string. `onChange` fires on every edit with
+the updated content.
 
 ## Low-level component
 
@@ -54,17 +54,15 @@ import { InkwellEditor } from "@railway/inkwell";
 
 ## Editor controller
 
-The `editor` object returned by `useInkwell` exposes `getMarkdown()`,
-`getText()`, `getState()`, `focus()`, `clear()`, `setMarkdown()`, and
-`insertMarkdown()`.
+The `editor` object returned by `useInkwell` exposes `getState()`, `focus()`,
+`clear()`, `setContent()`, and `insertContent()`.
 
 ```tsx
-editor.getMarkdown();
-editor.getText();
+editor.getState().content;
 editor.getState();
 editor.focus({ at: "end" });
-editor.setMarkdown("Replacement", { emitChange: false });
-editor.insertMarkdown(" **more**");
+editor.setContent("Replacement", { emitChange: false });
+editor.insertContent(" **more**");
 ```
 
 If you are building a custom abstraction around the low-level component,
@@ -155,7 +153,7 @@ return <EditorInstance />;
 | `codeBlocks`            | `true`  | Fenced code blocks (` ``` `)                             |
 | `images`                | `true`  | Block images (`![alt](url)` on their own line)           |
 
-When a decoration is disabled, its syntax is treated as plain text with
+When a decoration is disabled, its syntax is treated as source text with
 no visual formatting.
 
 ## Syntax highlighting
@@ -212,22 +210,22 @@ To customize the toolbar items, see the
 
 **Type:** `string`
 
-The Markdown string to display and edit. When
+The Markdown source content to display and edit. When
 [collaboration](/docs/collaboration) is enabled, this only seeds an empty
 document — the Yjs shared type becomes the source of truth after that.
 
 ### `onChange`
 
-**Type:** `(markdown: string) => void`
+**Type:** `(content: string) => void`
 
-Called on every document change with the updated Markdown string.
+Called on every document change with the updated content.
 
 ### `onStateChange`
 
 **Type:** `(state: InkwellEditorState) => void`
 
 Called with a full state snapshot when content, focus, editability, or
-character count changes. The state includes `markdown`, `text`, `isEmpty`,
+character count changes. The state includes `content`, `isEmpty`,
 `isFocused`, `isEditable`, `characterCount`, `characterLimit`, and
 `overLimit`.
 
@@ -303,8 +301,8 @@ the wrapper when exceeded. When set, the editor can also render a built-in
 
 **Type:** `boolean` — default: `false`
 
-When `true`, blocks text input, pasted plain text, plugin insertions, and
-`editor.insertMarkdown()` past `characterLimit`. Overlong text insertions are
+When `true`, blocks text input, pasted content, plugin insertions, and
+`editor.insertContent()` past `characterLimit`. Overlong text insertions are
 truncated to the remaining capacity. Structured non-text insertions are blocked
 when no capacity remains.
 
@@ -318,13 +316,13 @@ Called whenever the editor recalculates character count.
 
 **Type:** `boolean` — default: `false`
 
-When `true`, pressing Enter calls `onSubmit(markdown)` instead of inserting a
+When `true`, pressing Enter calls `onSubmit(content)` instead of inserting a
 new line. Shift+Enter still inserts a line break. Useful for chat-style
 composers.
 
 ### `onSubmit`
 
-**Type:** `(markdown: string) => void`
+**Type:** `(content: string) => void`
 
 Called when `submitOnEnter` handles Enter.
 

@@ -15,37 +15,14 @@ export function serialize(nodes: InkwellElement[]): string {
     const text = Node.string(node);
     const type = node.type;
 
-    // Images: reconstruct `![alt](url)` from node props.
-    if (type === "image") {
+    // Markdown source markers are stored as text. Element metadata only drives
+    // rendering and editing behavior; serialization returns the source content.
+    // Image nodes created by plugins may not have source text yet, so synthesize
+    // their source form from node metadata at the content boundary.
+    if (type === "image" && !text) {
       const url = node.url ?? "";
       const alt = node.alt ?? "";
       entries.push({ text: `![${alt}](${url})`, type });
-      continue;
-    }
-
-    // Headings: re-add "#" prefix (stripped during deserialize).
-    if (type === "heading") {
-      const level = (node as InkwellElement & { level?: number }).level ?? 1;
-      const prefix = "#".repeat(level);
-      entries.push({ text: `${prefix} ${text}`, type });
-      continue;
-    }
-
-    // Blockquotes: re-add "> " prefix (stripped during deserialize).
-    // Escape leading ">" in content to prevent nested blockquote parsing.
-    if (type === "blockquote") {
-      const lines = text.split("\n").filter(l => l.trim() !== "");
-      if (lines.length === 0) {
-        entries.push({ text: "> ", type });
-      } else {
-        const prefixed = lines
-          .map(line => {
-            const escaped = line.replace(/^(>+)/g, m => "\\>".repeat(m.length));
-            return "> " + escaped;
-          })
-          .join("\n>\n");
-        entries.push({ text: prefixed, type });
-      }
       continue;
     }
 

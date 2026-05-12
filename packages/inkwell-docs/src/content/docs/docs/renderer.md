@@ -98,16 +98,7 @@ A map of HTML element names to React components. See
 Custom rehype plugins for the Markdown rendering pipeline. Accepts a
 plugin function or a tuple such as `[plugin, ...options]`.
 
-### `copyButton`
-
-**Type:** `boolean` — default: `true`
-
-Show a copy button on fenced code blocks. Hover over a code block to
-reveal the button.
-
-```tsx
-<InkwellRenderer content={content} copyButton={false} />
-```
+Fenced code blocks include a copy button. Hover over a code block to reveal the button.
 
 ### `mentions`
 

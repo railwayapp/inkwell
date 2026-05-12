@@ -1066,7 +1066,6 @@ export function Demo() {
           >
             <InkwellRenderer
               content={editorContent}
-              copyButton
               mentions={MENTION_RENDERERS}
             />
           </div>

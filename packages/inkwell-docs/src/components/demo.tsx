@@ -979,6 +979,7 @@ export function Demo() {
       characterLimit={characterLimit}
       enforceCharacterLimit={enforceCharacterLimit}
       onCharacterCount={setCharacterCount}
+      styles={{ editor: { maxHeight: 760, overflowY: "auto" } }}
     />
   );
 

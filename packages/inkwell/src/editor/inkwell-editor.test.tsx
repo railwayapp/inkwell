@@ -29,6 +29,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
+import { createCompletionsPlugin } from "../plugins/completions";
 import { createMentionsPlugin } from "../plugins/mentions";
 import { createSlashCommandsPlugin } from "../plugins/slash-commands";
 import type {
@@ -288,6 +289,56 @@ describe("InkwellEditor — rendering", () => {
     ).toBeInTheDocument();
   });
 
+  it("applies style to the editable surface", () => {
+    render(
+      <InkwellEditor
+        content="test"
+        onChange={vi.fn()}
+        style={{ minHeight: "480px", width: "100%" }}
+      />,
+    );
+
+    expect(screen.getByRole("textbox")).toHaveStyle({
+      minHeight: "480px",
+      width: "100%",
+    });
+  });
+
+  it("focuses the editor when clicking empty editor space", () => {
+    const focusSpy = vi
+      .spyOn(ReactEditor, "focus")
+      .mockImplementation(() => {});
+    const { container } = render(
+      <InkwellEditor content="hello" onChange={vi.fn()} />,
+    );
+
+    const editor = container.querySelector(".inkwell-editor");
+    expect(editor).toBeInTheDocument();
+    if (!editor) throw new Error("Expected editor element");
+    const prevented = !fireEvent.mouseDown(editor);
+
+    expect(focusSpy).toHaveBeenCalled();
+    expect(prevented).toBe(true);
+  });
+
+  it("focuses the editor when clicking non-Slate whitespace inside the editor", () => {
+    const focusSpy = vi
+      .spyOn(ReactEditor, "focus")
+      .mockImplementation(() => {});
+    const { container } = render(
+      <InkwellEditor content="hello" onChange={vi.fn()} />,
+    );
+
+    const editor = container.querySelector(".inkwell-editor");
+    if (!editor) throw new Error("Expected editor element");
+    const whitespace = document.createElement("div");
+    editor.appendChild(whitespace);
+
+    fireEvent.mouseDown(whitespace);
+
+    expect(focusSpy).toHaveBeenCalled();
+  });
+
   it("accepts onChange prop without errors", () => {
     const onChange = vi.fn();
     expect(() =>
@@ -419,6 +470,26 @@ describe("InkwellEditor — placeholder", () => {
     expect(screen.getByRole("textbox")).toHaveAttribute(
       "aria-placeholder",
       "Write here",
+    );
+  });
+
+  it("prefixes plugin placeholder text with the hint", () => {
+    render(
+      <InkwellEditor
+        content=""
+        onChange={vi.fn()}
+        plugins={[
+          createCompletionsPlugin({
+            getCompletion: () => "Suggested text",
+            acceptHint: "[tab ↹]",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("textbox")).toHaveAttribute(
+      "data-placeholder",
+      "[tab ↹]  Suggested text",
     );
   });
 });

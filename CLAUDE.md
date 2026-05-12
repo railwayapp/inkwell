@@ -56,6 +56,10 @@ inkwell-dev/
                                    PluginMenuPrimitive).
             index.tsx
             index.test.tsx
+          completions/             Placeholder completion plugin for
+                                   suggested text flows.
+            index.tsx
+            index.test.tsx
           mentions/                Mentions picker plugin (uses
                                    PluginMenuPrimitive). Inserts
                                    `@<marker>[<id>]` markers.
@@ -139,10 +143,10 @@ The library also exports components directly for lower-level integrations. Most 
 
 - **Hooks**: `useInkwell`
 - **Components**: `InkwellEditor`, `InkwellRenderer`
-- **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createEmojiPlugin`, `createMentionsPlugin`, `createSlashCommandsPlugin`, `createSnippetsPlugin`
+- **Plugin creators**: `createBubbleMenuPlugin`, `createAttachmentsPlugin`, `createCompletionsPlugin`, `createEmojiPlugin`, `createMentionsPlugin`, `createSlashCommandsPlugin`, `createSnippetsPlugin`
 - **Plugin utilities**: `defaultBubbleMenuItems`, `pluginClass`, `PluginMenuPrimitive`, `pluginPickerClass`
 - **Serialization**: `serializeToMarkdown`, `parseMarkdown`, `deserialize`
-- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`
+- **Types**: `UseInkwellOptions`, `UseInkwellResult`, `InkwellEditorController`, `InkwellEditorProps`, `InkwellEditorHandle`, `InkwellEditorState`, `InkwellEditorFocusOptions`, `InkwellSetMarkdownOptions`, `InkwellRendererProps`, `InkwellPlugin`, `InkwellPluginPlaceholder`, `BubbleMenuItem`, `BubbleMenuItemProps`, `CollaborationConfig`, `CompletionPluginOptions`, `EmojiItem`, `EmojiPluginOptions`, `InkwellComponents`, `InkwellDecorations`, `MentionItem`, `MentionRenderer`, `MentionsPluginOptions`, `PluginKeyDownContext`, `PluginRenderProps`, `PluginTrigger`, `RehypePluginConfig`, `SlashCommandArg`, `SlashCommandChoice`, `SlashCommandExecution`, `SlashCommandItem`, `SlashCommandsPluginOptions`, `Snippet`
 
 ### Editor Rendering Model (Slate.js)
 
@@ -167,6 +171,14 @@ Decoration-based: text content IS the markdown. Visual formatting computed at re
   hydrates markers into custom React nodes via the `mentions` prop.
 - **Attachments** — image paste / drop → `onUpload` → block-image
   insertion. Also resolves copied HTML `<img>` clipboard payloads.
+- **Completions** — generic placeholder completions for suggested text flows.
+  Host code owns completion state via `getCompletion`; the plugin prefixes the
+  editor placeholder with `[tab ↹]`, accepts with Tab, dismisses with Escape or
+  normal typing, and can call `onRestore` when undo returns an accepted
+  completion to an empty document. Uses `onEditorChange` instead of `setup`, so
+  plugin objects can be created inline without stale closure refs. While active,
+  empty non-paragraph Slate blocks are canonicalized to a plain paragraph so
+  placeholder typography is stable across clears.
 - **Slash commands** — Discord-style `/` command menu for blank/new lines.
   Prose `/` does not trigger. Typing after `/` filters without a dedicated
   search input. Selecting a command/argument stages execution; Enter calls

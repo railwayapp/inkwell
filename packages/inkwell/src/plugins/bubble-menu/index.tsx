@@ -89,6 +89,7 @@ function BubbleMenuWidget({
   const [position, setPosition] = useState<{
     top: number;
     left: number;
+    placement: "above" | "below";
   } | null>(null);
 
   const handleSelectionChange = useCallback(() => {
@@ -109,9 +110,13 @@ function BubbleMenuWidget({
 
     const rect = sel.getRangeAt(0).getBoundingClientRect();
     const editorRect = editorRef.current.getBoundingClientRect();
+    const topInEditor = rect.top - editorRect.top;
+    const hasRoomAbove = topInEditor >= 48;
+
     setPosition({
-      top: rect.top - editorRect.top,
+      top: hasRoomAbove ? topInEditor : rect.bottom - editorRect.top,
       left: rect.left - editorRect.left + rect.width / 2,
+      placement: hasRoomAbove ? "above" : "below",
     });
   }, [editorRef]);
 
@@ -137,9 +142,12 @@ function BubbleMenuWidget({
         position: "absolute",
         top: position.top,
         left: position.left,
-        transform: "translateX(-50%) translateY(-100%)",
-        marginTop: -8,
-        zIndex: 1000,
+        transform:
+          position.placement === "above"
+            ? "translateX(-50%) translateY(-100%)"
+            : "translateX(-50%)",
+        marginTop: position.placement === "above" ? -8 : 8,
+        zIndex: 1100,
       }}
       onMouseDown={e => e.preventDefault()}
     >

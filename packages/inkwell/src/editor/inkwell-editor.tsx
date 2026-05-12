@@ -11,9 +11,11 @@ import {
 import {
   Fragment,
   forwardRef,
+  type MouseEvent,
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -37,6 +39,7 @@ import type {
   InkwellEditorProps,
   InkwellEditorState,
   InkwellPlugin,
+  InkwellPluginPlaceholder,
   InkwellSetMarkdownOptions,
 } from "../types";
 import { computeDecorations } from "./slate/decorations";
@@ -118,6 +121,7 @@ export const InkwellEditor = forwardRef<
     onChange,
     onStateChange,
     className,
+    style,
     placeholder,
     editable = true,
     plugins: userPlugins = [],
@@ -310,6 +314,10 @@ export const InkwellEditor = forwardRef<
       updateCharacterCount();
       bumpStateVersion();
 
+      for (const plugin of plugins) {
+        plugin.onEditorChange?.(editor);
+      }
+
       const md = serialize(value as InkwellElement[]);
       if (collaboration) {
         // In collab mode, always fire onChange (no echo prevention needed)
@@ -323,7 +331,14 @@ export const InkwellEditor = forwardRef<
         }
       }
     },
-    [bumpStateVersion, collaboration, editor, onChange, updateCharacterCount],
+    [
+      bumpStateVersion,
+      collaboration,
+      editor,
+      onChange,
+      plugins,
+      updateCharacterCount,
+    ],
   );
 
   const overLimit =
@@ -769,6 +784,39 @@ export const InkwellEditor = forwardRef<
     ],
   );
 
+  const handleWrapperMouseDown = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (!editable) return;
+      if (!(event.target instanceof Element)) return;
+
+      const target = event.target;
+      const editorElement = editorElRef.current;
+      const wrapperElement = wrapperRef.current;
+      if (!editorElement || !wrapperElement) return;
+
+      const interactiveTarget = target.closest(
+        "button, input, textarea, select, a, [role='button'], [contenteditable='false'], .inkwell-plugin-picker-popup, .inkwell-plugin-bubble-menu-container",
+      );
+      if (interactiveTarget) return;
+
+      const clickedEditableSurface = target === editorElement;
+      const clickedWrapperSurface = target === wrapperElement;
+      const clickedInsideEditable = editorElement.contains(target);
+      const clickedSlateNode = Boolean(target.closest("[data-slate-node]"));
+
+      if (
+        clickedWrapperSurface ||
+        clickedEditableSurface ||
+        (clickedInsideEditable && !clickedSlateNode)
+      ) {
+        event.preventDefault();
+        ReactEditor.focus(editor);
+        selectEditor("end");
+      }
+    },
+    [editable, editor, selectEditor],
+  );
+
   // The toast is visible whenever the document has hit the limit. With
   // `enforceCharacterLimit` the count never exceeds the limit, so we also
   // surface the toast at exactly the limit so the user gets feedback when
@@ -779,10 +827,52 @@ export const InkwellEditor = forwardRef<
     characterLimit !== undefined &&
     (overLimit || (enforceCharacterLimit && characterCount >= characterLimit));
 
+  const pluginPlaceholder = plugins.reduce<InkwellPluginPlaceholder | null>(
+    (value, plugin) => {
+      if (value) return value;
+      const nextPlaceholder = plugin.getPlaceholder?.(editor) ?? null;
+      if (!nextPlaceholder) return null;
+      return typeof nextPlaceholder === "string"
+        ? { text: nextPlaceholder }
+        : nextPlaceholder;
+    },
+    null,
+  );
+  const basePlaceholder =
+    pluginPlaceholder?.text ?? placeholder ?? "Start writing...";
+  const resolvedPlaceholder = pluginPlaceholder?.hint
+    ? `${pluginPlaceholder.hint}  ${basePlaceholder}`
+    : basePlaceholder;
+
+  useLayoutEffect(() => {
+    if (!pluginPlaceholder) return;
+    if (Node.string(editor).trim().length !== 0) return;
+
+    const onlyChild = editor.children[0] as InkwellElement | undefined;
+    const isCanonicalEmptyParagraph =
+      editor.children.length === 1 &&
+      onlyChild?.type === "paragraph" &&
+      Node.string(onlyChild).length === 0;
+    if (isCanonicalEmptyParagraph) return;
+
+    Editor.withoutNormalizing(editor, () => {
+      for (let index = editor.children.length - 1; index >= 0; index--) {
+        Transforms.removeNodes(editor, { at: [index] });
+      }
+      Transforms.insertNodes(editor, {
+        type: "paragraph",
+        id: generateId(),
+        children: [{ text: "" }],
+      } satisfies InkwellElement);
+      Transforms.select(editor, Editor.start(editor, [0]));
+    });
+  }, [editor, pluginPlaceholder, stateVersion]);
+
   return (
     <div
       ref={wrapperRef}
       className={`inkwell-editor-wrapper${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}`}
+      onMouseDownCapture={handleWrapperMouseDown}
     >
       {showLimitToast && characterLimit !== undefined && (
         <LimitToast
@@ -816,15 +906,16 @@ export const InkwellEditor = forwardRef<
         <Editable
           ref={editorElRef}
           className="inkwell-editor"
+          style={style}
           renderElement={RenderElement}
           renderLeaf={RenderLeaf}
           decorate={decorate}
-          placeholder={placeholder ?? "Start writing..."}
+          placeholder={resolvedPlaceholder}
           spellCheck
           role="textbox"
           aria-multiline
-          aria-placeholder={placeholder}
-          data-placeholder={placeholder ?? "Start writing..."}
+          aria-placeholder={resolvedPlaceholder}
+          data-placeholder={resolvedPlaceholder}
           readOnly={!editable}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}

@@ -27,18 +27,22 @@ function getToolbar(container: HTMLElement) {
 /**
  * Mock window.getSelection to simulate text selection inside the editor.
  */
-function mockTextSelection(editorEl: HTMLElement, text: string) {
+function mockTextSelection(
+  editorEl: HTMLElement,
+  text: string,
+  rect: Partial<DOMRect> = {},
+) {
   const textNode = editorEl.querySelector("[data-slate-string]");
 
   const mockRect = {
-    top: 100,
-    left: 100,
-    bottom: 120,
-    right: 200,
-    width: 100,
-    height: 20,
-    x: 100,
-    y: 100,
+    top: rect.top ?? 100,
+    left: rect.left ?? 100,
+    bottom: rect.bottom ?? 120,
+    right: rect.right ?? 200,
+    width: rect.width ?? 100,
+    height: rect.height ?? 20,
+    x: rect.x ?? 100,
+    y: rect.y ?? 100,
     toJSON: () => ({}),
   };
 

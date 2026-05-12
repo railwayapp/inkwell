@@ -427,7 +427,20 @@
 }
 
 /* Demo container override */
+.demo-tab-content > .inkwell-editor-wrapper,
+.demo-tab-content > div:has(> .inkwell-editor-wrapper),
+.demo-tab-content > div:has(> .inkwell-editor-wrapper) > .inkwell-editor-wrapper {
+  box-sizing: border-box;
+  min-height: 100%;
+  height: 100%;
+  width: 100%;
+}
+
 .demo-tab-content .inkwell-editor {
+  box-sizing: border-box;
+  min-height: 100%;
+  height: 100%;
+  width: 100%;
   border: none;
   border-radius: 10px;
   background: transparent;

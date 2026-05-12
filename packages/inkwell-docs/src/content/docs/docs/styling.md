@@ -116,6 +116,10 @@ a container and a copy button:
 | `.inkwell-plugin-bubble-menu-item-italic` | Italic button label |
 | `.inkwell-plugin-bubble-menu-item-strike` | Strikethrough button label |
 
+### Completions
+
+Completions use the editor's native placeholder. Style completion text with your existing placeholder styles on `.inkwell-editor [data-slate-placeholder="true"]`. The accept hint is part of the placeholder text itself, for example `[tab ↹] Suggested text`; there is no separate completion hint element.
+
 ### Plugin picker (snippets, mentions, etc.)
 
 All picker-based plugins share a single set of classes so the menu UI

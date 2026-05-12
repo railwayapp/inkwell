@@ -2,7 +2,7 @@
 title: "Plugins"
 ---
 
-Plugins extend the editor with custom UI and behavior. Inkwell ships built-in plugins for formatting, snippets, mentions, and attachments, and supports creating your own.
+Plugins extend the editor with custom UI and behavior. Inkwell ships built-in plugins for formatting, snippets, mentions, completions, slash commands, and attachments, and supports creating your own.
 
 ## Bubble Menu
 
@@ -158,6 +158,64 @@ const emoji = createEmojiPlugin({
 });
 ```
 
+## Completions
+
+A generic completion plugin for suggested text flows. You provide the current Markdown completion, and Inkwell shows it through the editor placeholder while the document is empty. By default the placeholder is prefixed with `[tab ↹]`. Users press `Tab` to accept, `Escape` to dismiss, or type normally to dismiss and continue writing.
+
+```tsx
+import { createCompletionsPlugin, useInkwell } from "@railway/inkwell";
+
+function App() {
+  const [content, setContent] = useState("");
+  const [completion, setCompletion] = useState<string | null>(
+    "Welcome to Inkwell — Markdown stays readable and portable.",
+  );
+  const { EditorInstance } = useInkwell({
+    content,
+    onChange: setContent,
+    plugins: [
+      createCompletionsPlugin({
+        getCompletion: () => completion,
+        isLoading: () => false,
+        loadingText: "Drafting a suggestion…",
+        onAccept: () => setCompletion(null),
+        onDismiss: () => setCompletion(null),
+        onRestore: restored => setCompletion(restored),
+      }),
+    ],
+  });
+
+  return <EditorInstance />;
+}
+```
+
+`getCompletion` should return `null` when no completion should be visible. The plugin itself checks whether the editor is empty, so `getCompletion` usually does not need to inspect the current content. The plugin does not fetch suggestions itself; connect it to your own completion source, cache, or streaming state.
+
+Plugin objects are cheap to create. You can create plugins inline as shown above or memoize them with normal React dependencies; you do not need refs to avoid stale closures.
+
+### Completion options
+
+```tsx
+interface CompletionPluginOptions {
+  name?: string;
+  getCompletion: () => string | null;
+  isLoading?: () => boolean;
+  loadingText?: string;
+  acceptHint?: string;
+  onAccept?: (completion: string) => void;
+  onDismiss?: (completion: string) => void;
+  onRestore?: (completion: string) => void;
+  restoreOnUndo?: boolean;
+  rehypePlugins?: RehypePluginConfig[];
+}
+```
+
+When `restoreOnUndo` is true (the default), undoing an accepted completion back to an empty document calls `onRestore(completion)`. Use that callback to put the completion back into your host state.
+
+Completion placeholder text is plain text. `acceptHint` controls the prefix prepended to the placeholder text and defaults to `[tab ↹]`. `rehypePlugins` is kept for API compatibility; native placeholders cannot render rich Markdown.
+
+When a completion placeholder is active, Inkwell normalizes an otherwise empty editor to a single plain paragraph. This prevents placeholders from inheriting stale heading, code, list, or blockquote styles after the user clears existing content.
+
 ## Slash commands
 
 A reusable chat-style command palette triggered by `/` at the start of a blank/new line. The plugin keeps the
@@ -167,7 +225,7 @@ for Enter-to-submit, and can emit a structured command payload via `onExecute`.
 Slash commands are intentionally Discord-style: `/` in prose does not open the
 menu, typing after `/` filters the menu without a dedicated search input, and
 selecting/executing a command only removes the slash-command text that was
-introduced (for example, `/status Solved`) rather than clearing the whole
+introduced (for example, `/label Idea`) rather than clearing the whole
 editor.
 
 ```tsx
@@ -175,40 +233,34 @@ import { createSlashCommandsPlugin, useInkwell } from "@railway/inkwell";
 
 function App() {
   const [content, setContent] = useState("");
-  const contentRef = useRef(content);
-  contentRef.current = content;
 
-  const slashCommands = useMemo(
-    () =>
+  const { EditorInstance } = useInkwell({
+    content,
+    onChange: setContent,
+    plugins: [
       createSlashCommandsPlugin({
         commands: [
           {
-            name: "status",
-            description: "Set a thread status",
+            name: "label",
+            description: "Apply a document label",
             args: [
               {
-                name: "status",
-                description: "Status to apply",
+                name: "label",
+                description: "Label to apply",
                 required: true,
                 choices: [
-                  { value: "solved", label: "Solved" },
-                  { value: "closed", label: "Closed" },
+                  { value: "idea", label: "Idea" },
+                  { value: "bug", label: "Bug" },
                 ],
               },
             ],
           },
         ],
-        getMarkdown: () => contentRef.current,
+        getMarkdown: () => content,
         setMarkdown: setContent,
         onExecute: command => runCommand(command),
       }),
-    [],
-  );
-
-  const { EditorInstance } = useInkwell({
-    content,
-    onChange: setContent,
-    plugins: [slashCommands],
+    ],
   });
 
   return <EditorInstance />;
@@ -217,13 +269,13 @@ function App() {
 
 When ready, Enter calls `onExecute` with a string-only structured payload and
 then clears only the active command line; the rest of the document is preserved.
-For `/status Solved`, the payload is:
+For `/label Idea`, the payload is:
 
 ```ts
 {
-  name: "status",
-  args: { status: "solved" },
-  raw: "/status Solved",
+  name: "label",
+  args: { label: "idea" },
+  raw: "/label Idea",
 }
 ```
 
@@ -408,10 +460,28 @@ interface InkwellPlugin {
   name: string;
   trigger?: { key: string };
   render: (props: PluginRenderProps) => ReactNode;
+  getPlaceholder?: (editor: Editor) => string | InkwellPluginPlaceholder | null;
+  onEditorChange?: (editor: Editor) => void;
+  shouldTrigger?: (event: React.KeyboardEvent, editor: Editor) => boolean;
   onKeyDown?: (
     event: React.KeyboardEvent,
     ctx: { wrapSelection: (before: string, after: string) => void },
+    editor: Editor,
   ) => void;
+  onActiveKeyDown?: (
+    event: React.KeyboardEvent,
+    ctx: {
+      wrapSelection: (before: string, after: string) => void;
+      dismiss: () => void;
+    },
+    editor: Editor,
+  ) => false | void;
+  setup?: (editor: Editor) => void | (() => void);
+}
+
+interface InkwellPluginPlaceholder {
+  text: string;
+  hint?: string;
 }
 ```
 

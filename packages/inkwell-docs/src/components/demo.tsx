@@ -1,6 +1,7 @@
 import {
   type CollaborationConfig,
   createAttachmentsPlugin,
+  createCompletionsPlugin,
   createEmojiPlugin,
   createMentionsPlugin,
   createSlashCommandsPlugin,
@@ -65,6 +66,14 @@ const MENTION_RENDERERS: MentionRenderer[] = [
   },
 ];
 
+const DEMO_COMPLETION = `Welcome to Inkwell — a Markdown editor that keeps your content portable.
+
+Try accepting this completion, then edit the Markdown directly:
+
+- Formatting stays readable
+- The stored value is plain Markdown
+- Plugins can add focused writing workflows`;
+
 const DEMO_SNIPPETS = [
   {
     title: "Bug Report",
@@ -92,6 +101,9 @@ interface PluginDef {
   create?: (ctx: {
     getMarkdown: () => string;
     setMarkdown: (markdown: string) => void;
+    getCompletion: () => string | null;
+    dismissCompletion: () => void;
+    restoreCompletion: (completion: string) => void;
   }) => InkwellPlugin;
 }
 
@@ -138,14 +150,34 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
     create: () => createEmojiPlugin(),
   },
   {
+    id: "completions",
+    label: "Completions",
+    summary: "Placeholder completions for suggested text flows.",
+    usage: (
+      <>
+        Clear the editor to reveal a placeholder suggestion. Press <Kbd>Tab</Kbd>
+        to accept it, type anything or press <Kbd>Esc</Kbd> to dismiss it, then
+        undo back to empty to restore it.
+      </>
+    ),
+    create: ({ getCompletion, dismissCompletion, restoreCompletion }) =>
+      createCompletionsPlugin({
+        getCompletion,
+        loadingText: "Drafting a suggested reply…",
+        onAccept: dismissCompletion,
+        onDismiss: dismissCompletion,
+        onRestore: restoreCompletion,
+      }),
+  },
+  {
     id: "slash-commands",
     label: "Slash Commands",
     summary:
       "Chat-style command palette with required arguments and ready-to-submit state.",
     usage: (
       <>
-        Type <Kbd>/</Kbd> to open commands, choose <code>/status</code>, then
-        pick a status. When the command is complete, <Kbd>Enter</Kbd> executes
+        Type <Kbd>/</Kbd> to open commands, choose <code>/label</code>, then
+        pick a label. When the command is complete, <Kbd>Enter</Kbd> executes
         via the slash plugin's structured <code>onExecute</code> callback.
       </>
     ),
@@ -153,44 +185,36 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
       createSlashCommandsPlugin({
         commands: [
           {
-            name: "status",
-            description: "Set a thread status",
-            aliases: ["s"],
+            name: "label",
+            description: "Apply a document label",
+            aliases: ["l"],
             args: [
               {
-                name: "status",
-                description: "Status to apply",
+                name: "label",
+                description: "Label to apply",
                 required: true,
                 choices: [
-                  { value: "solved", label: "Solved" },
-                  {
-                    value: "awaiting-user",
-                    label: "Awaiting User Response",
-                  },
-                  {
-                    value: "awaiting-railway",
-                    label: "Awaiting Railway Response",
-                  },
-                  { value: "closed", label: "Closed", disabled: true },
+                  { value: "idea", label: "Idea" },
+                  { value: "bug", label: "Bug" },
+                  { value: "question", label: "Question" },
+                  { value: "archived", label: "Archived", disabled: true },
                 ],
               },
             ],
           },
           {
-            name: "runbook",
-            description: "Ask the assistant to run a support runbook",
-            aliases: ["rb"],
+            name: "outline",
+            description: "Insert an outline starter",
+            aliases: ["o"],
           },
           {
-            name: "bounty",
-            description: "Prepare a bounty action for this thread",
+            name: "summary",
+            description: "Prepare a short summary",
           },
         ],
         getMarkdown,
         setMarkdown,
-        onExecute: command => {
-          console.info("Slash command executed", command);
-        },
+        onExecute: () => {},
       }),
   },
   {
@@ -830,8 +854,9 @@ Inkwell is a Markdown editor and renderer for React with an extensible plugin sy
 1. Type \`-\` or \`1.\` followed by space to start a list
 2. Indent with two leading spaces for nested items
 3. Press \`[\` for snippets, \`@\` to mention @user[alice], or \`:\` for emoji
-4. Type \`/status\` to try slash commands
-5. Drop or paste an image — the Attachments plugin will insert it
+4. Clear the editor to reveal a placeholder completion, then press Tab to accept it
+5. Type \`/label\` to try slash commands
+6. Drop or paste an image — the Attachments plugin will insert it
 
 ![A keyboard at golden hour](https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&h=300&fit=crop)
 
@@ -1047,6 +1072,7 @@ function ConnectedCollabEditor({
     collaboration,
     placeholder: "Start collaborating...",
     bubbleMenu,
+    style: { minHeight: "100%", width: "100%" },
   });
 
   return <EditorInstance />;
@@ -1158,8 +1184,11 @@ export function Demo() {
     DEFAULT_CHARACTER_LIMIT,
   );
   const [demoStyle, setDemoStyle] = useState<"custom" | "default">("custom");
+  const [completion, setCompletion] = useState<string | null>(DEMO_COMPLETION);
   const editorContentRef = useRef(editorContent);
+  const completionRef = useRef(completion);
   editorContentRef.current = editorContent;
+  completionRef.current = completion;
   const overLimit = characterCount > characterLimit;
   const selectedPlugins = useMemo(
     () =>
@@ -1168,6 +1197,12 @@ export function Demo() {
           p.create!({
             getMarkdown: () => editorContentRef.current,
             setMarkdown: setEditorContent,
+            getCompletion: () =>
+              editorContentRef.current.trim().length === 0
+                ? completionRef.current
+                : null,
+            dismissCompletion: () => setCompletion(null),
+            restoreCompletion: nextCompletion => setCompletion(nextCompletion),
           }),
       ),
     [enabledPluginIds],
@@ -1181,7 +1216,7 @@ export function Demo() {
     characterLimit,
     enforceCharacterLimit,
     onCharacterCount: setCharacterCount,
-
+    style: { minHeight: "100%", width: "100%" },
   });
 
   return (

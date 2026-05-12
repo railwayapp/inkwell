@@ -11,6 +11,10 @@ export {
   defaultBubbleMenuItems,
 } from "./plugins/bubble-menu";
 export {
+  type CompletionPluginOptions,
+  createCompletionsPlugin,
+} from "./plugins/completions";
+export {
   createEmojiPlugin,
   defaultEmojis,
   type EmojiItem,

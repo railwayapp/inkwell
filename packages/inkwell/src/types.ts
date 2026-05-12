@@ -1,5 +1,6 @@
 import type {
   ComponentType,
+  CSSProperties,
   JSX,
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
@@ -50,6 +51,13 @@ export interface InkwellSetMarkdownOptions {
   select?: "start" | "end" | "preserve";
 }
 
+export interface InkwellPluginPlaceholder {
+  /** Placeholder text shown by Slate while the editor is empty. */
+  text: string;
+  /** Optional hint rendered as editor-owned placeholder chrome. */
+  hint?: string;
+}
+
 export interface InkwellEditorHandle {
   /** Return the current serialized markdown content. */
   getMarkdown: () => string;
@@ -86,6 +94,10 @@ export interface InkwellEditorProps {
    * Additional CSS class for the wrapper element
    */
   className?: string;
+  /**
+   * Inline styles applied to the editable surface.
+   */
+  style?: CSSProperties;
   /**
    * Placeholder text shown when editor is empty
    */
@@ -291,6 +303,14 @@ export interface InkwellPlugin {
    */
   render: (props: PluginRenderProps) => ReactNode;
   /**
+   * Optional dynamic placeholder. The first plugin that returns a value
+   * overrides the editor placeholder.
+   */
+  getPlaceholder?: (
+    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
+    editor: any,
+  ) => string | InkwellPluginPlaceholder | null;
+  /**
    * Optional guard for character triggers. Return false to let the key type
    * normally without activating the plugin.
    */
@@ -299,6 +319,14 @@ export interface InkwellPlugin {
     // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
     editor: any,
   ) => boolean;
+  /**
+   * Optional document-change hook. Runs after Slate document changes are
+   * serialized and editor state is updated.
+   */
+  onEditorChange?: (
+    // biome-ignore lint/suspicious/noExplicitAny: avoid circular editor type
+    editor: any,
+  ) => void;
   /**
    * Optional keydown handler. Runs for events on the editor before trigger
    * matching, and is skipped while another plugin is active. Call

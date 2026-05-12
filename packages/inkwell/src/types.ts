@@ -159,8 +159,6 @@ export interface InkwellRendererProps {
   components?: InkwellComponents;
   /** Custom rehype plugins for the markdown pipeline. */
   rehypePlugins?: RehypePluginConfig[];
-  /** Show a copy button on fenced code blocks (default: true). */
-  copyButton?: boolean;
   /** Mention patterns to expand in rendered text. */
   mentions?: MentionRenderer[];
 }

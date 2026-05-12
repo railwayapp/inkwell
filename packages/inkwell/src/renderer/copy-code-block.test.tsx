@@ -76,25 +76,12 @@ describe("CopyCodeBlock", () => {
     vi.useRealTimers();
   });
 
-  it("does not render copy button when copyButton is false", () => {
-    render(<InkwellRenderer content={CODE_BLOCK_MD} copyButton={false} />);
-    expect(screen.queryByRole("button", { name: "Copy code" })).toBeNull();
-  });
-
   it("wraps code block in container div", () => {
     const { container } = render(<InkwellRenderer content={CODE_BLOCK_MD} />);
     const wrapper = container.querySelector(".inkwell-renderer-code-block");
     expect(wrapper).toBeTruthy();
     expect(wrapper?.querySelector("pre")).toBeTruthy();
     expect(wrapper?.querySelector(".inkwell-renderer-copy-btn")).toBeTruthy();
-  });
-
-  it("does not wrap code block when copyButton is false", () => {
-    const { container } = render(
-      <InkwellRenderer content={CODE_BLOCK_MD} copyButton={false} />,
-    );
-    expect(container.querySelector(".inkwell-renderer-code-block")).toBeNull();
-    expect(container.querySelector("pre")).toBeTruthy();
   });
 
   it("passes through additional props to pre element", () => {

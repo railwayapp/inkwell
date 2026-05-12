@@ -93,8 +93,7 @@ Target them with descendant selectors:
 
 ### Code block copy button
 
-When `copyButton` is enabled (the default), code blocks are wrapped with
-a container and a copy button:
+Fenced code blocks are wrapped with a container and a copy button:
 
 | Selector | Element |
 |----------|---------|

@@ -8,13 +8,12 @@ export function InkwellRenderer({
   className,
   components,
   rehypePlugins,
-  copyButton = true,
   mentions,
 }: InkwellRendererProps): ReactNode {
-  const mergedComponents = useMemo(() => {
-    if (!copyButton) return components;
-    return { pre: CopyCodeBlock, ...components };
-  }, [copyButton, components]);
+  const mergedComponents = useMemo(
+    () => ({ pre: CopyCodeBlock, ...components }),
+    [components],
+  );
 
   const rendered = useMemo(
     () =>

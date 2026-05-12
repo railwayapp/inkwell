@@ -79,7 +79,7 @@ describe("renderMarkdownToHtml", () => {
     expect(html).toContain("<hr>");
   });
 
-  it("strips GFM tables (not supported)", () => {
+  it("strips GFM tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const html = renderMarkdownToHtml(md);
     expect(html).not.toContain("<table>");

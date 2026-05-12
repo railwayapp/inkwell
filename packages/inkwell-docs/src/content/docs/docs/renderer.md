@@ -14,7 +14,7 @@ import { InkwellRenderer } from "@railway/inkwell";
 <InkwellRenderer content="# Hello **world**" />;
 ```
 
-The renderer supports CommonMark plus GitHub Flavored Markdown features such
+The renderer handles CommonMark plus GitHub Flavored Markdown features such
 as strikethrough, task lists, and autolinks. GFM table syntax is
 intentionally rendered as source text; Inkwell does not emit `<table>`
 elements by default.

@@ -717,7 +717,7 @@ describe("InkwellEditor — plugin integration", () => {
     expect(screen.getByTestId("plugin-query")).toHaveTextContent("");
   });
 
-  it("supports character-triggered plugins", () => {
+  it("handles character-triggered plugins", () => {
     const charPlugin = {
       ...testPlugin,
       name: "char-test",
@@ -894,7 +894,7 @@ describe("InkwellEditor — plugin integration", () => {
       commands: [
         {
           name: "status",
-          description: "Set a thread status",
+          description: "Set a document status",
           arg: {
             name: "status",
             description: "Status to apply",
@@ -966,7 +966,7 @@ describe("InkwellEditor — plugin integration", () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onExecute = vi.fn();
     const slashCommands = createSlashCommandsPlugin({
-      commands: [{ name: "runbook", description: "Run a support runbook" }],
+      commands: [{ name: "runbook", description: "Run a project runbook" }],
       onExecute,
     });
 
@@ -1016,7 +1016,7 @@ describe("InkwellEditor — plugin integration", () => {
   it("does not open slash commands for prose slashes", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const slashCommands = createSlashCommandsPlugin({
-      commands: [{ name: "status", description: "Set a thread status" }],
+      commands: [{ name: "status", description: "Set a document status" }],
     });
 
     const { container } = render(
@@ -1052,7 +1052,7 @@ describe("InkwellEditor — plugin integration", () => {
         commands: [
           {
             name: "status",
-            description: "Set a thread status",
+            description: "Set a document status",
             aliases: ["s"],
             arg: {
               name: "status",
@@ -1064,7 +1064,7 @@ describe("InkwellEditor — plugin integration", () => {
               ],
             },
           },
-          { name: "runbook", description: "Run a support runbook" },
+          { name: "runbook", description: "Run a project runbook" },
           {
             name: "bounty",
             description: "Prepare a bounty action",
@@ -1601,7 +1601,7 @@ describe("InkwellEditor — imperative API and state", () => {
     );
   });
 
-  it("supports read-only mode via editable=false", () => {
+  it("handles read-only mode via editable=false", () => {
     render(<InkwellEditor content="hello" editable={false} />);
     expect(screen.getByRole("textbox")).toHaveAttribute(
       "contenteditable",
@@ -2913,7 +2913,7 @@ describe("Collaboration — serialization", () => {
 });
 
 describe("Collaboration — undo/redo", () => {
-  it("supports undo via YHistoryEditor", () => {
+  it("handles undo via YHistoryEditor", () => {
     const doc = new Y.Doc();
     const { editor, sharedType } = createCollabEditor(doc);
 
@@ -3922,7 +3922,7 @@ describe("InkwellEditor — plugin integration", () => {
     expect(screen.getByTestId("plugin-query")).toHaveTextContent("");
   });
 
-  it("supports character-triggered plugins", () => {
+  it("handles character-triggered plugins", () => {
     const charPlugin = {
       ...testPlugin,
       name: "char-test",
@@ -4099,7 +4099,7 @@ describe("InkwellEditor — plugin integration", () => {
       commands: [
         {
           name: "status",
-          description: "Set a thread status",
+          description: "Set a document status",
           arg: {
             name: "status",
             description: "Status to apply",
@@ -4171,7 +4171,7 @@ describe("InkwellEditor — plugin integration", () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const onExecute = vi.fn();
     const slashCommands = createSlashCommandsPlugin({
-      commands: [{ name: "runbook", description: "Run a support runbook" }],
+      commands: [{ name: "runbook", description: "Run a project runbook" }],
       onExecute,
     });
 
@@ -4221,7 +4221,7 @@ describe("InkwellEditor — plugin integration", () => {
   it("does not open slash commands for prose slashes", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const slashCommands = createSlashCommandsPlugin({
-      commands: [{ name: "status", description: "Set a thread status" }],
+      commands: [{ name: "status", description: "Set a document status" }],
     });
 
     const { container } = render(
@@ -4257,7 +4257,7 @@ describe("InkwellEditor — plugin integration", () => {
         commands: [
           {
             name: "status",
-            description: "Set a thread status",
+            description: "Set a document status",
             aliases: ["s"],
             arg: {
               name: "status",
@@ -4269,7 +4269,7 @@ describe("InkwellEditor — plugin integration", () => {
               ],
             },
           },
-          { name: "runbook", description: "Run a support runbook" },
+          { name: "runbook", description: "Run a project runbook" },
           {
             name: "bounty",
             description: "Prepare a bounty action",
@@ -4806,7 +4806,7 @@ describe("InkwellEditor — imperative API and state", () => {
     );
   });
 
-  it("supports read-only mode via editable=false", () => {
+  it("handles read-only mode via editable=false", () => {
     render(<InkwellEditor content="hello" editable={false} />);
     expect(screen.getByRole("textbox")).toHaveAttribute(
       "contenteditable",
@@ -6118,7 +6118,7 @@ describe("Collaboration — serialization", () => {
 });
 
 describe("Collaboration — undo/redo", () => {
-  it("supports undo via YHistoryEditor", () => {
+  it("handles undo via YHistoryEditor", () => {
     const doc = new Y.Doc();
     const { editor, sharedType } = createCollabEditor(doc);
 

@@ -875,7 +875,7 @@ class ErrorBoundary extends Component<
 
 const INITIAL_MARKDOWN = `# Welcome to Inkwell
 
-Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration support.
+Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration.
 
 ## Features
 

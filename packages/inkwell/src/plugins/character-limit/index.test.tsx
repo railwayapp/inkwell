@@ -68,8 +68,8 @@ describe("createCharacterLimitPlugin", () => {
   });
 
   it("allows a custom plugin name", () => {
-    expect(createCharacterLimitPlugin({ name: "composer-limit" }).name).toBe(
-      "composer-limit",
+    expect(createCharacterLimitPlugin({ name: "editor-limit" }).name).toBe(
+      "editor-limit",
     );
   });
 

@@ -60,8 +60,8 @@ Use slot styling:
 <InkwellEditor
   content={content}
   onChange={setContent}
-  className="composer"
-  classNames={{ editor: "composer-editor" }}
+  className="editor-shell"
+  classNames={{ editor: "editor-surface" }}
   styles={{ editor: { minHeight: 180 } }}
 />;
 ```
@@ -84,7 +84,7 @@ Use `features` to disable Markdown recognition:
 />;
 ```
 
-Supported features are `headings`, `lists`, `blockquotes`, `codeBlocks`, and
+Available features are `headings`, `lists`, `blockquotes`, `codeBlocks`, and
 `images`.
 
 ## Renderer
@@ -118,7 +118,7 @@ Built-in plugin factories include:
 - `createBubbleMenuPlugin` — options type is `BubbleMenuOptions`
 - `createCharacterLimitPlugin`
 - `createCompletionsPlugin` — options type is `CompletionsPluginOptions`
-- `createEmojiPlugin` — supports custom item generics with `emojis` or `search`
+- `createEmojiPlugin` — custom item generics work with `emojis` or `search`
 - `createMentionsPlugin`
 - `createSlashCommandsPlugin` — commands use one optional `arg?: SlashCommandArg`
 - `createSnippetsPlugin`

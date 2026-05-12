@@ -5,7 +5,7 @@
 Inkwell is a WYSIWYG Markdown editor for React, built on Slate.js. The editor
 content model is the Markdown source string. Markdown syntax is part of the
 content; visual formatting is computed at render time and is never stored as a
-separate rich-text model. Supports real-time collaboration via Yjs.
+separate rich-text model. Includes real-time collaboration via Yjs.
 
 ## Monorepo Structure
 
@@ -72,7 +72,7 @@ like a normal edit and flows through change handling.
 
 The root package exports the component APIs, built-in plugin factories, renderer
 utilities (`parseMarkdown(content, options)`, `htmlToMarkdown(html)`), and public
-types. `RehypePluginConfig` supports plugin tuples with rest options:
+types. `RehypePluginConfig` accepts plugin tuples with rest options:
 `[plugin, ...options]`. Do not export internal Slate helpers or shared plugin
 primitives from the root API.
 
@@ -108,8 +108,8 @@ Built-in plugin factories:
   menu configuration.
 - `createCharacterLimitPlugin`
 - `createCompletionsPlugin` — options type is `CompletionsPluginOptions`.
-- `createEmojiPlugin` — custom item generics are supported when callers
-  provide `emojis` or `search`.
+- `createEmojiPlugin` — custom item generics work when callers provide
+  `emojis` or `search`.
 - `createMentionsPlugin`
 - `createSlashCommandsPlugin` — commands use one optional `arg`, not an
   `args` array.
@@ -119,8 +119,6 @@ Character-limit toast UI lives in `createCharacterLimitPlugin()`. The editor
 still owns `characterLimit`, `enforceCharacterLimit`, and `onCharacterCount` for
 counting/enforcement.
 
-Completions are generic placeholder completions. Do not frame them as AI,
-support, or Central Station behavior in package docs.
 
 ## Plugin API
 

@@ -103,7 +103,7 @@ describe("createSlashCommandsPlugin", () => {
         commands: [
           {
             name: "status",
-            description: "Set a thread status",
+            description: "Set a document status",
             aliases: ["s"],
             arg: {
               name: "status",

@@ -17,7 +17,7 @@ export interface AttachmentsPluginOptions {
    */
   onUpload: (file: File) => Promise<AttachmentUploadResult>;
   /**
-   * MIME-type filter. Supports exact matches (`image/png`) and wildcards
+   * MIME-type filter. Accepts exact matches (`image/png`) and wildcards
    * (`image/*`). Files that don't match pass through untouched.
    */
   accept?: string;

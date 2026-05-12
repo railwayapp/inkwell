@@ -2,7 +2,7 @@
 title: "Plugins"
 ---
 
-Plugins extend the editor with custom UI and behavior. Inkwell ships built-in plugins for formatting, snippets, emoji, mentions, completions, slash commands, and attachments, and supports creating your own.
+Plugins extend the editor with custom UI and behavior. Inkwell ships built-in plugins for formatting, snippets, emoji, mentions, completions, slash commands, and attachments, and lets you create your own.
 
 ## Bubble Menu
 
@@ -262,7 +262,7 @@ A reusable chat-style command palette. The menu opens when `/` is typed on an
 empty or whitespace-only line, then filters as the user types without a separate
 search input. Selecting or executing a command removes only the introduced
 command text, such as `/label Idea`, so unrelated prose stays intact. The plugin
-supports one optional argument with choices, async choice loading, disabled
+includes one optional argument with choices, async choice loading, disabled
 commands/choices, readiness reporting for Enter-to-submit, and structured
 `onExecute` payloads.
 
@@ -322,14 +322,14 @@ For `/label Idea`, the payload is:
 
 The execution `args` object uses the singular `arg` name from the command
 definition and the selected choice value. `submitOnEnter` / `onSubmit` remain
-generic editor APIs for non-slash composer submission; slash command execution
+generic editor APIs for non-slash command submission; slash command execution
 should use `onExecute`. Use `onReadyChange` only when the host UI needs to know
 whether the mounted slash menu is staged for execution.
 
 ## Mentions
 
 A searchable picker for inserting persisted mention markers, such as users,
-teams, tickets, or any other entity in your app. Type the trigger key to open
+teams, projects, or any other entity in your app. Type the trigger key to open
 the picker, search, then press `Enter` to insert the active item.
 
 ```tsx
@@ -499,7 +499,7 @@ interface AttachmentsPluginOptions {
 }
 ```
 
-`accept` supports exact MIME types such as `image/png` and wildcards such as
+`accept` allows exact MIME types such as `image/png` and wildcards such as
 `image/*`. Files that do not match are passed through to the editor's normal
 paste/drop handling.
 
@@ -617,7 +617,7 @@ const commandPalette: InkwellPlugin = {
 
 ### Triggers
 
-The `activation` field determines how a plugin activates. Trigger keys support
+The `activation` field determines how a plugin activates. Trigger keys allow
 single keys and explicit modifier combos such as `Control+/`, `Meta+k`,
 `Alt+x`, and `Shift+Enter`.
 

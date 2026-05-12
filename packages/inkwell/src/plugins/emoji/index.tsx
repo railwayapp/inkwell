@@ -78,7 +78,7 @@ export const defaultEmojis: EmojiItem[] = [
   { emoji: "🚨", name: "rotating_light", shortcodes: ["alert"] },
   { emoji: "🐛", name: "bug" },
   { emoji: "💡", name: "bulb", shortcodes: ["idea"] },
-  { emoji: "🧵", name: "thread" },
+  { emoji: "🧵", name: "yarn" },
   { emoji: "🛠️", name: "tools", shortcodes: ["wrench"] },
   { emoji: "📌", name: "pushpin", shortcodes: ["pin"] },
   { emoji: "📝", name: "memo", shortcodes: ["note"] },

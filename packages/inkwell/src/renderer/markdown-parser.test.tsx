@@ -161,7 +161,7 @@ describe("parseMarkdown", () => {
     expect(hr).not.toBeNull();
   });
 
-  it("does not parse GFM tables (not supported)", () => {
+  it("does not parse GFM tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const result = parseMarkdown(md);
     const table = findElementByType(result, "table");
@@ -330,7 +330,7 @@ describe("parseMarkdown", () => {
       expect(container.textContent).toBe("before [S9] after");
     });
 
-    it("supports resolvers that return JSX nodes", () => {
+    it("renders resolvers that return JSX nodes", () => {
       const { container } = render(
         <>
           {parseMarkdown("hi @u[42] there", {

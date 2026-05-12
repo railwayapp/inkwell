@@ -2,7 +2,7 @@
 title: "Collaboration"
 ---
 
-Inkwell supports real-time collaborative editing via
+Inkwell includes real-time collaborative editing via
 [Yjs](https://yjs.dev/). Multiple users can edit the same document
 simultaneously with automatic conflict resolution and live cursors.
 
@@ -82,7 +82,7 @@ return (
 
 ## Providers
 
-Yjs supports many network providers. Inkwell works with all of them — you
+Yjs works with many network providers. Inkwell works with all of them — you
 choose how documents sync.
 
 | Provider                                                              | Protocol  | Use case                       |

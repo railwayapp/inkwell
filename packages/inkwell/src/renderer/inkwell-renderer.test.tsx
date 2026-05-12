@@ -77,7 +77,7 @@ describe("InkwellRenderer", () => {
     expect(container.querySelector("hr")).toBeInTheDocument();
   });
 
-  it("does not render GFM tables (not supported)", () => {
+  it("does not render GFM tables", () => {
     const md = "| A | B |\n|---|---|\n| 1 | 2 |";
     const { container } = render(<InkwellRenderer content={md} />);
     expect(container.querySelector("table")).not.toBeInTheDocument();

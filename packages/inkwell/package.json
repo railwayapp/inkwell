@@ -1,7 +1,7 @@
 {
   "name": "@railway/inkwell",
   "version": "0.1.4",
-  "description": "Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration support.",
+  "description": "Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

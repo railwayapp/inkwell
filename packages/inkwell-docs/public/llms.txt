@@ -178,21 +178,3 @@ interface InkwellPlugin {
 
 Use `ctx.activate()` and `ctx.dismiss()` for manual activation. Plugins receive a
 narrow `InkwellPluginEditor` controller for editor actions.
-
-## Collaboration
-
-Pass a Yjs shared type and awareness instance:
-
-```tsx
-<InkwellEditor
-  content="# Seed content"
-  collaboration={{
-    sharedType,
-    awareness: provider.awareness,
-    user: { name: "Alice", color: "#e06c75" },
-  }}
-/>;
-```
-
-When collaboration is enabled, `content` seeds an empty shared document. The
-Yjs shared type is the source of truth after that.

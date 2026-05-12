@@ -1,5 +1,4 @@
 import {
-  type CollaborationConfig,
   createAttachmentsPlugin,
   createCompletionsPlugin,
   createEmojiPlugin,
@@ -21,8 +20,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { WebsocketProvider } from "y-websocket";
-import * as Y from "yjs";
 
 const DEFAULT_CHARACTER_LIMIT = 2000;
 const CHARACTER_LIMIT_MIN = 50;
@@ -875,14 +872,13 @@ class ErrorBoundary extends Component<
 
 const INITIAL_MARKDOWN = `# Welcome to Inkwell
 
-Inkwell is a Markdown editor and renderer for React with an extensible plugin system and real-time collaboration.
+Inkwell is a Markdown editor and renderer for React with an extensible plugin system.
 
 ## Features
 
 - Standard configurable _WYSIWYG_ features
   - **Bold**, _italic_, ~~strike~~, \`code\`, links
 - Extensible **plugin system** with batteries included
-- **Real-time** collaboration via [Yjs](https://yjs.dev/)
 - Block images, ordered + nested lists, mentions, attachments
 
 ## Try it out
@@ -908,226 +904,28 @@ function App() {
 }
 \`\`\``;
 
-const COLLAB_INITIAL_CONTENT = `# Welcome to Inkwell
-
-This is a **live collaborative editor**. Anyone with this link can edit in real-time.
-
-Try it out:
-- **Bold** with \`**word**\`
-- _Italic_ with \`_word_\`
-- ~~Strikethrough~~ with \`~~word~~\`
-
-> Blockquotes start with \`>\`
-
-\`\`\`typescript
-function greet(name: string) {
-  return \`Hello, \${name}!\`;
-}
-\`\`\`
-
-This document resets every 5 minutes.`;
-
-const COLLAB_SERVER = "wss://demo-collab-server.inkwell.build";
-
-const COLORS = [
-  "#e06c75",
-  "#61afef",
-  "#98c379",
-  "#d19a66",
-  "#c678dd",
-  "#56b6c2",
-];
-
-function randomName() {
-  const names = ["Alice", "Bob", "Carol", "Dave", "Eve", "Frank"];
-  return names[Math.floor(Math.random() * names.length)];
-}
-
-function randomColor() {
-  return COLORS[Math.floor(Math.random() * COLORS.length)];
-}
-
-function useCollab(name: string, color: string) {
-  const [status, setStatus] = useState<
-    "idle" | "connecting" | "connected" | "disconnected"
-  >("idle");
-  const [peerCount, setPeerCount] = useState(0);
-  const [collaboration, setCollaboration] =
-    useState<CollaborationConfig | null>(null);
-  const docRef = useRef<Y.Doc | null>(null);
-  const providerRef = useRef<WebsocketProvider | null>(null);
-  const initialized = useRef(false);
-
-  function connect() {
-    if (initialized.current) return;
-    initialized.current = true;
-
-    const doc = new Y.Doc();
-    const sharedType = doc.get("content", Y.XmlText) as Y.XmlText;
-    const provider = new WebsocketProvider(COLLAB_SERVER, "inkwell-demo", doc, {
-      connect: false,
-      maxBackoffTime: 5000,
-    });
-
-    docRef.current = doc;
-    providerRef.current = provider;
-
-    provider.on("status", ({ status: s }: { status: string }) => {
-      setStatus(s as "connecting" | "connected" | "disconnected");
-    });
-
-    provider.on("sync", () => {});
-
-    // Track connected peers via awareness
-    const updatePeerCount = () => {
-      setPeerCount(provider.awareness.getStates().size);
-    };
-    provider.awareness.on("change", updatePeerCount);
-
-    setCollaboration({
-      sharedType,
-      awareness: provider.awareness,
-      user: { name, color },
-    });
-
-    provider.connect();
-    setStatus("connecting");
-  }
-
-  useEffect(() => {
-    return () => {
-      providerRef.current?.disconnect();
-      providerRef.current?.destroy();
-      docRef.current?.destroy();
-      initialized.current = false;
-    };
-  }, []);
-
-  return { collaboration, status, peerCount, connect };
-}
-
-function CollabEditor({
-  collaboration,
-  status,
-  peerCount,
-  onConnect,
-  name,
-  color,
-  bubbleMenu,
-}: {
-  collaboration: CollaborationConfig | null;
-  status: string;
-  peerCount: number;
-  onConnect: () => void;
-  name: string;
-  color: string;
-  bubbleMenu: boolean;
-}) {
-  useEffect(() => {
-    if (!collaboration) onConnect();
-  }, []);
-
-  if (!collaboration) {
-    return (
-      <div style={{ padding: "2rem", textAlign: "center", color: "#71717a" }}>
-        Connecting...
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.5rem",
-          padding: "0.75rem 1.5rem 0",
-          fontSize: "0.75rem",
-        }}
-      >
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background:
-              status === "connected"
-                ? "#4ade80"
-                : status === "connecting"
-                  ? "#facc15"
-                  : "#ef4444",
-            transition: "background 0.3s ease",
-          }}
-        />
-        <span style={{ color: "#71717a" }}>
-          {status === "connected"
-            ? "Connected as "
-            : status === "connecting"
-              ? "Connecting..."
-              : "Disconnected"}
-        </span>
-        {status === "connected" && (
-          <span style={{ color, fontWeight: 600 }}>{name}</span>
-        )}
-        {status === "connected" && (
-          <span style={{ color: "#52525b", marginLeft: "auto" }}>
-            {peerCount} {peerCount === 1 ? "user" : "users"} connected · resets
-            every 5 min
-          </span>
-        )}
-      </div>
-      <ConnectedCollabEditor
-        collaboration={collaboration}
-        bubbleMenu={bubbleMenu}
-      />
-    </div>
-  );
-}
-
-function ConnectedCollabEditor({
-  collaboration,
-  bubbleMenu,
-}: {
-  collaboration: CollaborationConfig;
-  bubbleMenu: boolean;
-}) {
-  return (
-    <InkwellEditor
-      content={COLLAB_INITIAL_CONTENT}
-      collaboration={collaboration}
-      placeholder="Start collaborating..."
-      bubbleMenu={bubbleMenu}
-      styles={{ editor: { minHeight: "100%", width: "100%" } }}
-    />
-  );
-}
-
-type Tab = "editor" | "preview" | "collab";
+type Tab = "editor" | "preview";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "editor", label: "Edit" },
   { key: "preview", label: "Render" },
-  { key: "collab", label: "Collab" },
 ];
 
 const SETTINGS_HASH = "demo-settings";
 
 /** Parses `window.location.hash` into the active tab and whether the settings
  *  modal should be open. `#demo-settings` always takes precedence over the
- *  tab hashes (`#render`, `#collab`) while the modal is open. */
+ *  tab hash (`#render`) while the modal is open. */
 function parseHash(hash: string): { tab: Tab; settingsOpen: boolean } {
   const value = hash.replace(/^#/, "");
   if (value === SETTINGS_HASH) return { tab: "editor", settingsOpen: true };
   if (value === "render") return { tab: "preview", settingsOpen: false };
-  if (value === "collab") return { tab: "collab", settingsOpen: false };
   return { tab: "editor", settingsOpen: false };
 }
 
 function hashFor(tab: Tab, settingsOpen: boolean): string {
   if (settingsOpen) return `#${SETTINGS_HASH}`;
   if (tab === "preview") return "#render";
-  if (tab === "collab") return "#collab";
   return "";
 }
 
@@ -1189,12 +987,6 @@ export function Demo() {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsOpen]);
-  const [collabUser] = useState(() => ({
-    name: randomName(),
-    color: randomColor(),
-  }));
-
-  const collab = useCollab(collabUser.name, collabUser.color);
   const {
     enabled: enabledPluginIds,
     toggle: togglePlugin,
@@ -1322,7 +1114,7 @@ export function Demo() {
           </button>
         </div>
 
-        {/* Editor / preview / collab surface */}
+        {/* Editor / preview surface */}
         <div
           data-demo-style={demoStyle}
           className="demo-tab-content"
@@ -1342,17 +1134,6 @@ export function Demo() {
                 mentions={MENTION_RENDERERS}
               />
             </div>
-          )}
-          {activeTab === "collab" && (
-            <CollabEditor
-              collaboration={collab.collaboration}
-              status={collab.status}
-              peerCount={collab.peerCount}
-              onConnect={collab.connect}
-              name={collabUser.name}
-              color={collabUser.color}
-              bubbleMenu={bubbleMenuEnabled}
-            />
           )}
         </div>
 

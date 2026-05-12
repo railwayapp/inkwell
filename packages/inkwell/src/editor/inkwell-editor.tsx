@@ -1,15 +1,6 @@
 "use client";
 
 import {
-  CursorEditor,
-  relativePositionToSlatePoint,
-  slateNodesToInsertDelta,
-  withCursors,
-  withYHistory,
-  withYjs,
-  YjsEditor,
-} from "@slate-yjs/core";
-import {
   Fragment,
   forwardRef,
   useCallback,
@@ -53,7 +44,6 @@ import { serialize } from "./slate/serialize";
 import type {
   InkwellElement,
   InkwellEditor as InkwellSlateEditor,
-  InkwellText,
 } from "./slate/types";
 import { withCharacterLimit } from "./slate/with-character-limit";
 import { withMarkdown } from "./slate/with-markdown";
@@ -110,7 +100,6 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       plugins: userPlugins = EMPTY_PLUGINS,
       rehypePlugins,
       features,
-      collaboration,
       bubbleMenu = true,
       characterLimit,
       enforceCharacterLimit = false,
@@ -146,123 +135,16 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       enforce: enforceCharacterLimit,
     };
 
-    const initialCollaborationRef = useRef(collaboration);
-
     const editor = useMemo<InkwellSlateEditor>(() => {
       const base = withNodeId(withReact(createEditor()));
-
-      if (collaboration) {
-        const { sharedType, awareness, user } = collaboration;
-        if (content && sharedType.length === 0) {
-          sharedType.applyDelta(
-            slateNodesToInsertDelta(deserialize(content, resolvedFeatures)),
-          );
-        }
-        const yjsEditor = withYjs(base, sharedType, { autoConnect: false });
-        const cursorEditor = withCursors(yjsEditor, awareness, {
-          data: user,
-        });
-        const historyEditor = withYHistory(cursorEditor);
-        return withCharacterLimit(
-          withMarkdown(historyEditor, featuresRef),
-          characterLimitRef,
-        );
-      }
-
       return withCharacterLimit(
         withMarkdown(withHistory(base), featuresRef),
         characterLimitRef,
       );
     }, []);
 
-    useEffect(() => {
-      if (collaboration !== initialCollaborationRef.current) {
-        // biome-ignore lint/suspicious/noConsole: Dev-facing mount-only configuration warning.
-        console.warn(
-          "InkwellEditor: collaboration is mount-only. Remount the editor with a React key to change collaboration mode, document, or user metadata.",
-        );
-      }
-    }, [collaboration]);
-
-    useEffect(() => {
-      if (!collaboration || !YjsEditor.isYjsEditor(editor)) return;
-      YjsEditor.connect(editor);
-      return () => {
-        YjsEditor.disconnect(editor);
-      };
-    }, [editor, collaboration]);
-
-    const [cursorVersion, setCursorVersion] = useState(0);
-
-    useEffect(() => {
-      if (!collaboration || !CursorEditor.isCursorEditor(editor)) return;
-      const handleChange = () => setCursorVersion(v => v + 1);
-      CursorEditor.on(editor, "change", handleChange);
-      return () => {
-        CursorEditor.off(editor, "change", handleChange);
-      };
-    }, [editor, collaboration]);
-
-    const remoteCursorRanges = useMemo(() => {
-      if (!collaboration || !CursorEditor.isCursorEditor(editor)) return [];
-
-      const ranges: (Range & InkwellText)[] = [];
-      const states = CursorEditor.cursorStates(editor);
-
-      for (const [, state] of Object.entries(states)) {
-        if (!state.relativeSelection) continue;
-        const data = state.data as { name: string; color: string } | undefined;
-        if (!data) continue;
-
-        try {
-          const { anchor, focus } = state.relativeSelection;
-          const anchorPoint = relativePositionToSlatePoint(
-            collaboration.sharedType,
-            editor,
-            anchor,
-          );
-          const focusPoint = relativePositionToSlatePoint(
-            collaboration.sharedType,
-            editor,
-            focus,
-          );
-          if (!anchorPoint || !focusPoint) continue;
-
-          const range: Range = { anchor: anchorPoint, focus: focusPoint };
-
-          if (Range.isCollapsed(range)) {
-            // Collapsed cursor — render as caret
-            ranges.push({
-              ...range,
-              remoteCursor: data.color,
-              remoteCursorCaret: true,
-            } as Range & InkwellText);
-          } else {
-            // Selection range — render as highlight
-            ranges.push({
-              ...range,
-              remoteCursor: data.color,
-            } as Range & InkwellText);
-          }
-        } catch {
-          // Position conversion can fail if document is mid-sync
-        }
-      }
-
-      return ranges;
-    }, [editor, collaboration, cursorVersion]);
-
     const initialValue = useMemo(
-      () =>
-        collaboration
-          ? [
-              {
-                type: "paragraph" as const,
-                id: generateId(),
-                children: [{ text: "" }],
-              },
-            ]
-          : deserialize(content, resolvedFeatures),
+      () => deserialize(content, resolvedFeatures),
       [],
     );
 
@@ -335,26 +217,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         }
 
         const nextContent = serialize(value as InkwellElement[]);
-        if (collaboration) {
-          if (suppressImperativeOnChange.current) return;
+        // Prevent echo loops
+        if (nextContent !== lastContent.current) {
+          lastContent.current = nextContent;
+          isInternalChange.current = true;
           onChange?.(nextContent);
-        } else {
-          // In standalone mode, prevent echo loops
-          if (nextContent !== lastContent.current) {
-            lastContent.current = nextContent;
-            isInternalChange.current = true;
-            onChange?.(nextContent);
-          }
         }
       },
-      [
-        bumpStateVersion,
-        collaboration,
-        editor,
-        onChange,
-        plugins,
-        updateCharacterCount,
-      ],
+      [bumpStateVersion, editor, onChange, plugins, updateCharacterCount],
     );
 
     const overLimit =
@@ -384,8 +254,6 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     ]);
 
     useEffect(() => {
-      if (collaboration) return; // Yjs is source of truth in collab mode
-
       if (isInternalChange.current) {
         isInternalChange.current = false;
         return;
@@ -403,7 +271,6 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       editor.onChange();
     }, [
       bumpStateVersion,
-      collaboration,
       content,
       editor,
       resolvedFeatures,
@@ -418,31 +285,9 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       (entry: NodeEntry) => {
         const ranges = computeDecorations(entry, editor, rehypePlugins);
 
-        // Add remote cursor decorations that overlap this node
-        if (remoteCursorRanges.length > 0) {
-          const [, path] = entry;
-          for (const cursorRange of remoteCursorRanges) {
-            try {
-              const intersection = Range.intersection(
-                cursorRange,
-                Editor.range(editor, path),
-              );
-              if (intersection) {
-                ranges.push({
-                  ...intersection,
-                  remoteCursor: cursorRange.remoteCursor,
-                  remoteCursorCaret: cursorRange.remoteCursorCaret,
-                } as Range & InkwellText);
-              }
-            } catch {
-              // Range intersection can fail during document changes
-            }
-          }
-        }
-
         return ranges;
       },
-      [editor, rehypePlugins, remoteCursorRanges],
+      [editor, rehypePlugins],
     );
 
     // ─── Plugin activation + key forwarding ───────────────────────────────────

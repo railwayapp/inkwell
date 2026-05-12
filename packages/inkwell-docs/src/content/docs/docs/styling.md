@@ -59,12 +59,9 @@ spans you can style separately — useful for dimming or hiding them:
 
 ### Remote cursors
 
-Used when [collaboration](/docs/collaboration) is enabled:
 
 | Selector | Element |
 |----------|---------|
-| `.inkwell-editor-remote-cursor` | Selection highlight from another user |
-| `.inkwell-editor-remote-caret` | Cursor position indicator |
 
 The cursor color is applied inline from `user.color`, so your CSS only
 needs to handle positioning and opacity.

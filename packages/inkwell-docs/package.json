@@ -16,16 +16,12 @@
     "@astrojs/react": "^4.0.0",
     "@astrojs/starlight": "^0.34.0",
     "@railway/inkwell": "workspace:*",
-    "@slate-yjs/core": "^1.0.2",
     "astro": "^5.0.0",
     "highlight.js": "^11.11.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "slate": "^0.124.0",
-    "tailwindcss": "^3.4.0",
-    "y-protocols": "^1.0.7",
-    "y-websocket": "^2.1.0",
-    "yjs": "^13.6.30"
+    "tailwindcss": "^3.4.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

@@ -46,7 +46,6 @@ export { parseMarkdown } from "./renderer/markdown-parser";
 export type {
   BubbleMenuItem,
   BubbleMenuItemProps,
-  CollaborationConfig,
   InkwellComponents,
   InkwellEditorClassNames,
   InkwellEditorFocusOptions,

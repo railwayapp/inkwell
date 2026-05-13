@@ -1,6 +1,7 @@
 import { Editor, Element, Node, Path, Range, Transforms } from "slate";
 import type { ResolvedInkwellFeatures } from "../../types";
 import { deserialize } from "./deserialize";
+import { serialize } from "./serialize";
 import type { InkwellEditor, InkwellElement } from "./types";
 import { generateId } from "./with-node-id";
 
@@ -37,7 +38,8 @@ export function withMarkdown(
   editor: InkwellEditor,
   featuresRef: { current: ResolvedInkwellFeatures },
 ): InkwellEditor {
-  const { insertBreak, insertData, insertText, isVoid } = editor;
+  const { insertBreak, insertData, insertText, isVoid, setFragmentData } =
+    editor;
 
   editor.isVoid = (element: InkwellElement) => {
     if (element.type === "image") return true;
@@ -434,6 +436,32 @@ export function withMarkdown(
       return;
     }
     insertData(data);
+  };
+
+  // Copy/cut/drag: replace the default `text/plain` payload with our
+  // Markdown serialization of the selection.
+  //
+  // slate-react's default derives `text/plain` from the rendered HTML's
+  // `innerText`, which inserts an extra newline for each empty block
+  // element. A single empty paragraph between two blocks (one blank line
+  // in the editor) ends up as TWO blank lines on the clipboard, so pasting
+  // into plain-text consumers like Discord shows an unintended extra gap.
+  // The HTML and slate-fragment payloads stay as-is so paste-back into
+  // Slate or other rich-text editors still works.
+  editor.setFragmentData = (data, originEvent) => {
+    // The default also populates `text/html` and the slate-fragment payload,
+    // which require the editor to be mounted in the DOM. If that lookup
+    // fails (tests, hot-reload races), we still set `text/plain` below so
+    // copy never silently breaks.
+    try {
+      setFragmentData(data, originEvent);
+    } catch {
+      // intentionally swallow — text/plain is still set below
+    }
+    const fragment = editor.getFragment() as InkwellElement[];
+    if (fragment.length > 0) {
+      data.setData("text/plain", serialize(fragment));
+    }
   };
 
   return editor;

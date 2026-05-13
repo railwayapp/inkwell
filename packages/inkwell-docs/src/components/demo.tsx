@@ -1014,25 +1014,18 @@ class ErrorBoundary extends Component<
 
 const INITIAL_MARKDOWN = `# Welcome to Inkwell
 
-Inkwell is a Markdown editor and renderer for React with an extensible plugin system.
+Inkwell is a Markdown editor and renderer for React that treats Markdown as the canonical content.
 
-## Features
-
-- Standard configurable _WYSIWYG_ features
-  - **Bold**, _italic_, ~~strike~~, \`code\`, links
-- Extensible **plugin system** with batteries included
-- Block images, ordered + nested lists, mentions, attachments
+It ships with WYSIWYG basics such as **bold**, _italic_, ~~strike~~, \`code\`, and an extensible plugin system with batteries included for everything else.
 
 ## Try it out
 
-1. Type \`-\` or \`1.\` followed by space to start a list
-2. Indent with two leading spaces for nested items
-3. Press \`[\` for snippets, \`@\` to mention @user[alice], or \`:\` for emoji
-4. Clear the editor to reveal a placeholder completion, then press Tab to accept it
-5. Type \`/label\` to try slash commands
-6. Drop or paste an image — the Attachments plugin will insert it
+1. Press \`[\` for Snippets, \`@\` to Mention, or \`:\` for Emoji
+2. Type \`/label\` to try slash commands
+3. Clear the editor to reveal a placeholder completion
+4. Drop or paste an image and the Attachments plugin will insert it
 
-![A keyboard at golden hour](https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&h=300&fit=crop)
+![Railway Logo](https://railway.com/brand/logotype-light.svg)
 
 ## Example
 

@@ -460,6 +460,76 @@ describe("withMarkdown — list-like input", () => {
   });
 });
 
+describe("withMarkdown — clipboard text/plain", () => {
+  // Minimal DataTransfer stub — jsdom doesn't provide one and slate-react's
+  // default setFragmentData only touches setData/getData/types here.
+  function makeDataTransfer(): DataTransfer {
+    const store: Record<string, string> = {};
+    return {
+      setData: (type: string, value: string) => {
+        store[type] = value;
+      },
+      getData: (type: string) => store[type] ?? "",
+      clearData: (type?: string) => {
+        if (type) delete store[type];
+        else for (const key of Object.keys(store)) delete store[key];
+      },
+      types: [],
+    } as unknown as DataTransfer;
+  }
+
+  it("uses the markdown serializer for text/plain — one blank line between blocks, not two", () => {
+    const editor = createTestEditor({ heading2: true, heading3: true });
+    // Two headings separated by an empty paragraph in the editor model.
+    // slate-react's default text/plain would derive from rendered HTML and
+    // emit "## a\n\n\n## b" (two blank lines); our override should emit
+    // "## a\n\n## b" (one blank line).
+    editor.children = deserialize("## a\n\n## b");
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+
+    const data = makeDataTransfer();
+    editor.setFragmentData(data);
+    expect(data.getData("text/plain")).toBe("## a\n\n## b");
+  });
+
+  it("preserves consecutive list markers as single-newline groups", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("- a\n- b\n- c");
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+
+    const data = makeDataTransfer();
+    editor.setFragmentData(data);
+    expect(data.getData("text/plain")).toBe("- a\n- b\n- c");
+  });
+
+  it("serializes partial selections across paragraphs without phantom blank lines", () => {
+    const editor = createTestEditor();
+    // `\n\n` deserializes to three blocks (paragraph, empty paragraph,
+    // paragraph), so paragraph 2 sits at path [2].
+    editor.children = deserialize("hello world\n\nfoo bar");
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: { path: [0, 0], offset: 6 },
+      focus: { path: [2, 0], offset: 3 },
+    });
+
+    const data = makeDataTransfer();
+    editor.setFragmentData(data);
+    expect(data.getData("text/plain")).toBe("world\n\nfoo");
+  });
+});
+
 describe("withMarkdown — image element", () => {
   it("marks image elements as void", () => {
     const editor = createTestEditor();

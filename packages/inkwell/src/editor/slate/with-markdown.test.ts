@@ -385,6 +385,79 @@ describe("withMarkdown — list-like input", () => {
     expect(elements[1].type).toBe("paragraph");
     expect(Node.string(elements[1])).toBe("  - ");
   });
+
+  it("Enter mid-content carries the tail onto the next list item", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("- asdf");
+    editor.onChange();
+
+    // Place caret after "asd", before "f".
+    Transforms.select(editor, { path: [0, 0], offset: 5 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(Node.string(elements[0])).toBe("- asd");
+    expect(Node.string(elements[1])).toBe("- f");
+    expect(editor.selection?.anchor).toEqual({ path: [1, 0], offset: 2 });
+  });
+
+  it("Enter at the start of content pushes an empty item above, caret stays with content", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("- asdf");
+    editor.onChange();
+
+    // Original node id so we can verify the content node was preserved
+    // (not destroyed and recreated) when the empty line is inserted above.
+    const originalId = (editor.children[0] as InkwellElement).id;
+
+    // Place caret right after "- " and before "asdf".
+    Transforms.select(editor, { path: [0, 0], offset: 2 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(Node.string(elements[0])).toBe("- ");
+    expect(Node.string(elements[1])).toBe("- asdf");
+    // The original "- asdf" node should now be at index 1 — the new node is
+    // the empty one above, not the content one below.
+    expect(elements[1].id).toBe(originalId);
+    expect(editor.selection?.anchor).toEqual({ path: [1, 0], offset: 2 });
+  });
+
+  it("Enter with a selected range deletes the selection, then splits", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("- asdf");
+    editor.onChange();
+
+    // Select "sd" — from offset 3 to offset 5.
+    Transforms.select(editor, {
+      anchor: { path: [0, 0], offset: 3 },
+      focus: { path: [0, 0], offset: 5 },
+    });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(Node.string(elements[0])).toBe("- a");
+    expect(Node.string(elements[1])).toBe("- f");
+  });
+
+  it("Enter on indented `  - asdf` mid-content preserves the indent", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("  - asdf");
+    editor.onChange();
+
+    // Place caret after "  - as", before "df".
+    Transforms.select(editor, { path: [0, 0], offset: 6 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(Node.string(elements[0])).toBe("  - as");
+    expect(Node.string(elements[1])).toBe("  - df");
+    expect(editor.selection?.anchor).toEqual({ path: [1, 0], offset: 4 });
+  });
 });
 
 describe("withMarkdown — image element", () => {

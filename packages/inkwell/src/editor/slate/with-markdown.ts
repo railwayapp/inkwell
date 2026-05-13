@@ -1,4 +1,4 @@
-import { Editor, Element, Node, Path, Transforms } from "slate";
+import { Editor, Element, Node, Path, Range, Transforms } from "slate";
 import type { ResolvedInkwellFeatures } from "../../types";
 import { deserialize } from "./deserialize";
 import type { InkwellEditor, InkwellElement } from "./types";
@@ -188,13 +188,78 @@ export function withMarkdown(
       const continueMatch = UNORDERED_LIST_CONTINUE_RE.exec(text);
       if (continueMatch) {
         const [, indent, marker] = continueMatch;
+        const prefix = `${indent}${marker} `;
+
+        // Collapse any selected range first so the split happens at a point.
+        if (!Range.isCollapsed(selection)) {
+          Transforms.delete(editor);
+        }
+
+        // List source paragraphs are a single text leaf, so the anchor
+        // offset is the offset within the paragraph string.
+        const point = editor.selection?.anchor;
+        const cursorOffset = point?.offset ?? text.length;
+
+        // Caret inside the indent/marker prefix → keep the original
+        // empty-continuation behavior. Splitting in the prefix would yield a
+        // malformed marker on the new line.
+        if (cursorOffset < prefix.length) {
+          const newParagraph: InkwellElement = {
+            type: "paragraph",
+            id: generateId(),
+            children: [{ text: prefix }],
+          };
+          Transforms.insertNodes(editor, newParagraph, {
+            at: Path.next(path),
+          });
+          Transforms.select(editor, Editor.end(editor, Path.next(path)));
+          return;
+        }
+
+        // Caret exactly at the start of the content (just past the marker) →
+        // push an empty list item above the current line, leaving the
+        // original content and caret in place. This mirrors how text editors
+        // handle Enter at the start of typed text: the line you're on stays
+        // with you, an empty line appears above.
+        if (cursorOffset === prefix.length) {
+          const newParagraph: InkwellElement = {
+            type: "paragraph",
+            id: generateId(),
+            children: [{ text: prefix }],
+          };
+          Transforms.insertNodes(editor, newParagraph, { at: path });
+          // After the insert, the original paragraph shifted from `path` to
+          // Path.next(path). Re-anchor the caret at the same column on what
+          // is now the second line.
+          Transforms.select(editor, {
+            path: [...Path.next(path), 0],
+            offset: prefix.length,
+          });
+          return;
+        }
+
+        // Caret mid-content → split: carve off the tail and carry it onto
+        // a new line below, with the marker prefix re-applied.
+        const endPoint = Editor.end(editor, path);
+        const tail = point
+          ? Editor.string(editor, { anchor: point, focus: endPoint })
+          : "";
+        if (point && tail.length > 0) {
+          Transforms.delete(editor, { at: { anchor: point, focus: endPoint } });
+        }
+
         const newParagraph: InkwellElement = {
           type: "paragraph",
           id: generateId(),
-          children: [{ text: `${indent}${marker} ` }],
+          children: [{ text: `${prefix}${tail}` }],
         };
         Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
-        Transforms.select(editor, Editor.end(editor, Path.next(path)));
+        // Place caret right after the prefix on the new line, before the
+        // moved tail.
+        Transforms.select(editor, {
+          path: [...Path.next(path), 0],
+          offset: prefix.length,
+        });
         return;
       }
     }

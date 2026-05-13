@@ -18,7 +18,6 @@ function createTestEditor(decorations?: Partial<ResolvedInkwellFeatures>) {
       heading4: decorations?.heading4 ?? false,
       heading5: decorations?.heading5 ?? false,
       heading6: decorations?.heading6 ?? false,
-      lists: decorations?.lists ?? true,
       blockquotes: decorations?.blockquotes ?? true,
       codeBlocks: decorations?.codeBlocks ?? true,
       images: decorations?.images ?? true,
@@ -103,11 +102,11 @@ describe("deserialize — node IDs", () => {
     expect(elements[0].type).toBe("blockquote");
   });
 
-  it("assigns IDs to list-item elements", () => {
+  it("assigns IDs to list-like paragraph elements", () => {
     const elements = deserialize("- item 1\n- item 2");
     for (const el of elements) {
       expect(el.id).toBeDefined();
-      expect(el.type).toBe("list-item");
+      expect(el.type).toBe("paragraph");
     }
   });
 
@@ -169,7 +168,6 @@ describe("serialize — node IDs", () => {
       heading5: true,
       heading6: true,
       blockquotes: true,
-      lists: true,
     });
     const result = serialize(elements);
     expect(result).toBe(original);

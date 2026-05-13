@@ -18,7 +18,6 @@ function createTestEditor(decorations?: Partial<ResolvedInkwellFeatures>) {
       heading4: decorations?.heading4 ?? false,
       heading5: decorations?.heading5 ?? false,
       heading6: decorations?.heading6 ?? false,
-      lists: decorations?.lists ?? true,
       blockquotes: decorations?.blockquotes ?? true,
       codeBlocks: decorations?.codeBlocks ?? true,
       images: decorations?.images ?? true,
@@ -176,7 +175,7 @@ describe("withMarkdown — blockquote triggers", () => {
     const elements = getElements(editor);
     const bqCount = elements.filter(e => e.type === "blockquote").length;
     expect(bqCount).toBe(2);
-    expect(serialize(elements)).toBe("> first\n>");
+    expect(serialize(elements)).toBe("> first\n> ");
   });
 });
 
@@ -292,163 +291,99 @@ describe("withMarkdown — heading triggers", () => {
   });
 });
 
-describe("withMarkdown — list item triggers", () => {
-  it("- space converts paragraph to list-item", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("-", { lists: false });
+describe("withMarkdown — list-like input", () => {
+  it("keeps unordered marker text as a paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("-");
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertText(" ");
 
-    expect(getElements(editor)[0].type).toBe("list-item");
+    expect(getElements(editor)[0].type).toBe("paragraph");
     expect(Node.string(getElements(editor)[0])).toBe("- ");
   });
 
-  it("* space converts paragraph to list-item", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("*", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    expect(getElements(editor)[0].type).toBe("list-item");
-  });
-
-  it("+ space converts paragraph to list-item", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("+", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    expect(getElements(editor)[0].type).toBe("list-item");
-  });
-
-  it("does not convert when lists disabled", () => {
-    const editor = createTestEditor({ lists: false });
-    editor.children = deserialize("-", { lists: false });
+  it("keeps ordered marker text as a paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("1.");
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertText(" ");
 
     expect(getElements(editor)[0].type).toBe("paragraph");
-  });
-
-  it("Enter on non-empty list item creates new item with same marker", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("- hello");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[1].type).toBe("list-item");
-    expect(Node.string(elements[1])).toBe("- ");
-  });
-
-  it("Enter on empty list item (just marker) converts to paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "- " }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    expect(getElements(editor)[0].type).toBe("paragraph");
-    expect(Node.string(getElements(editor)[0])).toBe("");
-  });
-
-  it("`1.` + space converts paragraph to ordered list-item", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("1.", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    expect(getElements(editor)[0].type).toBe("list-item");
     expect(Node.string(getElements(editor)[0])).toBe("1. ");
   });
 
-  it("Enter on ordered list item auto-increments the marker", () => {
+  it("continues unordered list marker text on Enter", () => {
     const editor = createTestEditor();
-    editor.children = deserialize("1. first");
+    editor.children = deserialize("- asdf");
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertBreak();
 
     const elements = getElements(editor);
-    expect(elements[1].type).toBe("list-item");
-    expect(Node.string(elements[1])).toBe("2. ");
+    expect(elements[0].type).toBe("paragraph");
+    expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("- ");
   });
 
-  it("Enter on nested bullet list-item preserves indent", () => {
+  it("Enter on empty `- ` at indent 0 clears line to plain paragraph", () => {
     const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "  - item" }],
-      },
-    ];
+    editor.children = deserialize("- ");
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertBreak();
 
     const elements = getElements(editor);
-    expect(elements[1].type).toBe("list-item");
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("");
+  });
+
+  it("Enter on `  - ` outdents to `- ` on the same line", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("  - ");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("- ");
+  });
+
+  it("Enter on `    - ` outdents to `  - ` on the same line", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("    - ");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("  - ");
+  });
+
+  it("Enter on `  - asdf` continues with `  - ` on the next line", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("  - asdf");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[1].type).toBe("paragraph");
     expect(Node.string(elements[1])).toBe("  - ");
-  });
-
-  it("Enter on empty nested list-item outdents instead of reverting", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "  - " }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const first = getElements(editor)[0];
-    expect(first.type).toBe("list-item");
-    expect(Node.string(first)).toBe("- ");
-  });
-
-  it("Enter on empty indented ordered list-item outdents and resets to 1.", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "  3. " }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const first = getElements(editor)[0];
-    expect(first.type).toBe("list-item");
-    expect(Node.string(first)).toBe("1. ");
   });
 });
 

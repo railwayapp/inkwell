@@ -18,7 +18,6 @@ function createTestEditor(decorations?: Partial<ResolvedInkwellFeatures>) {
       heading4: decorations?.heading4 ?? false,
       heading5: decorations?.heading5 ?? false,
       heading6: decorations?.heading6 ?? false,
-      lists: decorations?.lists ?? true,
       blockquotes: decorations?.blockquotes ?? true,
       codeBlocks: decorations?.codeBlocks ?? true,
       images: decorations?.images ?? true,
@@ -170,7 +169,7 @@ describe("computeDecorations — inline marks", () => {
     expect(ranges.length).toBeGreaterThan(0);
   });
 
-  it("works on list-item elements", () => {
+  it("does not decorate legacy list-item elements", () => {
     const el: InkwellElement = {
       type: "list-item",
       id: generateId(),
@@ -181,7 +180,7 @@ describe("computeDecorations — inline marks", () => {
     editor.onChange();
 
     const ranges = computeDecorations(makeEntry(el, 0), editor);
-    expect(ranges.length).toBeGreaterThan(0);
+    expect(ranges).toEqual([]);
   });
 
   it("works on heading elements", () => {

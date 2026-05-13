@@ -141,22 +141,6 @@
   font-size: 0.8em;
 }
 
-.inkwell-editor-list-item {
-  padding-left: 1em;
-}
-.inkwell-editor-list-item[data-indent="1"] {
-  padding-left: 2.5em;
-}
-.inkwell-editor-list-item[data-indent="2"] {
-  padding-left: 4em;
-}
-.inkwell-editor-list-item[data-indent="3"] {
-  padding-left: 5.5em;
-}
-.inkwell-editor-list-item[data-indent="4"] {
-  padding-left: 7em;
-}
-
 .inkwell-editor-image {
   margin: 0.75em 0;
   border-radius: var(--inkwell-radius);

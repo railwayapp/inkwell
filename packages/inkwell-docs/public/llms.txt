@@ -84,8 +84,7 @@ Use `features` to disable Markdown recognition:
 />;
 ```
 
-Available features are `headings`, `lists`, `blockquotes`, `codeBlocks`, and
-`images`.
+Available features are `headings`, `blockquotes`, `codeBlocks`, and `images`.
 
 ## Renderer
 

@@ -7,7 +7,7 @@ import type { InkwellElement, InkwellText } from "./types";
  * Compute decoration ranges for a Slate node entry.
  *
  * Two decoration modes:
- * 1. Inline markdown marks (paragraph, blockquote, list-item):
+ * 1. Inline markdown marks (paragraph, blockquote, heading):
  *    Scans for **bold**, *italic*, _italic_, ~~strike~~, `code`
  * 2. Code syntax highlighting (code-line):
  *    Runs highlight.js via the remark pipeline
@@ -30,7 +30,6 @@ export function computeDecorations(
   if (
     element.type === "paragraph" ||
     element.type === "blockquote" ||
-    element.type === "list-item" ||
     element.type === "heading"
   ) {
     return computeInlineDecorations(entry);

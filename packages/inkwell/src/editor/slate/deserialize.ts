@@ -4,15 +4,14 @@ import type { InkwellElement } from "./types";
 import { generateId } from "./with-node-id";
 
 const HEADING_RE = /^(#{1,6}) /;
-const LIST_RE = /^(\s*)(\d+\.|[-*+]) /;
 const IMAGE_RE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
 
 /**
  * Deserialize a content string into Slate elements.
  *
  * Each line becomes its own element. Block-level patterns (code fences,
- * blockquotes, list items, images, headings) get their own element types based
- * on the `features` config. Everything else is a paragraph. Text content
+ * blockquotes, images, headings) get their own element types based on the
+ * `features` config. Everything else is a paragraph. Text content
  * is stored verbatim — visual formatting is handled by decorations at
  * render time, not in the data model.
  */
@@ -66,12 +65,6 @@ export function deserialize(
       } else if (cfg.blockquotes && /^> /.test(line)) {
         result.push({
           type: "blockquote",
-          id: generateId(),
-          children: [{ text: line }],
-        });
-      } else if (cfg.lists && LIST_RE.test(line)) {
-        result.push({
-          type: "list-item",
           id: generateId(),
           children: [{ text: line }],
         });

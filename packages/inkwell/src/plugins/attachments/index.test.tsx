@@ -18,7 +18,6 @@ function createTestEditor() {
       heading4: true,
       heading5: true,
       heading6: true,
-      lists: true,
       blockquotes: true,
       codeBlocks: true,
       images: true,

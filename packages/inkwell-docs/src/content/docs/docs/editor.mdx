@@ -65,14 +65,14 @@ All formatting is enabled by default.
 
 ### Block formatting
 
-Use these Markdown patterns at the start of a line. Headings, lists,
+Use these Markdown patterns at the start of a line. Headings,
 blockquotes, and code fences also have typing triggers; block images are
-recognized when Markdown is loaded, pasted, or inserted.
+recognized when Markdown is loaded, pasted, or inserted. List markers stay
+plain text in the editor.
 
 | Pattern                       | Result                                  |
 | ----------------------------- | --------------------------------------- |
 | `# ` through `###### `        | Headings (h1–h6)                        |
-| `- `, `* `, `+ `, or `1. `    | List items (ordered markers increment)  |
 | `> `                          | Blockquotes                             |
 | ` ``` `                       | Fenced code blocks                      |
 | `![alt](url)` on its own line | Block image                             |
@@ -120,7 +120,6 @@ disable something.
 | Feature                 | Default | Controls                                                 |
 | ----------------------- | ------- | -------------------------------------------------------- |
 | `headings`              | `true`  | Heading levels, with optional `h1`–`h6` overrides        |
-| `lists`                 | `true`  | Unordered, ordered, and indented list items (`-`, `*`, `+`, `1.`) |
 | `blockquotes`           | `true`  | Blockquotes (`>`)                                        |
 | `codeBlocks`            | `true`  | Fenced code blocks (` ``` `)                             |
 | `images`                | `true`  | Block images (`![alt](url)` on their own line)           |

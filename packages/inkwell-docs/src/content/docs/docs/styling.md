@@ -28,7 +28,6 @@ Each block-level element renders with a CSS class:
 | `.inkwell-editor-heading` | All headings (always combined with a level class below) |
 | `.inkwell-editor-heading-1` through `-heading-6` | Specific heading level |
 | `.inkwell-editor-blockquote` | Blockquotes |
-| `.inkwell-editor-list-item` | List items (`data-list`, `data-ordered="true"` for ordered markers, `data-indent` for two-space indent levels) |
 | `.inkwell-editor-image` | Block image wrapper (`data-selected` when selected) |
 | `.inkwell-editor-code-fence` | Code fence delimiter lines |
 | `.inkwell-editor-code-line` | Lines inside a fenced code block |
@@ -194,11 +193,6 @@ your design system.
   color: #6b7280;
 }
 
-.inkwell-editor-list-item {
-  padding-left: 1em;
-}
-.inkwell-editor-list-item[data-indent="1"] { padding-left: 2.5em; }
-.inkwell-editor-list-item[data-indent="2"] { padding-left: 4em; }
 
 .inkwell-editor-image {
   margin: 0.75em 0;

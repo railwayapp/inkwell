@@ -107,27 +107,22 @@ describe("deserialize", () => {
     expect(result[0].children[0].text).toBe("> text");
   });
 
-  it("deserializes list items with -", () => {
+  it("treats unordered list syntax as paragraph text", () => {
     const result = deserialize("- item");
-    expect(result[0].type).toBe("list-item");
+    expect(result[0].type).toBe("paragraph");
     expect(result[0].children[0].text).toBe("- item");
   });
 
-  it("deserializes list items with * and +", () => {
+  it("treats * and + list syntax as paragraph text", () => {
     const star = deserialize("* item");
-    expect(star[0].type).toBe("list-item");
+    expect(star[0].type).toBe("paragraph");
     const plus = deserialize("+ item");
-    expect(plus[0].type).toBe("list-item");
+    expect(plus[0].type).toBe("paragraph");
   });
 
   it("preserves list marker in text content", () => {
     const result = deserialize("- hello");
     expect(result[0].children[0].text).toBe("- hello");
-  });
-
-  it("treats list items as paragraphs when disabled", () => {
-    const result = deserialize("- item", { lists: false });
-    expect(result[0].type).toBe("paragraph");
   });
 
   it("deserializes code fences", () => {
@@ -166,24 +161,24 @@ describe("deserialize", () => {
     expect(a[0].id).not.toBe(b[0].id);
   });
 
-  it("handles multiple consecutive list items", () => {
+  it("handles multiple consecutive list-like lines as paragraphs", () => {
     const result = deserialize("- a\n- b\n- c");
     expect(result).toHaveLength(3);
-    expect(result.every(e => e.type === "list-item")).toBe(true);
+    expect(result.every(e => e.type === "paragraph")).toBe(true);
   });
 
-  it("deserializes ordered list items", () => {
+  it("treats ordered list syntax as paragraph text", () => {
     const result = deserialize("1. a\n2. b");
     expect(result).toHaveLength(2);
-    expect(result.every(e => e.type === "list-item")).toBe(true);
+    expect(result.every(e => e.type === "paragraph")).toBe(true);
     expect(result[0].children[0].text).toBe("1. a");
     expect(result[1].children[0].text).toBe("2. b");
   });
 
-  it("deserializes nested bullet list items", () => {
+  it("treats nested bullet list syntax as paragraph text", () => {
     const result = deserialize("- a\n  - b");
     expect(result).toHaveLength(2);
-    expect(result.every(e => e.type === "list-item")).toBe(true);
+    expect(result.every(e => e.type === "paragraph")).toBe(true);
     expect(result[0].children[0].text).toBe("- a");
     expect(result[1].children[0].text).toBe("  - b");
   });

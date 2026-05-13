@@ -77,22 +77,22 @@ describe("serialize", () => {
     expect(serialize(nodes)).toBe("> a\n> b");
   });
 
-  it("joins consecutive list items with single newline", () => {
+  it("joins consecutive unordered list-like paragraphs with single newline", () => {
     const nodes = [
-      el("list-item", "- a"),
-      el("list-item", "- b"),
-      el("list-item", "- c"),
+      el("paragraph", "- a"),
+      el("paragraph", "- b"),
+      el("paragraph", "- c"),
     ];
     expect(serialize(nodes)).toBe("- a\n- b\n- c");
   });
 
-  it("round-trips ordered list markers", () => {
-    const nodes = [el("list-item", "1. a"), el("list-item", "2. b")];
+  it("round-trips ordered list-like paragraphs", () => {
+    const nodes = [el("paragraph", "1. a"), el("paragraph", "2. b")];
     expect(serialize(nodes)).toBe("1. a\n2. b");
   });
 
-  it("preserves nested-list indentation", () => {
-    const nodes = [el("list-item", "- a"), el("list-item", "  - b")];
+  it("preserves nested-list indentation across paragraph runs", () => {
+    const nodes = [el("paragraph", "- a"), el("paragraph", "  - b")];
     expect(serialize(nodes)).toBe("- a\n  - b");
   });
 

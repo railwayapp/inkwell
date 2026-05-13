@@ -42,7 +42,6 @@ function createTestEditor(decorations?: Partial<ResolvedInkwellFeatures>) {
       heading4: decorations?.heading4 ?? false,
       heading5: decorations?.heading5 ?? false,
       heading6: decorations?.heading6 ?? false,
-      lists: decorations?.lists ?? true,
       blockquotes: decorations?.blockquotes ?? true,
       codeBlocks: decorations?.codeBlocks ?? true,
       images: decorations?.images ?? true,
@@ -1442,6 +1441,58 @@ describe("InkwellEditor — imperative API and state", () => {
     expect(ref.current?.getState().content).toContain("world");
   });
 
+  it("does not change ordered list markers on Tab", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const { container } = render(
+      <InkwellEditor ref={ref} content="1. item" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      ref.current?.focus({ at: "end" });
+    });
+
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    fireEvent.keyDown(editor, { key: "Tab" });
+
+    expect(ref.current?.getState().content).toBe("1. item");
+  });
+
+  it("indents unordered list markers on Tab", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const { container } = render(
+      <InkwellEditor ref={ref} content="- item" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      ref.current?.focus({ at: "end" });
+    });
+
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    fireEvent.keyDown(editor, { key: "Tab" });
+
+    expect(ref.current?.getState().content).toBe("  - item");
+  });
+
+  it("indents bare unordered list markers on Tab", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const { container } = render(
+      <InkwellEditor ref={ref} content="-" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      ref.current?.focus({ at: "end" });
+    });
+
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    const event = fireEvent.keyDown(editor, { key: "Tab" });
+
+    expect(event).toBe(false);
+    expect(ref.current?.getState().content).toBe("  -");
+  });
+
   it("reports state changes through onStateChange", () => {
     const onStateChange = vi.fn();
     render(
@@ -1616,45 +1667,9 @@ describe("withMarkdown — element config guards", () => {
     expect(elements[0].type).toBe("blockquote");
   });
 
-  it("lists: true converts - to list-item on typing trigger", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("-", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
-  });
-
-  it("lists: true converts * to list-item on typing trigger", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("*", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
-  });
-
-  it("lists: true converts + to list-item on typing trigger", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("+", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
-  });
-
-  it("lists: false prevents - trigger", () => {
-    const editor = createTestEditor({ lists: false });
-    editor.children = deserialize("-", { lists: false });
+  it("keeps list marker typing as paragraph text", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("-");
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
@@ -1662,167 +1677,7 @@ describe("withMarkdown — element config guards", () => {
 
     const elements = getElements(editor);
     expect(elements[0].type).toBe("paragraph");
-  });
-
-  it("typing - then space on empty paragraph converts to list-item", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.start(editor, [0]));
-    editor.insertText("-");
-    editor.insertText(" ");
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
     expect(Node.string(elements[0])).toBe("- ");
-  });
-});
-
-describe("withMarkdown — list item behaviors", () => {
-  it("Enter on non-empty list item creates new list item with same marker", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("- hello");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
-    expect(elements[1].type).toBe("list-item");
-    expect(Node.string(elements[1])).toBe("- ");
-  });
-
-  it("Enter on non-empty list item preserves * marker", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "* hello" }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[1].type).toBe("list-item");
-    expect(Node.string(elements[1])).toBe("* ");
-  });
-
-  it("Enter on empty list item (just marker) converts to paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "- " }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-    expect(Node.string(elements[0])).toBe("");
-  });
-
-  it("Enter on empty list item (marker without space) converts to paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "-" }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-  });
-
-  it("Enter extends list across multiple items", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("- first");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-    editor.insertText("second");
-
-    Transforms.select(editor, Editor.end(editor, [1]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements.length).toBe(3);
-    expect(elements[0].type).toBe("list-item");
-    expect(elements[1].type).toBe("list-item");
-    expect(elements[2].type).toBe("list-item");
-    expect(Node.string(elements[1])).toContain("second");
-    expect(Node.string(elements[2])).toBe("- ");
-  });
-
-  it("empty list-item with bare + converts to paragraph on Enter", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "+" }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-  });
-
-  it("empty list-item with bare * converts to paragraph on Enter", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "*" }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-  });
-
-  it("empty list-item with * space converts to paragraph on Enter", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "* " }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -1884,7 +1739,7 @@ describe("withMarkdown — insertSoftBreak fallthrough", () => {
     expect(elements.length).toBe(2);
   });
 
-  it("Shift+Enter on list-item falls through to insertBreak", () => {
+  it("Shift+Enter on list marker text falls through to insertBreak", () => {
     const editor = createTestEditor();
     editor.children = deserialize("- item");
     editor.onChange();
@@ -2294,7 +2149,7 @@ describe("computeDecorations — edge cases", () => {
     expect(ranges.length).toBeGreaterThan(0);
   });
 
-  it("computes inline decorations for list-item with inline code", () => {
+  it("does not compute inline decorations for legacy list-item", () => {
     const editor = createTestEditor();
     editor.children = [
       {
@@ -2307,7 +2162,7 @@ describe("computeDecorations — edge cases", () => {
 
     const entry = [editor.children[0], [0]] as NodeEntry;
     const ranges = computeDecorations(entry, editor);
-    expect(ranges.length).toBeGreaterThan(0);
+    expect(ranges).toEqual([]);
   });
 
   it("returns inline decorations for heading element", () => {
@@ -2471,10 +2326,20 @@ describe("serialize — edge cases", () => {
     expect(md).toContain("- item\n\n> quote");
   });
 
-  it("consecutive list items use single newline", () => {
+  it("consecutive list-like paragraphs use single newline", () => {
     const elements = deserialize("- a\n- b\n- c");
     const md = serialize(elements);
     expect(md).toBe("- a\n- b\n- c");
+  });
+
+  it("preserves nested unordered list source on round-trip", () => {
+    const source = "- a\n  - b\n    - c\n      - d";
+    expect(serialize(deserialize(source))).toBe(source);
+  });
+
+  it("preserves consecutive ordered list-like paragraphs on round-trip", () => {
+    const source = "1. a\n2. b\n3. c";
+    expect(serialize(deserialize(source))).toBe(source);
   });
 
   it("consecutive blockquotes use single newline", () => {
@@ -3978,45 +3843,9 @@ describe("withMarkdown — element config guards", () => {
     expect(elements[0].type).toBe("blockquote");
   });
 
-  it("lists: true converts - to list-item on typing trigger", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("-", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
-  });
-
-  it("lists: true converts * to list-item on typing trigger", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("*", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
-  });
-
-  it("lists: true converts + to list-item on typing trigger", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("+", { lists: false });
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertText(" ");
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
-  });
-
-  it("lists: false prevents - trigger", () => {
-    const editor = createTestEditor({ lists: false });
-    editor.children = deserialize("-", { lists: false });
+  it("keeps list marker typing as paragraph text", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("-");
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
@@ -4024,167 +3853,7 @@ describe("withMarkdown — element config guards", () => {
 
     const elements = getElements(editor);
     expect(elements[0].type).toBe("paragraph");
-  });
-
-  it("typing - then space on empty paragraph converts to list-item", () => {
-    const editor = createTestEditor({ lists: true });
-    editor.children = deserialize("");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.start(editor, [0]));
-    editor.insertText("-");
-    editor.insertText(" ");
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
     expect(Node.string(elements[0])).toBe("- ");
-  });
-});
-
-describe("withMarkdown — list item behaviors", () => {
-  it("Enter on non-empty list item creates new list item with same marker", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("- hello");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("list-item");
-    expect(elements[1].type).toBe("list-item");
-    expect(Node.string(elements[1])).toBe("- ");
-  });
-
-  it("Enter on non-empty list item preserves * marker", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "* hello" }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[1].type).toBe("list-item");
-    expect(Node.string(elements[1])).toBe("* ");
-  });
-
-  it("Enter on empty list item (just marker) converts to paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "- " }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-    expect(Node.string(elements[0])).toBe("");
-  });
-
-  it("Enter on empty list item (marker without space) converts to paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "-" }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-  });
-
-  it("Enter extends list across multiple items", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("- first");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-    editor.insertText("second");
-
-    Transforms.select(editor, Editor.end(editor, [1]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements.length).toBe(3);
-    expect(elements[0].type).toBe("list-item");
-    expect(elements[1].type).toBe("list-item");
-    expect(elements[2].type).toBe("list-item");
-    expect(Node.string(elements[1])).toContain("second");
-    expect(Node.string(elements[2])).toBe("- ");
-  });
-
-  it("empty list-item with bare + converts to paragraph on Enter", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "+" }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-  });
-
-  it("empty list-item with bare * converts to paragraph on Enter", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "*" }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-  });
-
-  it("empty list-item with * space converts to paragraph on Enter", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "list-item" as const,
-        id: generateId(),
-        children: [{ text: "* " }],
-      },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -4246,7 +3915,7 @@ describe("withMarkdown — insertSoftBreak fallthrough", () => {
     expect(elements.length).toBe(2);
   });
 
-  it("Shift+Enter on list-item falls through to insertBreak", () => {
+  it("Shift+Enter on list marker text falls through to insertBreak", () => {
     const editor = createTestEditor();
     editor.children = deserialize("- item");
     editor.onChange();
@@ -4656,7 +4325,7 @@ describe("computeDecorations — edge cases", () => {
     expect(ranges.length).toBeGreaterThan(0);
   });
 
-  it("computes inline decorations for list-item with inline code", () => {
+  it("does not compute inline decorations for legacy list-item", () => {
     const editor = createTestEditor();
     editor.children = [
       {
@@ -4669,7 +4338,7 @@ describe("computeDecorations — edge cases", () => {
 
     const entry = [editor.children[0], [0]] as NodeEntry;
     const ranges = computeDecorations(entry, editor);
-    expect(ranges.length).toBeGreaterThan(0);
+    expect(ranges).toEqual([]);
   });
 
   it("returns inline decorations for heading element", () => {
@@ -4833,10 +4502,20 @@ describe("serialize — edge cases", () => {
     expect(md).toContain("- item\n\n> quote");
   });
 
-  it("consecutive list items use single newline", () => {
+  it("consecutive list-like paragraphs use single newline", () => {
     const elements = deserialize("- a\n- b\n- c");
     const md = serialize(elements);
     expect(md).toBe("- a\n- b\n- c");
+  });
+
+  it("preserves nested unordered list source on round-trip", () => {
+    const source = "- a\n  - b\n    - c\n      - d";
+    expect(serialize(deserialize(source))).toBe(source);
+  });
+
+  it("preserves consecutive ordered list-like paragraphs on round-trip", () => {
+    const source = "1. a\n2. b\n3. c";
+    expect(serialize(deserialize(source))).toBe(source);
   });
 
   it("consecutive blockquotes use single newline", () => {

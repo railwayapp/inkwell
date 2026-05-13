@@ -238,7 +238,7 @@ describe("withMarkdown — heading triggers", () => {
     expect(getElements(editor)[0].type).toBe("paragraph");
   });
 
-  it("Enter on non-empty heading exits to paragraph", () => {
+  it("Enter at the end of a heading inserts a paragraph below, heading preserved", () => {
     const editor = createTestEditor({
       heading1: true,
       heading2: true,
@@ -252,7 +252,7 @@ describe("withMarkdown — heading triggers", () => {
         type: "heading" as const,
         id: generateId(),
         level: 2,
-        children: [{ text: "Title" }],
+        children: [{ text: "## Title" }],
       },
     ];
     editor.onChange();
@@ -262,7 +262,9 @@ describe("withMarkdown — heading triggers", () => {
 
     const elements = getElements(editor);
     expect(elements[0].type).toBe("heading");
+    expect(Node.string(elements[0])).toBe("## Title");
     expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("");
   });
 
   it("Enter on empty heading converts to paragraph in place", () => {
@@ -288,6 +290,212 @@ describe("withMarkdown — heading triggers", () => {
     editor.insertBreak();
 
     expect(getElements(editor)[0].type).toBe("paragraph");
+  });
+
+  it("Enter inside the heading mark splits at the caret and reclassifies both halves", () => {
+    // Cursor between the two `#`s of `## Try it out`. The head `#` is no
+    // longer a valid heading mark (no trailing space) — drops to paragraph.
+    // The tail `# Try it out` is still a valid h1 — stays as a heading.
+    const editor = createTestEditor({
+      heading1: true,
+      heading2: true,
+    });
+    editor.children = deserialize("## Try it out", {
+      heading1: true,
+      heading2: true,
+    });
+    editor.onChange();
+    expect(getElements(editor)[0].type).toBe("heading");
+
+    Transforms.select(editor, { path: [0, 0], offset: 1 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("#");
+    expect(elements[1].type).toBe("heading");
+    expect(elements[1].level).toBe(1);
+    expect(Node.string(elements[1])).toBe("# Try it out");
+  });
+
+  it("Enter in heading body keeps the head as a heading, drops the tail to paragraph", () => {
+    const editor = createTestEditor({ heading2: true });
+    editor.children = deserialize("## Try it out", { heading2: true });
+    editor.onChange();
+
+    // Caret after "## T", before "ry it out".
+    Transforms.select(editor, { path: [0, 0], offset: 4 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("heading");
+    expect(elements[0].level).toBe(2);
+    expect(Node.string(elements[0])).toBe("## T");
+    expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("ry it out");
+  });
+
+  it("Enter at the very start of a heading inserts an empty paragraph above", () => {
+    const editor = createTestEditor({ heading2: true });
+    editor.children = deserialize("## Title", { heading2: true });
+    editor.onChange();
+
+    Transforms.select(editor, { path: [0, 0], offset: 0 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("");
+    expect(elements[1].type).toBe("heading");
+    expect(Node.string(elements[1])).toBe("## Title");
+  });
+
+  it("normalizer promotes a paragraph to heading when its text matches heading syntax", () => {
+    const editor = createTestEditor({ heading2: true });
+    // Construct a malformed state: paragraph element carrying heading
+    // text. Could arise from backspace, paste-inside-block, programmatic
+    // setContent, etc. — the deserializer would catch it, but in-editor
+    // edits previously didn't.
+    editor.children = [
+      {
+        type: "paragraph" as const,
+        id: generateId(),
+        children: [{ text: "## Features" }],
+      },
+    ];
+    Editor.normalize(editor, { force: true });
+
+    const el = getElements(editor)[0];
+    expect(el.type).toBe("heading");
+    expect(el.level).toBe(2);
+  });
+
+  it("normalizer demotes a heading to paragraph when its text no longer matches", () => {
+    const editor = createTestEditor({ heading2: true });
+    editor.children = [
+      {
+        type: "heading" as const,
+        id: generateId(),
+        level: 2,
+        children: [{ text: "##" }],
+      },
+    ];
+    Editor.normalize(editor, { force: true });
+
+    const el = getElements(editor)[0];
+    expect(el.type).toBe("paragraph");
+    expect(el.level).toBeUndefined();
+  });
+
+  it("normalizer adjusts heading level when the marker count changes", () => {
+    const editor = createTestEditor({ heading1: true, heading2: true });
+    editor.children = [
+      {
+        type: "heading" as const,
+        id: generateId(),
+        level: 2,
+        children: [{ text: "# Now h1" }],
+      },
+    ];
+    Editor.normalize(editor, { force: true });
+
+    const el = getElements(editor)[0];
+    expect(el.type).toBe("heading");
+    expect(el.level).toBe(1);
+  });
+
+  it("normalizer promotes paragraph to blockquote when text starts with `> `", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "paragraph" as const,
+        id: generateId(),
+        children: [{ text: "> quoted" }],
+      },
+    ];
+    Editor.normalize(editor, { force: true });
+
+    expect(getElements(editor)[0].type).toBe("blockquote");
+  });
+
+  it("backspacing the trailing char of a heading source down-grades to paragraph", () => {
+    const editor = createTestEditor({ heading2: true });
+    editor.children = deserialize("## ", { heading2: true });
+    editor.onChange();
+
+    // Initial state: heading h2 from `## ` (which matches `^(#{1,6})\s`).
+    // Wait — `## ` (with trailing space) does match the regex; deserialize
+    // creates a heading. Now backspace the space.
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.deleteBackward("character");
+
+    const el = getElements(editor)[0];
+    expect(Node.string(el)).toBe("##");
+    expect(el.type).toBe("paragraph");
+  });
+
+  it("typing a `#` after content keeps the heading; backspacing the space drops it", () => {
+    const editor = createTestEditor({ heading1: true });
+    editor.children = deserialize("# foo", { heading1: true });
+    editor.onChange();
+    expect(getElements(editor)[0].type).toBe("heading");
+
+    // Backspace down to "# "; still a heading.
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.deleteBackward("character");
+    editor.deleteBackward("character");
+    editor.deleteBackward("character");
+    expect(Node.string(getElements(editor)[0])).toBe("# ");
+    expect(getElements(editor)[0].type).toBe("heading");
+
+    // Backspace the space — syntax breaks, element demotes.
+    editor.deleteBackward("character");
+    expect(Node.string(getElements(editor)[0])).toBe("#");
+    expect(getElements(editor)[0].type).toBe("paragraph");
+  });
+
+  it("normalizer keeps an h2 element when its text still matches h2 syntax", () => {
+    const editor = createTestEditor({ heading2: true });
+    editor.children = deserialize("## Title", { heading2: true });
+    editor.onChange();
+
+    const before = getElements(editor)[0];
+    expect(before.type).toBe("heading");
+    expect(before.level).toBe(2);
+
+    // Trigger another normalization with an unrelated transform.
+    Transforms.select(editor, Editor.end(editor, [0]));
+    Transforms.insertText(editor, "!");
+
+    const after = getElements(editor)[0];
+    expect(after.type).toBe("heading");
+    expect(after.level).toBe(2);
+    expect(after.id).toBe(before.id);
+  });
+
+  it("split tail that would be a heading at a disabled level falls back to paragraph", () => {
+    // h2 is on, h1 is off. Splitting `## Foo` between the `#`s would
+    // produce an h1 tail, but the feature is off so the tail must drop to
+    // paragraph.
+    const editor = createTestEditor({ heading1: false, heading2: true });
+    editor.children = deserialize("## Foo", {
+      heading1: false,
+      heading2: true,
+    });
+    editor.onChange();
+
+    Transforms.select(editor, { path: [0, 0], offset: 1 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("#");
+    expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("# Foo");
   });
 });
 

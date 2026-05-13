@@ -18,6 +18,36 @@ const UNORDERED_LIST_CONTINUE_RE = /^(\s*)([-*+]) \S/;
  * whether Enter should outdent or exit list mode.
  */
 const UNORDERED_LIST_EMPTY_RE = /^(\s*)([-*+]) ?$/;
+/** Matches a line that opens with valid heading syntax: `#{1,6}` + space. */
+const HEADING_LINE_RE = /^(#{1,6})\s/;
+
+/**
+ * Classify a single line of text into the element type it should render as.
+ * Mirrors the deserializer's per-line block detection so a runtime edit
+ * (split, backspace, paste, etc.) reclassifies the line the same way a
+ * fresh deserialization would.
+ *
+ * Only covers the block kinds that are 1:1 with a markdown line and can
+ * appear inside a paragraph-like element: heading (when the feature is
+ * enabled), blockquote (when enabled), and the paragraph fallback.
+ * Structural blocks (code-fence/code-line) and void blocks (image) are
+ * handled separately by their own logic and are never reclassified here.
+ */
+function classifyLine(
+  text: string,
+  deco: ResolvedInkwellFeatures,
+): { type: "heading" | "paragraph" | "blockquote"; level?: number } {
+  const headingMatch = HEADING_LINE_RE.exec(text);
+  if (headingMatch) {
+    const level = headingMatch[1].length;
+    const key = `heading${level}` as keyof ResolvedInkwellFeatures;
+    if (deco[key]) return { type: "heading", level };
+  }
+  if (deco.blockquotes && /^>\s/.test(text)) {
+    return { type: "blockquote" };
+  }
+  return { type: "paragraph" };
+}
 /**
  * Slate plugin that adds markdown-specific editor behaviors:
  * - Enter on code-fence → new paragraph (exit code block)
@@ -38,8 +68,14 @@ export function withMarkdown(
   editor: InkwellEditor,
   featuresRef: { current: ResolvedInkwellFeatures },
 ): InkwellEditor {
-  const { insertBreak, insertData, insertText, isVoid, setFragmentData } =
-    editor;
+  const {
+    insertBreak,
+    insertData,
+    insertText,
+    isVoid,
+    normalizeNode,
+    setFragmentData,
+  } = editor;
 
   editor.isVoid = (element: InkwellElement) => {
     if (element.type === "image") return true;
@@ -140,8 +176,13 @@ export function withMarkdown(
       return;
     }
 
-    // Enter on heading → exit to new paragraph
+    // Enter on heading → split at caret. Each half is re-classified against
+    // the markdown syntax it now contains: a head of `#` (no trailing space)
+    // is no longer a valid heading, so it drops to a paragraph; a tail like
+    // `# rest` is still a valid h1, so it stays a heading. This matches what
+    // the user would get from re-deserializing each line.
     if (element.type === "heading") {
+      // Empty heading or marker-only — clear back to a plain paragraph.
       if (!text.trim() || /^#{1,6}\s*$/.test(text)) {
         Transforms.delete(editor, {
           at: {
@@ -155,12 +196,53 @@ export function withMarkdown(
         Transforms.unsetNodes(editor, "level");
         return;
       }
-      const newParagraph: InkwellElement = {
-        type: "paragraph",
-        id: generateId(),
-        children: [{ text: "" }],
-      };
-      Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
+
+      if (!Range.isCollapsed(selection)) {
+        Transforms.delete(editor);
+      }
+      const point = editor.selection?.anchor;
+      const cursorOffset = point?.offset ?? text.length;
+      const endPoint = Editor.end(editor, path);
+      const tail = point
+        ? Editor.string(editor, { anchor: point, focus: endPoint })
+        : "";
+      if (point && tail.length > 0) {
+        Transforms.delete(editor, { at: { anchor: point, focus: endPoint } });
+      }
+
+      // Re-classify what's left in the original node based on its remaining
+      // text. If still a heading (possibly at a different level), update;
+      // otherwise downgrade to a paragraph.
+      const head = text.slice(0, cursorOffset);
+      const headClass = classifyLine(head, deco);
+      if (headClass.type === "heading" && headClass.level !== undefined) {
+        Transforms.setNodes(editor, {
+          type: "heading",
+          level: headClass.level,
+        } as Partial<InkwellElement>);
+      } else {
+        Transforms.setNodes(editor, {
+          type: headClass.type,
+        } as Partial<InkwellElement>);
+        Transforms.unsetNodes(editor, "level");
+      }
+
+      // Insert the tail as the appropriate element type for its own content.
+      const tailClass = classifyLine(tail, deco);
+      const newNode: InkwellElement =
+        tailClass.type === "heading" && tailClass.level !== undefined
+          ? {
+              type: "heading",
+              id: generateId(),
+              level: tailClass.level,
+              children: [{ text: tail }],
+            }
+          : {
+              type: "paragraph",
+              id: generateId(),
+              children: [{ text: tail }],
+            };
+      Transforms.insertNodes(editor, newNode, { at: Path.next(path) });
       Transforms.select(editor, Editor.start(editor, Path.next(path)));
       return;
     }
@@ -462,6 +544,73 @@ export function withMarkdown(
     if (fragment.length > 0) {
       data.setData("text/plain", serialize(fragment));
     }
+  };
+
+  // Keep block element type in sync with the markdown line it carries.
+  //
+  // Element types are set at deserialize time and by the typing-triggered
+  // promotions in `insertText`, but they don't auto-update when text is
+  // edited by other means (backspace, paste-inside-block, programmatic
+  // edits, the split-at-caret behavior above). Result: text like
+  // `## Features` could end up in a paragraph element and render as
+  // unstyled source.
+  //
+  // This normalizer reruns the same line-level classification the
+  // deserializer uses on every operation. Only the text-driven block
+  // kinds are reclassified — code-fence/code-line are structural and
+  // images are void, so neither is in scope here.
+  editor.normalizeNode = entry => {
+    const [node, path] = entry;
+    if (Element.isElement(node)) {
+      const element = node as InkwellElement;
+      const textDriven =
+        element.type === "paragraph" ||
+        element.type === "heading" ||
+        element.type === "blockquote";
+      if (textDriven) {
+        const text = Node.string(node);
+        const cls = classifyLine(text, featuresRef.current);
+        if (cls.type === "heading" && cls.level !== undefined) {
+          if (element.type !== "heading" || element.level !== cls.level) {
+            Transforms.setNodes(
+              editor,
+              {
+                type: "heading",
+                level: cls.level,
+              } as Partial<InkwellElement>,
+              { at: path },
+            );
+            return;
+          }
+        } else if (cls.type === "blockquote") {
+          if (element.type !== "blockquote") {
+            Transforms.setNodes(
+              editor,
+              { type: "blockquote" } as Partial<InkwellElement>,
+              { at: path },
+            );
+            if (element.level !== undefined) {
+              Transforms.unsetNodes(editor, "level", { at: path });
+            }
+            return;
+          }
+        } else {
+          // paragraph
+          if (element.type !== "paragraph") {
+            Transforms.setNodes(
+              editor,
+              { type: "paragraph" } as Partial<InkwellElement>,
+              { at: path },
+            );
+            if (element.level !== undefined) {
+              Transforms.unsetNodes(editor, "level", { at: path });
+            }
+            return;
+          }
+        }
+      }
+    }
+    normalizeNode(entry);
   };
 
   return editor;

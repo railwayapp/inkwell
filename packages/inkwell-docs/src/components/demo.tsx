@@ -106,8 +106,7 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
   {
     id: BUBBLE_MENU_ID,
     label: "Bubble Menu",
-    summary:
-      "Floating formatting toolbar that appears when you select text in the editor.",
+    summary: "Floating formatting toolbar shown when text is selected.",
     usage: (
       <>
         Select text to reveal the toolbar, then click a button to wrap the
@@ -119,8 +118,7 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
   {
     id: "snippets",
     label: "Snippets",
-    summary:
-      "Searchable palette of reusable Markdown blocks — bug reports, meeting notes, and more.",
+    summary: "Searchable palette of reusable Markdown blocks.",
     usage: (
       <>
         Press <Kbd>[</Kbd> while editing to open the picker. Type to filter,{" "}
@@ -166,8 +164,7 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
   {
     id: "slash-commands",
     label: "Slash Commands",
-    summary:
-      "Chat-style command palette with choice-backed arguments and ready-to-submit state.",
+    summary: "Command palette with structured, choice-backed arguments.",
     usage: (
       <>
         Type <Kbd>/</Kbd> to open commands, choose <code>/label</code>, then
@@ -209,8 +206,7 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
   {
     id: "mentions",
     label: "Mentions",
-    summary:
-      "Searchable user picker. Inserts a `@user[<id>]` marker that renders as a chip in the rendered output.",
+    summary: "Searchable user picker that inserts a chip marker.",
     usage: (
       <>
         Press <Kbd>@</Kbd> to open the picker. Type to filter, <Kbd>↑</Kbd>/
@@ -245,8 +241,7 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
   {
     id: "attachments",
     label: "Attachments",
-    summary:
-      "Paste or drop image files into the editor. The plugin uploads each file via your `onUpload` and inserts a block image.",
+    summary: "Paste or drop images to upload and insert.",
     usage: (
       <>
         Drop or paste an image. The demo uses a temporary blob URL — wire up{" "}
@@ -267,16 +262,15 @@ function Kbd({ children }: { children: ReactNode }) {
     <kbd
       style={{
         display: "inline-block",
-        padding: "0.1rem 0.4rem",
-        fontSize: "0.75rem",
+        padding: "0.05rem 0.4rem",
+        fontSize: "0.72rem",
         fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
         fontWeight: 500,
-        color: "hsl(220, 12%, 94%)",
-        background: "hsl(220, 10%, 22%)",
-        border: "1px solid hsl(220, 10%, 32%)",
-        borderRadius: "4px",
-        boxShadow: "inset 0 -1px 0 hsla(0, 0%, 0%, 0.35)",
-        lineHeight: 1.3,
+        color: "hsl(0, 0%, 96%)",
+        background: "hsla(220, 7%, 30%, 0.7)",
+        border: "none",
+        borderRadius: "6px",
+        lineHeight: 1.4,
       }}
     >
       {children}
@@ -292,20 +286,23 @@ const DEFAULT_ENABLED = new Set(AVAILABLE_PLUGINS.map(p => p.id));
 /* configuration card reads as a single coherent system.               */
 /* ------------------------------------------------------------------ */
 
-// Neutral dark/gray palette for the configuration modal. Kept separate
-// from the editor's purple theme so the modal reads as a calm
-// system-style surface rather than competing with the page.
+// iOS-style "grouped" palette. The modal is the darker "system grouped
+// background" and content lives on lighter cards that float on top, mirroring
+// the inset-grouped table look from iOS Settings. No borders anywhere — depth
+// comes from background tone shifts and generous spacing.
 const SURFACE = {
-  border: "hsl(220, 8%, 22%)",
-  borderStrong: "hsl(220, 8%, 36%)",
-  bg: "hsl(220, 10%, 10%)",
-  bgSoft: "hsla(220, 10%, 16%, 0.7)",
-  bgHint: "hsla(220, 10%, 18%, 0.6)",
-  textHi: "hsl(220, 12%, 96%)",
-  text: "hsl(220, 10%, 88%)",
-  textDim: "hsl(220, 8%, 72%)",
-  textVeryDim: "hsl(220, 6%, 56%)",
-  accentSoft: "hsla(220, 10%, 26%, 0.6)",
+  bg: "hsl(220, 9%, 7%)",
+  card: "hsl(220, 7%, 13%)",
+  cardElevated: "hsl(220, 7%, 19%)",
+  hint: "hsla(220, 7%, 18%, 0.55)",
+  textHi: "hsl(0, 0%, 98%)",
+  text: "hsl(220, 8%, 88%)",
+  textDim: "hsl(220, 6%, 58%)",
+  textVeryDim: "hsl(220, 5%, 42%)",
+  accent: "hsl(270, 60%, 52%)",
+  accentSoft: "hsla(270, 60%, 52%, 0.22)",
+  iosBlue: "hsl(212, 100%, 62%)",
+  iosOff: "hsl(220, 6%, 26%)",
 };
 
 function Switch({
@@ -326,29 +323,31 @@ function Switch({
       onClick={() => onChange(!on)}
       style={{
         position: "relative",
-        width: 30,
-        height: 17,
+        width: 44,
+        height: 26,
         flexShrink: 0,
         borderRadius: 9999,
-        border: `1px solid ${on ? SURFACE.borderStrong : SURFACE.border}`,
-        background: on ? "hsl(220, 10%, 38%)" : SURFACE.bgSoft,
+        border: "none",
+        background: on ? SURFACE.accent : SURFACE.iosOff,
         cursor: "pointer",
         padding: 0,
-        transition: "background 0.18s ease, border-color 0.18s ease",
+        transition: "background 0.22s ease",
       }}
     >
       <span
         aria-hidden="true"
         style={{
           position: "absolute",
-          top: 1,
-          left: on ? 14 : 1,
-          width: 13,
-          height: 13,
+          top: 2,
+          left: on ? 20 : 2,
+          width: 22,
+          height: 22,
           borderRadius: "50%",
-          background: on ? "hsl(220, 12%, 96%)" : "hsl(220, 8%, 50%)",
-          boxShadow: "none",
-          transition: "left 0.18s ease, background 0.18s ease",
+          background: "white",
+          boxShadow:
+            "0 2px 4px hsla(0, 0%, 0%, 0.22), 0 0 0 0.5px hsla(0, 0%, 0%, 0.04)",
+          // iOS uses a snappy spring; cubic-bezier(0.32, 0.72, 0, 1) approximates it.
+          transition: "left 0.22s cubic-bezier(0.32, 0.72, 0, 1)",
         }}
       />
     </button>
@@ -363,6 +362,7 @@ function NumberInput({
   step = 1,
   suffix,
   ariaLabel,
+  disabled = false,
 }: {
   value: number;
   onChange: (next: number) => void;
@@ -371,56 +371,50 @@ function NumberInput({
   step?: number;
   suffix?: string;
   ariaLabel: string;
+  disabled?: boolean;
 }) {
-  const [focused, setFocused] = useState(false);
   const clamp = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
   const setBy = (delta: number) => onChange(clamp(value + delta));
 
-  const stepBtn: React.CSSProperties = {
+  const stepBtn = (off: boolean): React.CSSProperties => ({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     width: 26,
-    height: 30,
+    height: 26,
+    borderRadius: 9999,
     border: "none",
-    background: "transparent",
-    color: SURFACE.textDim,
-    fontSize: "0.95rem",
+    background: off ? "transparent" : SURFACE.cardElevated,
+    color: off ? SURFACE.textVeryDim : SURFACE.textHi,
+    fontSize: "1rem",
     fontWeight: 500,
-    cursor: "pointer",
+    cursor: off ? "not-allowed" : "pointer",
     userSelect: "none",
-    transition: "color 0.12s ease, background 0.12s ease",
-  };
+    transition: "background 0.12s ease, color 0.12s ease",
+  });
 
   return (
     <div
+      aria-disabled={disabled || undefined}
       style={{
         display: "inline-flex",
-        alignItems: "stretch",
-        height: 30,
-        borderRadius: 8,
-        border: `1px solid ${focused ? SURFACE.borderStrong : SURFACE.border}`,
-        background: SURFACE.bgSoft,
-        overflow: "hidden",
-        boxShadow: focused ? `0 0 0 3px ${SURFACE.accentSoft}` : "none",
-        transition: "border-color 0.15s ease, box-shadow 0.15s ease",
-      }}
-      onMouseDownCapture={() => {
-        // Prevent the dialog from registering an unintended close when
-        // the user mousedowns on the spacing inside the control.
+        alignItems: "center",
+        gap: 6,
+        height: 32,
+        padding: "0 4px",
+        borderRadius: 9999,
+        background: SURFACE.hint,
+        opacity: disabled ? 0.45 : 1,
+        pointerEvents: disabled ? "none" : "auto",
+        transition: "opacity 0.15s ease",
       }}
     >
       <button
         type="button"
         aria-label={`Decrease ${ariaLabel.toLowerCase()}`}
         onClick={() => setBy(-step)}
-        disabled={value <= min}
-        style={{
-          ...stepBtn,
-          borderRight: `1px solid ${SURFACE.border}`,
-          opacity: value <= min ? 0.35 : 1,
-          cursor: value <= min ? "not-allowed" : "pointer",
-        }}
+        disabled={disabled || value <= min}
+        style={stepBtn(disabled || value <= min)}
       >
         −
       </button>
@@ -431,24 +425,23 @@ function NumberInput({
         min={min}
         max={max}
         step={step}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        disabled={disabled}
         onChange={e => {
           const next = Number(e.target.value);
           if (Number.isFinite(next)) onChange(clamp(next));
         }}
         className="demo-number-input"
         style={{
-          width: 76,
-          padding: "0 0.4rem",
+          width: 64,
+          padding: 0,
           border: "none",
           background: "transparent",
           color: SURFACE.textHi,
-          fontSize: "0.82rem",
+          fontSize: "0.85rem",
           fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
           fontVariantNumeric: "tabular-nums",
           fontWeight: 500,
-          textAlign: "right",
+          textAlign: "center",
           outline: "none",
           appearance: "textfield",
           MozAppearance: "textfield",
@@ -457,15 +450,13 @@ function NumberInput({
       {suffix && (
         <span
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            paddingRight: "0.55rem",
             fontSize: "0.7rem",
             color: SURFACE.textVeryDim,
             fontFamily:
               '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
             letterSpacing: "0.04em",
             textTransform: "lowercase",
+            paddingRight: 2,
           }}
         >
           {suffix}
@@ -475,13 +466,8 @@ function NumberInput({
         type="button"
         aria-label={`Increase ${ariaLabel.toLowerCase()}`}
         onClick={() => setBy(step)}
-        disabled={value >= max}
-        style={{
-          ...stepBtn,
-          borderLeft: `1px solid ${SURFACE.border}`,
-          opacity: value >= max ? 0.35 : 1,
-          cursor: value >= max ? "not-allowed" : "pointer",
-        }}
+        disabled={disabled || value >= max}
+        style={stepBtn(disabled || value >= max)}
       >
         +
       </button>
@@ -516,7 +502,7 @@ function CloseIcon() {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -592,13 +578,14 @@ function Modal({
         position: "fixed",
         inset: 0,
         zIndex: 1000,
-        background: "hsla(220, 12%, 5%, 0.72)",
-        backdropFilter: "blur(4px)",
+        background: "hsla(220, 14%, 3%, 0.6)",
+        backdropFilter: "blur(8px) saturate(140%)",
+        WebkitBackdropFilter: "blur(8px) saturate(140%)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: "1.5rem",
-        animation: "inkwell-demo-modal-fade 0.16s ease-out",
+        animation: "inkwell-demo-modal-fade 0.18s ease-out",
       }}
     >
       <div
@@ -612,31 +599,37 @@ function Modal({
         onKeyDown={onKeyDown}
         style={{
           width: "100%",
-          maxWidth: 600,
-          maxHeight: "min(760px, 90vh)",
+          maxWidth: 620,
+          maxHeight: "min(820px, 90vh)",
           overflowY: "auto",
-          borderRadius: 12,
-          border: `1px solid ${SURFACE.border}`,
+          borderRadius: 18,
+          border: "none",
           background: SURFACE.bg,
           boxShadow:
-            "0 24px 60px -12px hsla(0, 0%, 0%, 0.6), 0 0 0 1px hsla(220, 10%, 60%, 0.05)",
+            "0 32px 80px -16px hsla(0, 0%, 0%, 0.65), 0 4px 16px hsla(0, 0%, 0%, 0.35)",
+          paddingBottom: "1.5rem",
         }}
       >
+        {/* iOS-style modal header: title left, "Done" action right.
+            Sticky so it stays anchored when scrolling through long sections. */}
         <div
           style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 1,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "1rem 1.25rem",
-            borderBottom: `1px solid ${SURFACE.border}`,
+            padding: "1.1rem 1.25rem 0.85rem",
+            background: SURFACE.bg,
           }}
         >
           <div
             style={{
-              fontSize: "1rem",
-              fontWeight: 600,
+              fontSize: "1.15rem",
+              fontWeight: 700,
               color: SURFACE.textHi,
-              letterSpacing: "-0.005em",
+              letterSpacing: "-0.015em",
             }}
           >
             {title}
@@ -649,13 +642,15 @@ function Modal({
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 26,
-              height: 26,
-              borderRadius: 6,
-              border: `1px solid ${SURFACE.border}`,
-              background: "transparent",
+              width: 28,
+              height: 28,
+              border: "none",
+              background: SURFACE.hint,
               color: SURFACE.textDim,
+              borderRadius: 9999,
               cursor: "pointer",
+              padding: 0,
+              transition: "color 0.15s ease, background 0.15s ease",
             }}
           >
             <CloseIcon />
@@ -667,19 +662,213 @@ function Modal({
   );
 }
 
-function SectionHeader({ children }: { children: ReactNode }) {
+/** Section with a small header and a vertical stack of cards. Each child
+ *  applies its own card styling so options read as discrete, independently
+ *  scannable items. Optional footer text appears below the stack. */
+function Section({
+  footer,
+  children,
+}: {
+  footer?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div style={{ padding: "0.5rem 1.25rem 0" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.5rem",
+        }}
+      >
+        {children}
+      </div>
+      {footer && (
+        <div
+          style={{
+            padding: "0.6rem 1rem 0",
+            fontSize: "0.75rem",
+            lineHeight: 1.5,
+            color: SURFACE.textVeryDim,
+          }}
+        >
+          {footer}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Compact two-column row used inside the grouped sub-controls panel of
+ *  CharacterLimitRow. Shares look with the parent plugin Row but is
+ *  smaller and lives inside a nested pill surface. */
+function SubRow({
+  label,
+  control,
+  disabled = false,
+}: {
+  label: ReactNode;
+  control: ReactNode;
+  disabled?: boolean;
+}) {
   return (
     <div
       style={{
-        fontSize: "0.72rem",
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.14em",
-        color: SURFACE.textDim,
-        padding: "1.1rem 1.25rem 0.5rem",
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: "2rem",
+        alignItems: "center",
+        padding: "0.55rem 0.85rem",
       }}
     >
-      {children}
+      <span
+        style={{
+          fontSize: "0.85rem",
+          color: disabled ? SURFACE.textVeryDim : SURFACE.text,
+          letterSpacing: "-0.005em",
+          transition: "color 0.15s ease",
+        }}
+      >
+        {label}
+      </span>
+      <div style={{ flexShrink: 0 }}>{control}</div>
+    </div>
+  );
+}
+
+function CharacterLimitRow({
+  enforce,
+  setEnforce,
+  limit,
+  setLimit,
+  count,
+  overLimit,
+}: {
+  enforce: boolean;
+  setEnforce: (next: boolean) => void;
+  limit: number;
+  setLimit: (next: number) => void;
+  count: number;
+  overLimit: boolean;
+}) {
+  const pct = Math.min(100, (count / limit) * 100);
+  return (
+    <div
+      style={{
+        padding: "0.95rem 1.1rem",
+        borderRadius: 12,
+        background: SURFACE.card,
+      }}
+    >
+      <div
+        style={{
+          fontSize: "1rem",
+          fontWeight: 500,
+          color: SURFACE.textHi,
+          lineHeight: 1.3,
+          letterSpacing: "-0.01em",
+        }}
+      >
+        Character Limit
+      </div>
+      <div
+        style={{
+          marginTop: "0.3rem",
+          fontSize: "0.82rem",
+          lineHeight: 1.55,
+          color: SURFACE.textDim,
+        }}
+      >
+        Track and optionally enforce a maximum character count.
+      </div>
+
+      <div
+        style={{
+          marginTop: "0.65rem",
+          borderRadius: 10,
+          background: SURFACE.hint,
+          overflow: "hidden",
+        }}
+      >
+        <SubRow
+          label="Enforce limit"
+          control={
+            <Switch
+              on={enforce}
+              onChange={setEnforce}
+              label="Enforce character limit"
+            />
+          }
+        />
+        <SubRow
+          label="Character limit"
+          disabled={!enforce}
+          control={
+            <NumberInput
+              ariaLabel="Character limit"
+              value={limit}
+              onChange={setLimit}
+              min={CHARACTER_LIMIT_MIN}
+              max={CHARACTER_LIMIT_MAX}
+              step={50}
+              suffix="chars"
+              disabled={!enforce}
+            />
+          }
+        />
+        <div style={{ padding: "0.6rem 0.85rem 0.7rem" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "0.4rem",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.85rem",
+                color: SURFACE.text,
+                letterSpacing: "-0.005em",
+              }}
+            >
+              Character count
+            </span>
+            <span
+              aria-live="polite"
+              style={{
+                fontFamily:
+                  '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
+                fontSize: "0.75rem",
+                fontVariantNumeric: "tabular-nums",
+                color: overLimit ? "hsl(0, 75%, 72%)" : SURFACE.textDim,
+              }}
+            >
+              {count} / {limit}
+            </span>
+          </div>
+          <div
+            style={{
+              position: "relative",
+              height: 6,
+              borderRadius: 9999,
+              background: SURFACE.cardElevated,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                right: "auto",
+                width: `${pct}%`,
+                background: overLimit ? "hsl(0, 75%, 60%)" : SURFACE.accent,
+                transition: "width 0.18s ease, background 0.2s ease",
+              }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -699,55 +888,63 @@ function Row({
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        gap: "1.25rem",
-        alignItems: "start",
-        padding: "0.95rem 1.25rem",
-        borderTop: `1px solid ${SURFACE.border}`,
+        padding: "0.95rem 1.1rem",
+        borderRadius: 12,
+        background: SURFACE.card,
       }}
     >
-      <div style={{ minWidth: 0 }}>
+      {/* Title + control share the first line so they read as a single
+          item, with description / hint flowing below at full width. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "2rem",
+          minHeight: 26,
+        }}
+      >
         <div
           style={{
-            fontSize: "0.95rem",
-            fontWeight: 600,
+            fontSize: "1rem",
+            fontWeight: 500,
             color: SURFACE.textHi,
-            marginBottom: description ? "0.3rem" : 0,
-            lineHeight: 1.4,
+            lineHeight: 1.3,
+            letterSpacing: "-0.01em",
+            minWidth: 0,
           }}
         >
           {title}
         </div>
-        {description && (
-          <div
-            style={{
-              fontSize: "0.85rem",
-              lineHeight: 1.6,
-              color: SURFACE.text,
-            }}
-          >
-            {description}
-          </div>
-        )}
-        {hint && (
-          <div
-            style={{
-              marginTop: "0.55rem",
-              padding: "0.5rem 0.7rem",
-              fontSize: "0.8rem",
-              lineHeight: 1.6,
-              color: SURFACE.textDim,
-              background: SURFACE.bgHint,
-              borderRadius: 6,
-              borderLeft: `2px solid ${SURFACE.border}`,
-            }}
-          >
-            {hint}
-          </div>
-        )}
+        <div style={{ flexShrink: 0 }}>{control}</div>
       </div>
-      <div style={{ flexShrink: 0, paddingTop: "0.15rem" }}>{control}</div>
+      {description && (
+        <div
+          style={{
+            marginTop: "0.3rem",
+            fontSize: "0.82rem",
+            lineHeight: 1.55,
+            color: SURFACE.textDim,
+          }}
+        >
+          {description}
+        </div>
+      )}
+      {hint && (
+        <div
+          style={{
+            marginTop: "0.55rem",
+            padding: "0.55rem 0.7rem",
+            fontSize: "0.78rem",
+            lineHeight: 1.55,
+            color: SURFACE.text,
+            background: SURFACE.hint,
+            borderRadius: 8,
+          }}
+        >
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
@@ -1017,7 +1214,7 @@ export function Demo() {
                     cursor: "pointer",
                     border: "none",
                     borderBottom: selected
-                      ? `2px solid ${SURFACE.borderStrong}`
+                      ? `2px solid ${SURFACE.textHi}`
                       : "2px solid transparent",
                     background: "transparent",
                     color: selected ? SURFACE.textHi : SURFACE.textDim,
@@ -1040,17 +1237,14 @@ export function Demo() {
               display: "inline-flex",
               alignItems: "center",
               gap: "0.4rem",
-              padding: "0.35rem 0.65rem",
-              borderRadius: 6,
-              border: `1px solid ${
-                settingsOpen ? SURFACE.borderStrong : SURFACE.border
-              }`,
-              background: settingsOpen ? SURFACE.accentSoft : "transparent",
+              padding: "0.35rem 0",
+              border: "none",
+              background: "transparent",
               color: settingsOpen ? SURFACE.textHi : SURFACE.textDim,
               cursor: "pointer",
-              fontSize: "0.72rem",
+              fontSize: "0.75rem",
               fontWeight: 500,
-              transition: "all 0.15s ease",
+              transition: "color 0.15s ease",
             }}
           >
             <GearIcon />
@@ -1076,131 +1270,37 @@ export function Demo() {
         <Modal
           open={settingsOpen}
           onClose={closeSettings}
-          title="Demo settings"
+          title="Inkwell Demo - Plugin Settings"
         >
-          <SectionHeader>Plugins</SectionHeader>
-          {AVAILABLE_PLUGINS.map(plugin => {
-            const isOn = enabledPluginIds.has(plugin.id);
-            return (
-              <Row
-                key={plugin.id}
-                title={plugin.label}
-                description={plugin.summary}
-                // Only show the verbose usage hint when the plugin is on,
-                // so the modal stays scannable when scrolling through it.
-                hint={isOn ? plugin.usage : null}
-                control={
-                  <Switch
-                    on={isOn}
-                    onChange={() => togglePlugin(plugin.id)}
-                    label={`${plugin.label} plugin`}
-                  />
-                }
-              />
-            );
-          })}
+          <Section>
+            {AVAILABLE_PLUGINS.map(plugin => {
+              const isOn = enabledPluginIds.has(plugin.id);
+              return (
+                <Row
+                  key={plugin.id}
+                  title={plugin.label}
+                  description={plugin.summary}
+                  hint={plugin.usage}
+                  control={
+                    <Switch
+                      on={isOn}
+                      onChange={() => togglePlugin(plugin.id)}
+                      label={`${plugin.label} plugin`}
+                    />
+                  }
+                />
+              );
+            })}
 
-          <SectionHeader>Settings</SectionHeader>
-
-          <Row
-            title="Character limit"
-            description={
-              <>
-                Maximum document length reported via{" "}
-                <code
-                  style={{
-                    fontFamily:
-                      '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-                    fontSize: "0.78em",
-                    background: "hsl(220, 10%, 22%)",
-                    padding: "0 0.3rem",
-                    borderRadius: 3,
-                    color: SURFACE.textHi,
-                  }}
-                >
-                  onCharacterCount
-                </code>
-                .
-              </>
-            }
-            control={
-              <NumberInput
-                ariaLabel="Character limit"
-                value={characterLimit}
-                onChange={setCharacterLimit}
-                min={CHARACTER_LIMIT_MIN}
-                max={CHARACTER_LIMIT_MAX}
-                step={50}
-                suffix="chars"
-              />
-            }
-          />
-
-          <Row
-            title="Enforce character limit"
-            description="When on, the editor clamps typing and pasted input at the character limit."
-            control={
-              <Switch
-                on={enforceCharacterLimit}
-                onChange={setEnforceCharacterLimit}
-                label="Enforce character limit"
-              />
-            }
-          />
-
-          {/* Inline progress bar lives flush against the bottom of the card
-              so the count stays visible regardless of which section is open. */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.75rem",
-              padding: "0.65rem 1rem",
-              borderTop: `1px solid ${SURFACE.border}`,
-              background: SURFACE.bgSoft,
-            }}
-          >
-            <div
-              style={{
-                flex: 1,
-                position: "relative",
-                height: 4,
-                borderRadius: 9999,
-                background: "hsl(220, 10%, 22%)",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  right: "auto",
-                  width: `${Math.min(
-                    100,
-                    (characterCount / characterLimit) * 100,
-                  )}%`,
-                  background: overLimit
-                    ? "hsl(0, 75%, 60%)"
-                    : "linear-gradient(90deg, hsl(220, 10%, 55%), hsl(220, 12%, 75%))",
-                  transition: "width 0.18s ease, background 0.2s ease",
-                }}
-              />
-            </div>
-            <span
-              aria-live="polite"
-              style={{
-                fontFamily:
-                  '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-                fontSize: "0.72rem",
-                fontVariantNumeric: "tabular-nums",
-                color: overLimit ? "hsl(0, 75%, 72%)" : SURFACE.textDim,
-                minWidth: "6.5rem",
-                textAlign: "right",
-              }}
-            >
-              {characterCount} / {characterLimit}
-            </span>
-          </div>
+            <CharacterLimitRow
+              enforce={enforceCharacterLimit}
+              setEnforce={setEnforceCharacterLimit}
+              limit={characterLimit}
+              setLimit={setCharacterLimit}
+              count={characterCount}
+              overLimit={overLimit}
+            />
+          </Section>
         </Modal>
       </div>
     </ErrorBoundary>

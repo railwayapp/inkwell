@@ -238,7 +238,7 @@ describe("withMarkdown — heading triggers", () => {
     expect(getElements(editor)[0].type).toBe("paragraph");
   });
 
-  it("Enter on non-empty heading exits to paragraph", () => {
+  it("Enter at the end of a heading inserts a paragraph below, heading preserved", () => {
     const editor = createTestEditor({
       heading1: true,
       heading2: true,
@@ -252,7 +252,7 @@ describe("withMarkdown — heading triggers", () => {
         type: "heading" as const,
         id: generateId(),
         level: 2,
-        children: [{ text: "Title" }],
+        children: [{ text: "## Title" }],
       },
     ];
     editor.onChange();
@@ -262,7 +262,9 @@ describe("withMarkdown — heading triggers", () => {
 
     const elements = getElements(editor);
     expect(elements[0].type).toBe("heading");
+    expect(Node.string(elements[0])).toBe("## Title");
     expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("");
   });
 
   it("Enter on empty heading converts to paragraph in place", () => {
@@ -288,6 +290,89 @@ describe("withMarkdown — heading triggers", () => {
     editor.insertBreak();
 
     expect(getElements(editor)[0].type).toBe("paragraph");
+  });
+
+  it("Enter inside the heading mark splits at the caret and reclassifies both halves", () => {
+    // Cursor between the two `#`s of `## Try it out`. The head `#` is no
+    // longer a valid heading mark (no trailing space) — drops to paragraph.
+    // The tail `# Try it out` is still a valid h1 — stays as a heading.
+    const editor = createTestEditor({
+      heading1: true,
+      heading2: true,
+    });
+    editor.children = deserialize("## Try it out", {
+      heading1: true,
+      heading2: true,
+    });
+    editor.onChange();
+    expect(getElements(editor)[0].type).toBe("heading");
+
+    Transforms.select(editor, { path: [0, 0], offset: 1 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("#");
+    expect(elements[1].type).toBe("heading");
+    expect(elements[1].level).toBe(1);
+    expect(Node.string(elements[1])).toBe("# Try it out");
+  });
+
+  it("Enter in heading body keeps the head as a heading, drops the tail to paragraph", () => {
+    const editor = createTestEditor({ heading2: true });
+    editor.children = deserialize("## Try it out", { heading2: true });
+    editor.onChange();
+
+    // Caret after "## T", before "ry it out".
+    Transforms.select(editor, { path: [0, 0], offset: 4 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("heading");
+    expect(elements[0].level).toBe(2);
+    expect(Node.string(elements[0])).toBe("## T");
+    expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("ry it out");
+  });
+
+  it("Enter at the very start of a heading inserts an empty paragraph above", () => {
+    const editor = createTestEditor({ heading2: true });
+    editor.children = deserialize("## Title", { heading2: true });
+    editor.onChange();
+
+    Transforms.select(editor, { path: [0, 0], offset: 0 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("");
+    expect(elements[1].type).toBe("heading");
+    expect(Node.string(elements[1])).toBe("## Title");
+  });
+
+  it("split tail that would be a heading at a disabled level falls back to paragraph", () => {
+    // h2 is on, h1 is off. Splitting `## Foo` between the `#`s would
+    // produce an h1 tail, but the feature is off so the tail must drop to
+    // paragraph.
+    const editor = createTestEditor({ heading1: false, heading2: true });
+    editor.children = deserialize("## Foo", {
+      heading1: false,
+      heading2: true,
+    });
+    editor.onChange();
+
+    Transforms.select(editor, { path: [0, 0], offset: 1 });
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("#");
+    expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("# Foo");
   });
 });
 

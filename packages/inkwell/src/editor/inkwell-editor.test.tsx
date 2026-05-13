@@ -1696,7 +1696,7 @@ describe("withMarkdown — heading behaviors", () => {
         type: "heading" as const,
         id: generateId(),
         level: 2,
-        children: [{ text: "Title" }],
+        children: [{ text: "## Title" }],
       },
     ];
     editor.onChange();
@@ -3872,7 +3872,7 @@ describe("withMarkdown — heading behaviors", () => {
         type: "heading" as const,
         id: generateId(),
         level: 2,
-        children: [{ text: "Title" }],
+        children: [{ text: "## Title" }],
       },
     ];
     editor.onChange();

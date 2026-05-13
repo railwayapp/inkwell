@@ -17,6 +17,32 @@ const UNORDERED_LIST_CONTINUE_RE = /^(\s*)([-*+]) \S/;
  * whether Enter should outdent or exit list mode.
  */
 const UNORDERED_LIST_EMPTY_RE = /^(\s*)([-*+]) ?$/;
+/** Matches a line that opens with valid heading syntax: `#{1,6}` + space. */
+const HEADING_LINE_RE = /^(#{1,6})\s/;
+
+/**
+ * Classify a single line of text into the element type it should render as.
+ * Mirrors the deserializer's per-line block detection so a runtime split
+ * (e.g., pressing Enter mid-heading) reclassifies each half the same way a
+ * re-deserialization would.
+ *
+ * Only handles the block kinds that are reachable from a split: heading
+ * (when the feature is enabled) and paragraph (the fallback). Blockquote
+ * is intentionally excluded — Slate-level blockquote splits run through a
+ * dedicated branch above.
+ */
+function classifyLine(
+  text: string,
+  deco: ResolvedInkwellFeatures,
+): { type: "heading" | "paragraph"; level?: number } {
+  const headingMatch = HEADING_LINE_RE.exec(text);
+  if (headingMatch) {
+    const level = headingMatch[1].length;
+    const key = `heading${level}` as keyof ResolvedInkwellFeatures;
+    if (deco[key]) return { type: "heading", level };
+  }
+  return { type: "paragraph" };
+}
 /**
  * Slate plugin that adds markdown-specific editor behaviors:
  * - Enter on code-fence → new paragraph (exit code block)
@@ -138,8 +164,13 @@ export function withMarkdown(
       return;
     }
 
-    // Enter on heading → exit to new paragraph
+    // Enter on heading → split at caret. Each half is re-classified against
+    // the markdown syntax it now contains: a head of `#` (no trailing space)
+    // is no longer a valid heading, so it drops to a paragraph; a tail like
+    // `# rest` is still a valid h1, so it stays a heading. This matches what
+    // the user would get from re-deserializing each line.
     if (element.type === "heading") {
+      // Empty heading or marker-only — clear back to a plain paragraph.
       if (!text.trim() || /^#{1,6}\s*$/.test(text)) {
         Transforms.delete(editor, {
           at: {
@@ -153,12 +184,53 @@ export function withMarkdown(
         Transforms.unsetNodes(editor, "level");
         return;
       }
-      const newParagraph: InkwellElement = {
-        type: "paragraph",
-        id: generateId(),
-        children: [{ text: "" }],
-      };
-      Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
+
+      if (!Range.isCollapsed(selection)) {
+        Transforms.delete(editor);
+      }
+      const point = editor.selection?.anchor;
+      const cursorOffset = point?.offset ?? text.length;
+      const endPoint = Editor.end(editor, path);
+      const tail = point
+        ? Editor.string(editor, { anchor: point, focus: endPoint })
+        : "";
+      if (point && tail.length > 0) {
+        Transforms.delete(editor, { at: { anchor: point, focus: endPoint } });
+      }
+
+      // Re-classify what's left in the original node based on its remaining
+      // text. If still a heading (possibly at a different level), update;
+      // otherwise downgrade to a paragraph.
+      const head = text.slice(0, cursorOffset);
+      const headClass = classifyLine(head, deco);
+      if (headClass.type === "heading" && headClass.level !== undefined) {
+        Transforms.setNodes(editor, {
+          type: "heading",
+          level: headClass.level,
+        } as Partial<InkwellElement>);
+      } else {
+        Transforms.setNodes(editor, {
+          type: headClass.type,
+        } as Partial<InkwellElement>);
+        Transforms.unsetNodes(editor, "level");
+      }
+
+      // Insert the tail as the appropriate element type for its own content.
+      const tailClass = classifyLine(tail, deco);
+      const newNode: InkwellElement =
+        tailClass.type === "heading" && tailClass.level !== undefined
+          ? {
+              type: "heading",
+              id: generateId(),
+              level: tailClass.level,
+              children: [{ text: tail }],
+            }
+          : {
+              type: "paragraph",
+              id: generateId(),
+              children: [{ text: tail }],
+            };
+      Transforms.insertNodes(editor, newNode, { at: Path.next(path) });
       Transforms.select(editor, Editor.start(editor, Path.next(path)));
       return;
     }

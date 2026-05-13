@@ -26,8 +26,27 @@ export default defineConfig({
           items: [
             { slug: "docs/editor" },
             { slug: "docs/renderer" },
-            { slug: "docs/editor-plugins", label: "Plugins" },
             { slug: "docs/styling" },
+          ],
+        },
+        {
+          label: "Plugins",
+          items: [
+            { slug: "docs/plugins", label: "Overview" },
+            { slug: "docs/custom-plugins", label: "Creating custom plugins" },
+            {
+              label: "Included plugins",
+              items: [
+                { slug: "docs/plugins/bubble-menu" },
+                { slug: "docs/plugins/snippets" },
+                { slug: "docs/plugins/emoji" },
+                { slug: "docs/plugins/completions" },
+                { slug: "docs/plugins/slash-commands" },
+                { slug: "docs/plugins/mentions" },
+                { slug: "docs/plugins/attachments" },
+                { slug: "docs/plugins/character-limit" },
+              ],
+            },
           ],
         },
       ],

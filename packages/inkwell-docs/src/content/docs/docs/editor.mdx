@@ -257,8 +257,8 @@ function or a tuple such as `[plugin, ...options]`. See
 **Type:** `number`
 
 Tracks the current character count and adds `inkwell-editor-over-limit` to
-the wrapper when exceeded. Use `createCharacterLimitPlugin()` when you want the
-built-in limit toast UI.
+the wrapper when exceeded. Add the [Character Limit plugin](/docs/plugins/character-limit)
+when you want the built-in limit toast UI.
 
 ### `enforceCharacterLimit`
 
@@ -288,22 +288,3 @@ surfaces.
 **Type:** `(content: string) => void`
 
 Called when `submitOnEnter` handles Enter.
-
-## Character-limit toast plugin
-
-`createCharacterLimitPlugin()` renders the optional built-in toast UI for
-`characterLimit`. Add it to `plugins` when you want that UI:
-
-```tsx
-import { createCharacterLimitPlugin, InkwellEditor } from "@railway/inkwell";
-
-<InkwellEditor
-  content={content}
-  onChange={setContent}
-  characterLimit={280}
-  plugins={[createCharacterLimitPlugin()]}
-/>;
-```
-
-The toast uses `.inkwell-editor-limit-toast` and
-`.inkwell-editor-limit-toast-icon` classes for styling.

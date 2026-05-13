@@ -1,11 +1,8 @@
 import type { ReactNode } from "react";
-import { Node } from "slate";
 import { type RenderElementProps, useSelected } from "slate-react";
 import { editorClass } from "../../lib/class-names";
 import { sanitizeImageUrl } from "../../lib/safe-url";
 import type { InkwellElement } from "./types";
-
-const LIST_MARKER_RE = /^(\s*)(\d+\.|[-*+]) /;
 
 /**
  * Render a block-level element. All types render as <p> with CSS classes.
@@ -51,23 +48,6 @@ export function RenderElement({
           {children}
         </ImageElement>
       );
-    case "list-item": {
-      const text = Node.string(el);
-      const match = LIST_MARKER_RE.exec(text);
-      const indent = match ? Math.floor(match[1].length / 2) : 0;
-      const ordered = match ? /^\d+\.$/.test(match[2]) : false;
-      return (
-        <p
-          {...attributes}
-          className={editorClass("list-item")}
-          data-list
-          data-ordered={ordered || undefined}
-          data-indent={indent > 0 ? indent : undefined}
-        >
-          {children}
-        </p>
-      );
-    }
     default:
       return <p {...attributes}>{children}</p>;
   }

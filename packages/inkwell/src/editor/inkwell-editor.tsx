@@ -15,6 +15,7 @@ import {
   createEditor,
   type Descendant,
   Editor,
+  Element,
   Node,
   type NodeEntry,
   Range,
@@ -51,6 +52,13 @@ import { generateId, withNodeId } from "./slate/with-node-id";
 
 const IS_SERVER = typeof window === "undefined";
 const EMPTY_PLUGINS: InkwellPlugin[] = [];
+/**
+ * Tab-on-list-marker recognizers. Markdown list lines stay as paragraph
+ * text in the editor model, so Tab handling matches the raw text instead
+ * of element type.
+ */
+const ORDERED_LIST_MARKER_RE = /^\s*\d+\.(?:\s|$)/;
+const UNORDERED_LIST_MARKER_RE = /^(\s*)([-*+])(?:\s|$)/;
 
 function replaceEditorChildren(
   editor: InkwellSlateEditor,
@@ -945,6 +953,55 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
             if (hasModifiers) event.preventDefault();
             activatePlugin(plugin);
             return;
+          }
+        }
+
+        // Tab on a Markdown list-like paragraph: indent unordered markers by
+        // two leading spaces; preserve ordered markers verbatim. Either way,
+        // consume the event so focus stays in the editor.
+        if (
+          event.key === "Tab" &&
+          !event.shiftKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey
+        ) {
+          const { selection } = editor;
+          if (selection) {
+            const [match] = Editor.nodes(editor, {
+              match: n => Element.isElement(n),
+            });
+            if (match) {
+              const [node, path] = match;
+              const element = node as InkwellElement;
+              if (element.type === "paragraph") {
+                const text = Node.string(node);
+                if (ORDERED_LIST_MARKER_RE.test(text)) {
+                  event.preventDefault();
+                  return;
+                }
+                if (UNORDERED_LIST_MARKER_RE.test(text)) {
+                  event.preventDefault();
+                  const savedSelection = editor.selection;
+                  Transforms.insertText(editor, "  ", {
+                    at: { path: [...path, 0], offset: 0 },
+                  });
+                  if (savedSelection) {
+                    Transforms.select(editor, {
+                      anchor: {
+                        path: savedSelection.anchor.path,
+                        offset: savedSelection.anchor.offset + 2,
+                      },
+                      focus: {
+                        path: savedSelection.focus.path,
+                        offset: savedSelection.focus.offset + 2,
+                      },
+                    });
+                  }
+                  return;
+                }
+              }
+            }
           }
         }
 

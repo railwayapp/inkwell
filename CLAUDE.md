@@ -81,10 +81,12 @@ Formatting is feature-based. The public prop is `features`.
 All features are enabled by default:
 
 - `headings` with optional `h1`–`h6` overrides
-- `lists`
 - `blockquotes`
 - `codeBlocks`
 - `images`
+
+List markers (`-`, `*`, `+`, `1.`) stay plain text in the editor and are not
+part of configurable editor features.
 
 Inline Markdown styling is still implemented internally with Slate decoration
 ranges. Public docs should call the configurable behavior “features.”

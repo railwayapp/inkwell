@@ -36,36 +36,13 @@ describe("RenderElement — heading", () => {
 });
 
 describe("RenderElement — list-item", () => {
-  it("renders list-item with data-list attribute and class", () => {
-    const { container } = renderElement("list-item");
-    const p = container.querySelector("p");
-    expect(p).toHaveAttribute("data-list");
-    expect(p).toHaveClass("inkwell-editor-list-item");
-  });
-
-  it("marks ordered list-items with data-ordered", () => {
-    const { container } = renderElement("list-item", {
-      children: [{ text: "1. item" }],
-    });
-    const p = container.querySelector("p");
-    expect(p).toHaveAttribute("data-ordered", "true");
-    expect(p).not.toHaveAttribute("data-indent");
-  });
-
-  it("does not mark bullet list-items with data-ordered", () => {
+  it("renders legacy list-item elements as plain paragraphs", () => {
     const { container } = renderElement("list-item", {
       children: [{ text: "- item" }],
     });
     const p = container.querySelector("p");
-    expect(p).not.toHaveAttribute("data-ordered");
-  });
-
-  it("derives data-indent from leading whitespace (two spaces per level)", () => {
-    const { container } = renderElement("list-item", {
-      children: [{ text: "    - item" }],
-    });
-    const p = container.querySelector("p");
-    expect(p).toHaveAttribute("data-indent", "2");
+    expect(p).not.toHaveAttribute("data-list");
+    expect(p).not.toHaveClass("inkwell-editor-list-item");
   });
 });
 

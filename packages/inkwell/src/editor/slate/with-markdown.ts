@@ -6,17 +6,17 @@ import { generateId } from "./with-node-id";
 
 const HEADING_RE = /^#{1,6}$/;
 /**
- * Matches a line that has been typed up to — but not including — the trailing
- * space that completes a list marker. E.g. `-`, `*`, `+`, `1.`, `  2.`
+ * Matches a paragraph that is a Markdown unordered-list line with a body —
+ * leading indent, marker, trailing space, then some non-empty content.
+ * Used to decide whether Enter should continue the list source.
  */
-const LIST_TRIGGER_RE = /^(\s*)(\d+\.|[-*+])$/;
+const UNORDERED_LIST_CONTINUE_RE = /^(\s*)([-*+]) \S/;
 /**
- * Matches the leading marker of a list-item element's text. Captures leading
- * whitespace (indent), the marker itself, and includes the trailing space.
- * E.g. `"  1. foo"` → match[1] = `"  "`, match[2] = `"1."`.
+ * Matches a paragraph that is an unordered-list marker with no body —
+ * just the marker followed by an optional trailing space. Used to decide
+ * whether Enter should outdent or exit list mode.
  */
-const LIST_MARKER_RE = /^(\s*)(\d+\.|[-*+]) /;
-
+const UNORDERED_LIST_EMPTY_RE = /^(\s*)([-*+]) ?$/;
 /**
  * Slate plugin that adds markdown-specific editor behaviors:
  * - Enter on code-fence → new paragraph (exit code block)
@@ -25,7 +25,6 @@ const LIST_MARKER_RE = /^(\s*)(\d+\.|[-*+]) /;
  * - Shift+Enter on blockquote → soft break (stay in blockquote)
  * - Typing "> " at start of paragraph → convert to blockquote
  * - Typing "# " at start of paragraph → convert to heading
- * - Typing `- `, `1. `, or indented list markers → convert to list-item
  * - Typing ``` at start of paragraph → convert to code-fence
  * - Closing ``` on code-line → convert to code-fence, exit code block
  * - Enter on image → insert a paragraph after the void image block
@@ -164,6 +163,42 @@ export function withMarkdown(
       return;
     }
 
+    // Enter on a Markdown unordered list-like paragraph. List source stays as
+    // plain paragraph text (no `list-item` element), so we replicate the
+    // list-ergonomics here:
+    //   • non-empty body          → insert next paragraph `${indent}${marker} `
+    //   • empty body, indent ≥ 2  → outdent same line to `${indent-2}${marker} `
+    //   • empty body, indent 0    → clear the line, stay as empty paragraph
+    if (element.type === "paragraph") {
+      const emptyMatch = UNORDERED_LIST_EMPTY_RE.exec(text);
+      if (emptyMatch) {
+        const [, indent, marker] = emptyMatch;
+        Transforms.delete(editor, {
+          at: {
+            anchor: Editor.start(editor, path),
+            focus: Editor.end(editor, path),
+          },
+        });
+        if (indent.length >= 2) {
+          editor.insertText(`${indent.slice(2)}${marker} `);
+        }
+        return;
+      }
+
+      const continueMatch = UNORDERED_LIST_CONTINUE_RE.exec(text);
+      if (continueMatch) {
+        const [, indent, marker] = continueMatch;
+        const newParagraph: InkwellElement = {
+          type: "paragraph",
+          id: generateId(),
+          children: [{ text: `${indent}${marker} ` }],
+        };
+        Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
+        Transforms.select(editor, Editor.end(editor, Path.next(path)));
+        return;
+      }
+    }
+
     // Enter on code-line → new code-line (stay in code block)
     if (element.type === "code-line") {
       // Normal code line → insert new code-line
@@ -187,56 +222,6 @@ export function withMarkdown(
       };
       Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
       Transforms.select(editor, Editor.start(editor, Path.next(path)));
-      return;
-    }
-
-    // Enter on list-item
-    if (element.type === "list-item") {
-      const markerMatch = LIST_MARKER_RE.exec(text);
-      const indent = markerMatch?.[1] ?? "";
-      const rawMarker = markerMatch?.[2] ?? "-";
-      const body = markerMatch ? text.slice(markerMatch[0].length) : "";
-
-      // Empty body → outdent by two spaces, or revert to paragraph at indent 0
-      if (!body.trim()) {
-        if (indent.length >= 2) {
-          const outdent = indent.slice(2);
-          const nextMarker = /^\d+\.$/.test(rawMarker) ? "1." : rawMarker;
-          Transforms.delete(editor, {
-            at: {
-              anchor: Editor.start(editor, path),
-              focus: Editor.end(editor, path),
-            },
-          });
-          editor.insertText(`${outdent}${nextMarker} `);
-          return;
-        }
-        Transforms.delete(editor, {
-          at: {
-            anchor: Editor.start(editor, path),
-            focus: Editor.end(editor, path),
-          },
-        });
-        Transforms.setNodes(editor, {
-          type: "paragraph",
-        } as Partial<InkwellElement>);
-        return;
-      }
-
-      // Non-empty → insert new list item with the same marker.
-      // Ordered markers auto-increment (e.g. `1.` → `2.`).
-      let nextMarker = rawMarker;
-      const orderedMatch = /^(\d+)\.$/.exec(rawMarker);
-      if (orderedMatch) {
-        nextMarker = `${parseInt(orderedMatch[1], 10) + 1}.`;
-      }
-      const newItem: InkwellElement = {
-        type: "list-item",
-        id: generateId(),
-        children: [{ text: `${indent}${nextMarker} ` }],
-      };
-      Transforms.insertNodes(editor, newItem, { at: Path.next(path) });
-      Transforms.select(editor, Editor.end(editor, Path.next(path)));
       return;
     }
 
@@ -346,22 +331,6 @@ export function withMarkdown(
       Transforms.setNodes(editor, {
         type: "heading",
         level,
-      } as Partial<InkwellElement>);
-      return;
-    }
-
-    // Detect list marker typed at start of paragraph (e.g. `-`, `*`, `+`,
-    // `1.`, or indented variants) followed by space → convert to list-item
-    if (
-      deco.lists &&
-      element.type === "paragraph" &&
-      text === " " &&
-      LIST_TRIGGER_RE.test(currentText)
-    ) {
-      // Insert the space first so the text becomes `<marker> `
-      insertText(text);
-      Transforms.setNodes(editor, {
-        type: "list-item",
       } as Partial<InkwellElement>);
       return;
     }

@@ -90,8 +90,6 @@ export interface InkwellHeadingFeatures {
 export interface InkwellFeatures {
   /** Recognize heading markers. Pass per-level overrides for granular control. */
   headings?: boolean | InkwellHeadingFeatures;
-  /** Recognize unordered, ordered, and indented list items. */
-  lists?: boolean;
   /** Recognize `> ` as blockquotes. */
   blockquotes?: boolean;
   /** Recognize fenced code blocks. */
@@ -107,7 +105,6 @@ export interface ResolvedInkwellFeatures {
   heading4: boolean;
   heading5: boolean;
   heading6: boolean;
-  lists: boolean;
   blockquotes: boolean;
   codeBlocks: boolean;
   images: boolean;

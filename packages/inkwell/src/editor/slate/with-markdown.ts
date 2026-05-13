@@ -22,24 +22,28 @@ const HEADING_LINE_RE = /^(#{1,6})\s/;
 
 /**
  * Classify a single line of text into the element type it should render as.
- * Mirrors the deserializer's per-line block detection so a runtime split
- * (e.g., pressing Enter mid-heading) reclassifies each half the same way a
- * re-deserialization would.
+ * Mirrors the deserializer's per-line block detection so a runtime edit
+ * (split, backspace, paste, etc.) reclassifies the line the same way a
+ * fresh deserialization would.
  *
- * Only handles the block kinds that are reachable from a split: heading
- * (when the feature is enabled) and paragraph (the fallback). Blockquote
- * is intentionally excluded — Slate-level blockquote splits run through a
- * dedicated branch above.
+ * Only covers the block kinds that are 1:1 with a markdown line and can
+ * appear inside a paragraph-like element: heading (when the feature is
+ * enabled), blockquote (when enabled), and the paragraph fallback.
+ * Structural blocks (code-fence/code-line) and void blocks (image) are
+ * handled separately by their own logic and are never reclassified here.
  */
 function classifyLine(
   text: string,
   deco: ResolvedInkwellFeatures,
-): { type: "heading" | "paragraph"; level?: number } {
+): { type: "heading" | "paragraph" | "blockquote"; level?: number } {
   const headingMatch = HEADING_LINE_RE.exec(text);
   if (headingMatch) {
     const level = headingMatch[1].length;
     const key = `heading${level}` as keyof ResolvedInkwellFeatures;
     if (deco[key]) return { type: "heading", level };
+  }
+  if (deco.blockquotes && /^>\s/.test(text)) {
+    return { type: "blockquote" };
   }
   return { type: "paragraph" };
 }
@@ -63,7 +67,8 @@ export function withMarkdown(
   editor: InkwellEditor,
   featuresRef: { current: ResolvedInkwellFeatures },
 ): InkwellEditor {
-  const { insertBreak, insertData, insertText, isVoid } = editor;
+  const { insertBreak, insertData, insertText, isVoid, normalizeNode } =
+    editor;
 
   editor.isVoid = (element: InkwellElement) => {
     if (element.type === "image") return true;
@@ -506,6 +511,73 @@ export function withMarkdown(
       return;
     }
     insertData(data);
+  };
+
+  // Keep block element type in sync with the markdown line it carries.
+  //
+  // Element types are set at deserialize time and by the typing-triggered
+  // promotions in `insertText`, but they don't auto-update when text is
+  // edited by other means (backspace, paste-inside-block, programmatic
+  // edits, the split-at-caret behavior above). Result: text like
+  // `## Features` could end up in a paragraph element and render as
+  // unstyled source.
+  //
+  // This normalizer reruns the same line-level classification the
+  // deserializer uses on every operation. Only the text-driven block
+  // kinds are reclassified — code-fence/code-line are structural and
+  // images are void, so neither is in scope here.
+  editor.normalizeNode = entry => {
+    const [node, path] = entry;
+    if (Element.isElement(node)) {
+      const element = node as InkwellElement;
+      const textDriven =
+        element.type === "paragraph" ||
+        element.type === "heading" ||
+        element.type === "blockquote";
+      if (textDriven) {
+        const text = Node.string(node);
+        const cls = classifyLine(text, featuresRef.current);
+        if (cls.type === "heading" && cls.level !== undefined) {
+          if (element.type !== "heading" || element.level !== cls.level) {
+            Transforms.setNodes(
+              editor,
+              {
+                type: "heading",
+                level: cls.level,
+              } as Partial<InkwellElement>,
+              { at: path },
+            );
+            return;
+          }
+        } else if (cls.type === "blockquote") {
+          if (element.type !== "blockquote") {
+            Transforms.setNodes(
+              editor,
+              { type: "blockquote" } as Partial<InkwellElement>,
+              { at: path },
+            );
+            if (element.level !== undefined) {
+              Transforms.unsetNodes(editor, "level", { at: path });
+            }
+            return;
+          }
+        } else {
+          // paragraph
+          if (element.type !== "paragraph") {
+            Transforms.setNodes(
+              editor,
+              { type: "paragraph" } as Partial<InkwellElement>,
+              { at: path },
+            );
+            if (element.level !== undefined) {
+              Transforms.unsetNodes(editor, "level", { at: path });
+            }
+            return;
+          }
+        }
+      }
+    }
+    normalizeNode(entry);
   };
 
   return editor;

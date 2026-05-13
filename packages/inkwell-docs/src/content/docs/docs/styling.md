@@ -10,6 +10,42 @@ import "@railway/inkwell/styles.css";
 
 The defaults are intentionally easy to override: every element also gets a stable CSS class, so you still have full control over the look and feel of both the editor and the rendered output.
 
+## Component props
+
+Both `<InkwellEditor />` and `<InkwellRenderer />` accept props that let you attach classes and inline styles without writing a global stylesheet.
+
+### Editor
+
+| Prop | Type | Applied to |
+|------|------|------------|
+| `className` | `string` | The root wrapper. Alias for `classNames.root`. |
+| `classNames.root` | `string` | The root wrapper (`.inkwell-editor-wrapper`). |
+| `classNames.editor` | `string` | The editable surface (`.inkwell-editor`). |
+| `styles.root` | `CSSProperties` | Inline styles on the root wrapper. |
+| `styles.editor` | `CSSProperties` | Inline styles on the editable surface. |
+
+There is no top-level `style` prop — use `styles.root` or `styles.editor` to be explicit about which slot the inline styles target.
+
+```tsx
+<InkwellEditor
+  content={content}
+  onChange={setContent}
+  className="my-editor"
+  classNames={{ editor: "my-editor-surface" }}
+  styles={{ editor: { minHeight: 320, padding: "1.5rem" } }}
+/>
+```
+
+### Renderer
+
+| Prop | Type | Applied to |
+|------|------|------------|
+| `className` | `string` | The renderer wrapper (`.inkwell-renderer`). |
+
+```tsx
+<InkwellRenderer content={content} className="prose" />
+```
+
 ## Editor
 
 ### Container

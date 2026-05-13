@@ -4,14 +4,18 @@ title: "Getting Started"
 
 import { Tabs, TabItem } from "@astrojs/starlight/components";
 
-Inkwell is a Markdown editor and renderer for React. You write and edit
-content in a visual WYSIWYG interface, but the underlying content is always
-the Markdown source. The Markdown source is the text.
+_For LLMs, see [/llms.txt](/llms.txt)_.
 
-Built on [Slate.js](https://www.slatejs.org/), with an extensible plugin
-system.
+Inkwell is a Markdown editor and renderer for React that treats Markdown as 
+the canonical content.
 
-For LLMs, see [/llms.txt](/llms.txt).
+You write and edit content in a visual WYSIWYG interface, but the underlying 
+content is always the Markdown source; the Markdown source is the text.
+
+It ships with WYSIWYG basics such as **bold**, _italic_, ~~strike~~, `code`, 
+and an [extensible plugin system](/docs/plugins) with batteries included for 
+everything else.
+
 
 ## Installation
 
@@ -48,13 +52,14 @@ For LLMs, see [/llms.txt](/llms.txt).
 
 Requires React 19 or later as a peer dependency.
 
-## Your first editor
+## Editor
 
 Render `InkwellEditor` with a content string and an `onChange` handler.
 
 ```tsx
 import { InkwellEditor } from "@railway/inkwell";
 import { useState } from "react";
+import "@railway/inkwell/styles.css";
 
 function App() {
   const [content, setContent] = useState("# Hello **world**");
@@ -63,7 +68,7 @@ function App() {
 }
 ```
 
-That gives you a fully featured Markdown editor out of the box:
+This gives you a fully featured Markdown editor out of the box:
 
 - **Block formatting** — headings, blockquotes, and fenced code blocks,
   all triggered by typing their Markdown syntax
@@ -75,6 +80,8 @@ That gives you a fully featured Markdown editor out of the box:
   automatically
 - **Keyboard shortcuts** — `⌘B` bold, `⌘I` italic, `⌘D` strikethrough
 
+The floating toolbar is powered by the [Bubble Menu plugin](/docs/plugins/bubble-menu/).
+
 ## Rendering Markdown
 
 `InkwellRenderer` turns a Markdown string into formatted HTML. No browser
@@ -82,6 +89,7 @@ dependencies — works anywhere React runs, including server-side rendering.
 
 ```tsx
 import { InkwellRenderer } from "@railway/inkwell";
+import "@railway/inkwell/styles.css";
 
 function Preview({ content }: { content: string }) {
   return <InkwellRenderer content={content} />;
@@ -92,6 +100,7 @@ Pair them together for a live preview:
 
 ```tsx
 import { InkwellRenderer, InkwellEditor } from "@railway/inkwell";
+import "@railway/inkwell/styles.css";
 import { useState } from "react";
 
 function EditorWithPreview() {

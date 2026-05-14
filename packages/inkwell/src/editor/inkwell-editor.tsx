@@ -365,6 +365,12 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       for (const listener of listeners) listener(key);
     }, []);
 
+    // Reshape an "empty" editor (no visible text) into the canonical single
+    // empty paragraph so the placeholder UI has a stable block to render in.
+    // Wrapped in `HistoryEditor.withoutSaving` so cmd+a-delete + cmd+z still
+    // undoes the user's delete — without it, this reshape is recorded as its
+    // own batch and the first undo just pops the canonicalize, leaving the
+    // post-delete state (often a stranded code-fence) in place.
     const canonicalizeEmptyEditor = useCallback(() => {
       if (Node.string(editor).trim().length !== 0) return;
 
@@ -375,15 +381,17 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         Node.string(onlyChild).length === 0;
       if (isCanonicalEmptyParagraph) return;
 
-      Editor.withoutNormalizing(editor, () => {
-        for (let index = editor.children.length - 1; index >= 0; index--) {
-          Transforms.removeNodes(editor, { at: [index] });
-        }
-        Transforms.insertNodes(editor, {
-          type: "paragraph",
-          id: generateId(),
-          children: [{ text: "" }],
-        } satisfies InkwellElement);
+      HistoryEditor.withoutSaving(editor, () => {
+        Editor.withoutNormalizing(editor, () => {
+          for (let index = editor.children.length - 1; index >= 0; index--) {
+            Transforms.removeNodes(editor, { at: [index] });
+          }
+          Transforms.insertNodes(editor, {
+            type: "paragraph",
+            id: generateId(),
+            children: [{ text: "" }],
+          } satisfies InkwellElement);
+        });
       });
     }, [editor]);
 

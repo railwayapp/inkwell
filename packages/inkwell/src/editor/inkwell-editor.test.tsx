@@ -4645,3 +4645,70 @@ describe("InkwellEditor — character limit", () => {
     expect(ref.current?.getState().overLimit).toBe(true);
   });
 });
+
+describe("InkwellEditor — placeholder canonicalize keeps undo intact", () => {
+  // Regression: when a delete leaves a non-paragraph block behind (e.g. a
+  // stranded code-fence after select-all + delete on content that ends in a
+  // code block) and a plugin placeholder forces canonicalize-to-empty-
+  // paragraph, the canonicalize must NOT land in the history. If it does,
+  // undo pops the canonicalize instead of the user's delete and the editor
+  // "flashes" — flickering between code-fence and paragraph — without ever
+  // restoring content.
+  it("undo restores content after select-all + delete on code-fence-terminated content", async () => {
+    const { HistoryEditor: HE } = await import("slate-history");
+    const features: ResolvedInkwellFeatures = {
+      heading1: true,
+      heading2: false,
+      heading3: false,
+      heading4: false,
+      heading5: false,
+      heading6: false,
+      blockquotes: true,
+      codeBlocks: true,
+      images: true,
+    };
+    const editor = createTestEditor(features);
+    editor.children = deserialize(
+      "# Title\n\n```ts\nconst x = 1;\n```",
+      features,
+    );
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+    Editor.deleteFragment(editor);
+    expect(getElements(editor)[0].type).toBe("code-fence");
+
+    // Microtask flush mirrors the gap between Slate's onChange and the
+    // useLayoutEffect that canonicalizes the empty editor — without this,
+    // canonicalize ops merge into the delete batch and undo masks the bug.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Mirror canonicalizeEmptyEditor's exact shape, including the
+    // withoutSaving wrap that keeps this reshape out of history.
+    HE.withoutSaving(editor, () => {
+      Editor.withoutNormalizing(editor, () => {
+        for (let i = editor.children.length - 1; i >= 0; i--) {
+          Transforms.removeNodes(editor, { at: [i] });
+        }
+        Transforms.insertNodes(editor, {
+          type: "paragraph",
+          id: generateId(),
+          children: [{ text: "" }],
+        });
+      });
+    });
+    expect(getElements(editor)[0].type).toBe("paragraph");
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    editor.undo();
+    const restored = serialize(getElements(editor));
+    expect(restored).toContain("# Title");
+    expect(restored).toContain("const x = 1;");
+  });
+});

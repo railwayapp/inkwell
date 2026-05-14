@@ -1,4 +1,5 @@
 import {
+  type Attachment,
   createAttachmentsPlugin,
   createCompletionsPlugin,
   createEmojiPlugin,
@@ -97,6 +98,7 @@ interface PluginDef {
     getCompletion: () => string | null;
     dismissCompletion: () => void;
     restoreCompletion: (completion: string) => void;
+    onAttachmentAdd: (attachment: Attachment) => void;
   }) => InkwellPlugin;
 }
 
@@ -241,21 +243,93 @@ const AVAILABLE_PLUGINS: PluginDef[] = [
   {
     id: "attachments",
     label: "Attachments",
-    summary: "Paste or drop images to upload and insert.",
+    summary: "Paste or drop images (inline) or any file (chip below).",
     usage: (
       <>
-        Drop or paste an image. The demo uses a temporary blob URL — wire up{" "}
-        <code>onUpload</code> to your storage in production.
+        Drop or paste a file. Images insert inline. Other files (PDF, TXT, zip…)
+        appear as chips below the editor — your app holds that list as external
+        state. The demo uses a temporary blob URL; wire up <code>onUpload</code>{" "}
+        to your storage in production.
       </>
     ),
-    create: () =>
+    create: ({ onAttachmentAdd }) =>
       createAttachmentsPlugin({
-        accept: "image/*",
         onUpload: async file => URL.createObjectURL(file),
+        onAttachmentAdd,
         onError: (_err, _file) => {},
       }),
   },
 ];
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function AttachmentChips({
+  attachments,
+  onRemove,
+}: {
+  attachments: Attachment[];
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "0.4rem",
+        marginTop: "0.6rem",
+      }}
+      aria-label="Attached files"
+    >
+      {attachments.map((a, i) => (
+        <span
+          key={`${a.url}-${i}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.25rem 0.35rem 0.25rem 0.6rem",
+            background: "hsla(270, 30%, 25%, 0.5)",
+            border: "1px solid hsla(270, 50%, 50%, 0.35)",
+            borderRadius: "9999px",
+            fontSize: "0.78rem",
+            color: "hsl(270, 30%, 90%)",
+          }}
+        >
+          <span style={{ fontWeight: 500 }}>{a.filename}</span>
+          <span style={{ color: "hsl(270, 20%, 65%)", fontSize: "0.7rem" }}>
+            {formatBytes(a.size)}
+          </span>
+          <button
+            type="button"
+            aria-label={`Remove ${a.filename}`}
+            onClick={() => onRemove(i)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "1.1rem",
+              height: "1.1rem",
+              padding: 0,
+              background: "transparent",
+              border: "none",
+              borderRadius: "9999px",
+              color: "hsl(270, 30%, 80%)",
+              cursor: "pointer",
+              fontSize: "0.95rem",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function Kbd({ children }: { children: ReactNode }) {
   return (
@@ -1134,6 +1208,7 @@ export function Demo() {
   const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
   const [characterLimit, setCharacterLimit] = useState(DEFAULT_CHARACTER_LIMIT);
   const [completion, setCompletion] = useState<string | null>(DEMO_COMPLETION);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const editorContentRef = useRef(editorContent);
   const completionRef = useRef(completion);
   editorContentRef.current = editorContent;
@@ -1154,6 +1229,8 @@ export function Demo() {
                 : null,
             dismissCompletion: () => setCompletion(null),
             restoreCompletion: nextCompletion => setCompletion(nextCompletion),
+            onAttachmentAdd: attachment =>
+              setAttachments(prev => [...prev, attachment]),
           });
         },
       ),
@@ -1245,7 +1322,19 @@ export function Demo() {
           </button>
         </div>
 
-        {activeTab === "editor" && editor}
+        {activeTab === "editor" && (
+          <>
+            {editor}
+            {attachments.length > 0 && (
+              <AttachmentChips
+                attachments={attachments}
+                onRemove={index =>
+                  setAttachments(prev => prev.filter((_, i) => i !== index))
+                }
+              />
+            )}
+          </>
+        )}
         {activeTab === "preview" && (
           <div
             className="inkwell-editor"

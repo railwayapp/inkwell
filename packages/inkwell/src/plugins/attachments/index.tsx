@@ -1,6 +1,6 @@
 "use client";
 
-import { sanitizeImageUrl } from "../../lib/safe-url";
+import { isSafeImageUrl, sanitizeImageUrl } from "../../lib/safe-url";
 import type { InkwellPlugin, InkwellPluginEditor } from "../../types";
 
 export type AttachmentUploadResult =
@@ -8,12 +8,26 @@ export type AttachmentUploadResult =
   | {
       url: string;
       alt?: string;
+      [key: string]: unknown;
     };
+
+export interface Attachment {
+  url: string;
+  filename: string;
+  mime: string;
+  size: number;
+  /**
+   * Any extra fields returned from `onUpload` (e.g. a service-side
+   * record ID) are forwarded onto the attachment.
+   */
+  [key: string]: unknown;
+}
 
 export interface AttachmentsPluginOptions {
   /**
-   * Upload a single file and resolve to the public image URL, or an object
-   * containing the URL and replacement alt text. Rejection triggers `onError`.
+   * Upload a single file and resolve to the public URL, or an object
+   * containing the URL plus optional metadata. Rejection triggers
+   * `onError`.
    */
   onUpload: (file: File) => Promise<AttachmentUploadResult>;
   /**
@@ -22,14 +36,24 @@ export interface AttachmentsPluginOptions {
    */
   accept?: string;
   /**
-   * Placeholder alt text shown on the inserted image element while the
-   * upload is in flight. Receives the file so callers can customize per
-   * upload. Defaults to `"Uploading…"`.
+   * Placeholder alt text shown on the inserted image element while an
+   * image upload is in flight. Defaults to `"Uploading…"`.
    */
   uploadingPlaceholder?: (file: File) => string;
   /**
-   * Called when `onUpload` rejects. The plugin removes the placeholder
-   * element before calling this.
+   * Fired after a non-image file finishes uploading. Use this to track
+   * attachments in your own state for message submission, chip UI, etc.
+   *
+   * Image files (MIME `image/*`) are inserted inline as `<img>` and do
+   * NOT fire this callback. If omitted, non-image files are passed
+   * through to the editor's default paste/drop handling instead of
+   * being silently uploaded and discarded.
+   */
+  onAttachmentAdd?: (attachment: Attachment) => void;
+  /**
+   * Called when `onUpload` rejects, or when the returned URL fails the
+   * URL safety allowlist. For image uploads, the placeholder element is
+   * removed before this fires.
    */
   onError?: (error: unknown, file: File) => void;
 }
@@ -47,6 +71,10 @@ function mimeMatches(mime: string, accept: string): boolean {
     }
     return mime === pattern;
   });
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/");
 }
 
 function extractFiles(data: DataTransfer): File[] {
@@ -121,10 +149,52 @@ const insertUploadedImage = (
     });
 };
 
+const insertUploadedAttachment = (
+  file: File,
+  options: AttachmentsPluginOptions,
+): void => {
+  const onAttachmentAdd = options.onAttachmentAdd;
+  if (!onAttachmentAdd) return;
+
+  Promise.resolve()
+    .then(() => options.onUpload(file))
+    .then(result => {
+      const url = typeof result === "string" ? result : result.url;
+      // Reuse the image URL allowlist for non-image attachments too: the
+      // consumer is likely to render this URL into an `<a href>` and a
+      // `javascript:` or unsafe `data:` URL slipping through onUpload
+      // would be just as exploitable there.
+      if (!isSafeImageUrl(url)) {
+        options.onError?.(new Error("Unsafe upload URL"), file);
+        return;
+      }
+      const extra =
+        typeof result === "string"
+          ? {}
+          : Object.fromEntries(
+              Object.entries(result).filter(
+                ([k]) => k !== "url" && k !== "alt",
+              ),
+            );
+      onAttachmentAdd({
+        ...extra,
+        url: url.trim(),
+        filename: file.name || "attachment",
+        mime: file.type,
+        size: file.size,
+      });
+    })
+    .catch(err => {
+      options.onError?.(err, file);
+    });
+};
+
 /**
- * Intercepts file paste/drop, uploads via `onUpload`, and inserts an image
- * element. The image is inserted immediately with placeholder alt text and
- * its URL is patched in once the upload resolves.
+ * Intercepts file paste/drop, uploads via `onUpload`, and either
+ * inserts an inline image element (for `image/*` files) or fires
+ * `onAttachmentAdd` (for non-image files). Non-image files with no
+ * `onAttachmentAdd` callback pass through to the editor's default
+ * paste/drop handling.
  */
 export function createAttachmentsPlugin(
   options: AttachmentsPluginOptions,
@@ -139,7 +209,14 @@ export function createAttachmentsPlugin(
         ? files.filter(f => mimeMatches(f.type, accept))
         : files;
 
-      if (matching.length === 0) {
+      // Files that match `accept` but aren't images and have no
+      // attachment callback fall through to default handling so we
+      // don't silently consume and drop them.
+      const handled = matching.filter(
+        f => isImageFile(f) || options.onAttachmentAdd !== undefined,
+      );
+
+      if (handled.length === 0) {
         const htmlImages = extractHtmlImages(data);
         if (htmlImages.length === 0) return false;
 
@@ -149,13 +226,17 @@ export function createAttachmentsPlugin(
         return true;
       }
 
-      const unmatched = files.filter(f => !matching.includes(f));
-      if (unmatched.length > 0) {
-        insertData(filesOnlyDataTransfer(unmatched));
+      const unhandled = files.filter(f => !handled.includes(f));
+      if (unhandled.length > 0) {
+        insertData(filesOnlyDataTransfer(unhandled));
       }
 
-      for (const file of matching) {
-        insertUploadedImage(editor, file, options);
+      for (const file of handled) {
+        if (isImageFile(file)) {
+          insertUploadedImage(editor, file, options);
+        } else {
+          insertUploadedAttachment(file, options);
+        }
       }
 
       return true;

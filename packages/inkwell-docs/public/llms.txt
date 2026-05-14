@@ -113,7 +113,7 @@ const markdown = htmlToMarkdown(html);
 
 Built-in plugin factories include:
 
-- `createAttachmentsPlugin` — `onUpload(file)` returns `string | { url: string; alt?: string }`
+- `createAttachmentsPlugin` — `onUpload(file)` returns `string | { url: string; alt?: string }`. Image files are inserted inline; non-image files surface through optional `onAttachmentAdd(attachment)` so the consumer can track them as message-level state. Non-image files with no `onAttachmentAdd` pass through to default paste/drop.
 - `createBubbleMenuPlugin` — options type is `BubbleMenuOptions`
 - `createCharacterLimitPlugin`
 - `createCompletionsPlugin` — options type is `CompletionsPluginOptions`

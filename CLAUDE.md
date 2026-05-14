@@ -104,7 +104,11 @@ Do not add a public top-level `style` prop.
 Built-in plugin factories:
 
 - `createAttachmentsPlugin` — uploads can resolve to a URL string or
-  `{ url, alt? }`.
+  `{ url, alt? }`. Image files insert inline; non-image files surface
+  through optional `onAttachmentAdd(attachment)` so consumers can track
+  them as message-level state (the markdown source has no syntax for
+  arbitrary file attachments). Non-image files with no `onAttachmentAdd`
+  pass through to default paste/drop.
 - `createBubbleMenuPlugin` — `BubbleMenuOptions` is public for reusable
   menu configuration.
 - `createCharacterLimitPlugin`

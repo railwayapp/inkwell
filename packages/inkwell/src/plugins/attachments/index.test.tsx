@@ -323,4 +323,185 @@ describe("createAttachmentsPlugin", () => {
     expect(images(editor)).toHaveLength(0);
     expect(baseInsertData).toHaveBeenCalledTimes(1);
   });
+
+  it("fires onAttachmentAdd for non-image uploads", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onAttachmentAdd = vi.fn();
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => "https://cdn/report.pdf",
+      onAttachmentAdd,
+    });
+
+    const pdf = new File(["data"], "report.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(pdf, "size", { value: 1234 });
+    insertData(plugin, editor, mockDataTransfer([pdf]));
+
+    expect(images(editor)).toHaveLength(0);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(onAttachmentAdd).toHaveBeenCalledTimes(1);
+    expect(onAttachmentAdd).toHaveBeenCalledWith({
+      url: "https://cdn/report.pdf",
+      filename: "report.pdf",
+      mime: "application/pdf",
+      size: 1234,
+    });
+  });
+
+  it("forwards extra upload-result fields onto the attachment", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onAttachmentAdd = vi.fn();
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => ({
+        url: "https://cdn/x.pdf",
+        id: "upload_42",
+        checksum: "abc123",
+      }),
+      onAttachmentAdd,
+    });
+
+    const pdf = new File(["data"], "x.pdf", { type: "application/pdf" });
+    insertData(plugin, editor, mockDataTransfer([pdf]));
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(onAttachmentAdd).toHaveBeenCalledTimes(1);
+    expect(onAttachmentAdd.mock.calls[0][0]).toMatchObject({
+      url: "https://cdn/x.pdf",
+      filename: "x.pdf",
+      mime: "application/pdf",
+      id: "upload_42",
+      checksum: "abc123",
+    });
+  });
+
+  it("handles a mixed paste: image inserts inline, pdf fires callback", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onAttachmentAdd = vi.fn();
+    const onUpload = vi.fn(async (file: File) =>
+      file.type.startsWith("image/")
+        ? "https://cdn/a.png"
+        : "https://cdn/report.pdf",
+    );
+    const plugin = createAttachmentsPlugin({ onUpload, onAttachmentAdd });
+
+    const image = new File(["data"], "a.png", { type: "image/png" });
+    const pdf = new File(["data"], "report.pdf", {
+      type: "application/pdf",
+    });
+    insertData(plugin, editor, mockDataTransfer([image, pdf]));
+
+    expect(images(editor)).toHaveLength(1);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(onUpload).toHaveBeenCalledTimes(2);
+    expect(onAttachmentAdd).toHaveBeenCalledTimes(1);
+    expect(onAttachmentAdd.mock.calls[0][0]).toMatchObject({
+      filename: "report.pdf",
+      mime: "application/pdf",
+    });
+  });
+
+  it("calls onError, not onAttachmentAdd, when a non-image upload rejects", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onAttachmentAdd = vi.fn();
+    const onError = vi.fn();
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => {
+        throw new Error("boom");
+      },
+      onAttachmentAdd,
+      onError,
+    });
+
+    const pdf = new File(["data"], "x.pdf", { type: "application/pdf" });
+    insertData(plugin, editor, mockDataTransfer([pdf]));
+    await new Promise(r => setTimeout(r, 0));
+    await new Promise(r => setTimeout(r, 0));
+
+    expect(onAttachmentAdd).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect((onError.mock.calls[0][0] as Error).message).toBe("boom");
+    expect(onError.mock.calls[0][1]).toBe(pdf);
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+  ])("calls onError, not onAttachmentAdd, when a non-image returns unsafe url %s", async url => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onAttachmentAdd = vi.fn();
+    const onError = vi.fn();
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => url,
+      onAttachmentAdd,
+      onError,
+    });
+
+    const pdf = new File(["data"], "x.pdf", { type: "application/pdf" });
+    insertData(plugin, editor, mockDataTransfer([pdf]));
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(onAttachmentAdd).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][1]).toBe(pdf);
+  });
+
+  it("passes through non-image files when onAttachmentAdd is not provided", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const baseInsertData = vi.fn();
+    const onUpload = vi.fn(async () => "https://cdn/x");
+    const plugin = createAttachmentsPlugin({ onUpload });
+
+    const pdf = new File(["data"], "report.pdf", {
+      type: "application/pdf",
+    });
+    insertData(plugin, editor, mockDataTransfer([pdf]), baseInsertData);
+
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(images(editor)).toHaveLength(0);
+    expect(baseInsertData).toHaveBeenCalledTimes(1);
+    const forwarded = baseInsertData.mock.calls[0][0] as DataTransfer;
+    expect(Array.from(forwarded.files ?? [])[0]).toBe(pdf);
+  });
+
+  it("defaults empty filenames to 'attachment'", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onAttachmentAdd = vi.fn();
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => "https://cdn/x.pdf",
+      onAttachmentAdd,
+    });
+
+    const pdf = new File(["data"], "", { type: "application/pdf" });
+    insertData(plugin, editor, mockDataTransfer([pdf]));
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(onAttachmentAdd).toHaveBeenCalledTimes(1);
+    expect(onAttachmentAdd.mock.calls[0][0]).toMatchObject({
+      filename: "attachment",
+    });
+  });
 });

@@ -1,5 +1,6 @@
 export { InkwellEditor } from "./editor/inkwell-editor";
 export {
+  type Attachment,
   type AttachmentsPluginOptions,
   type AttachmentUploadResult,
   createAttachmentsPlugin,

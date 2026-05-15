@@ -13,7 +13,6 @@ Plugins extend the editor with custom UI and behavior. Inkwell ships built-in pl
 - [Slash Commands](/docs/plugins/slash-commands) — chat-style command palette with structured arguments
 - [Mentions](/docs/plugins/mentions) — searchable user picker that inserts a chip marker
 - [Attachments](/docs/plugins/attachments) — paste or drop images to upload and insert
-- [Character Limit](/docs/plugins/character-limit) — optional toast UI for the editor's character-limit feature
 
 ## Build your own
 

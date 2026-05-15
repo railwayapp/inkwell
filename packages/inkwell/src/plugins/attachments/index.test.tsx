@@ -60,7 +60,6 @@ function createPluginEditor(
       isEditable: true,
       characterCount: 0,
       overLimit: false,
-      isEnforcingCharacterLimit: false,
     }),
     isEmpty: () => Node.string(editor).trim().length === 0,
     focus: () => {},

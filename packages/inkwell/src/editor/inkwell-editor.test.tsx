@@ -19,11 +19,9 @@ import { withHistory } from "slate-history";
 import { ReactEditor, withReact } from "slate-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
-import { createCharacterLimitPlugin } from "../plugins/character-limit";
 import { createCompletionsPlugin } from "../plugins/completions";
 import { createMentionsPlugin } from "../plugins/mentions";
 import { createSlashCommandsPlugin } from "../plugins/slash-commands";
-import { createSnippetsPlugin } from "../plugins/snippets";
 import type { PluginRenderProps, ResolvedInkwellFeatures } from "../types";
 import { InkwellEditor } from "./inkwell-editor";
 import { computeDecorations } from "./slate/decorations";
@@ -1374,7 +1372,6 @@ describe("InkwellEditor — imperative API and state", () => {
       isEmpty: false,
       isEditable: true,
       characterCount: 5,
-      overLimit: false,
     });
   });
 
@@ -1509,7 +1506,6 @@ describe("InkwellEditor — imperative API and state", () => {
         isEmpty: false,
         characterCount: 5,
         characterLimit: 10,
-        overLimit: false,
       }),
     );
   });
@@ -2358,7 +2354,7 @@ describe("InkwellEditor — character limit", () => {
         ref={ref}
         content="hello"
         onChange={vi.fn()}
-        characterLimit={10}
+        characterLimit={20}
         onCharacterCount={onCharacterCount}
       />,
     );
@@ -2370,37 +2366,110 @@ describe("InkwellEditor — character limit", () => {
     });
 
     await waitFor(() => {
-      expect(onCharacterCount).toHaveBeenCalledWith(11, 10);
+      expect(onCharacterCount).toHaveBeenCalledWith(11, 20);
     });
   });
 
-  it("applies inkwell-editor-over-limit when content exceeds limit", async () => {
-    const onChange = vi.fn();
-    const { container, rerender } = render(
-      <InkwellEditor content="hi" onChange={onChange} characterLimit={3} />,
+  it("renders the character count when a limit is set", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello" onChange={vi.fn()} characterLimit={20} />,
     );
     await flushEffects();
+
+    expect(container.querySelector(".inkwell-editor-wrapper")).toHaveClass(
+      "inkwell-editor-has-character-limit",
+    );
+    const count = container.querySelector(".inkwell-editor-character-count");
+    expect(count).not.toBeNull();
+    expect(count).toHaveTextContent("5 / 20");
+    expect(count).not.toHaveClass("inkwell-editor-character-count-over");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("does not render the character count without a configured limit", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    expect(
+      container.querySelector(".inkwell-editor-character-count"),
+    ).toBeNull();
+    expect(container.querySelector(".inkwell-editor-wrapper")).not.toHaveClass(
+      "inkwell-editor-has-character-limit",
+    );
+  });
+
+  it("paints the count and the wrapper as over-limit when count > limit", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello" onChange={vi.fn()} characterLimit={3} />,
+    );
+    await flushEffects();
+
+    const count = container.querySelector(".inkwell-editor-character-count");
+    expect(count).toHaveTextContent("5 / 3");
+    expect(count).toHaveClass("inkwell-editor-character-count-over");
+    expect(screen.getByRole("status")).toHaveAccessibleName(
+      "5 of 3 characters, over limit",
+    );
+    expect(container.querySelector(".inkwell-editor-wrapper")).toHaveClass(
+      "inkwell-editor-over-limit",
+    );
+  });
+
+  it("does not flag the wrapper as over-limit at exactly the limit", async () => {
+    const { container } = render(
+      <InkwellEditor content="hey" onChange={vi.fn()} characterLimit={3} />,
+    );
+    await flushEffects();
+
     expect(container.querySelector(".inkwell-editor-wrapper")).not.toHaveClass(
       "inkwell-editor-over-limit",
     );
+  });
 
-    await act(async () => {
-      rerender(
-        <InkwellEditor
-          content="too long"
-          onChange={onChange}
-          characterLimit={3}
-        />,
-      );
-    });
-    await waitFor(() => {
-      expect(container.querySelector(".inkwell-editor-wrapper")).toHaveClass(
-        "inkwell-editor-over-limit",
-      );
+  it("allows initial content over the limit (soft limit)", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    render(
+      <InkwellEditor
+        ref={ref}
+        content="hello world"
+        onChange={vi.fn()}
+        characterLimit={5}
+      />,
+    );
+    await flushEffects();
+
+    expect(ref.current?.getState()).toMatchObject({
+      content: "hello world",
+      characterCount: 11,
+      characterLimit: 5,
+      overLimit: true,
     });
   });
 
-  it("prevents insertContent from exceeding an enforced limit", async () => {
+  it("allows setContent past the limit (soft limit)", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    render(
+      <InkwellEditor
+        ref={ref}
+        content=""
+        onChange={vi.fn()}
+        characterLimit={4}
+      />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      ref.current?.setContent("hello world");
+    });
+
+    expect(ref.current?.getState().content).toBe("hello world");
+    expect(ref.current?.getState().characterCount).toBe(11);
+    expect(ref.current?.getState().overLimit).toBe(true);
+  });
+
+  it("allows insertContent past the limit (soft limit)", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     render(
       <InkwellEditor
@@ -2408,7 +2477,6 @@ describe("InkwellEditor — character limit", () => {
         content="hello"
         onChange={vi.fn()}
         characterLimit={7}
-        enforceCharacterLimit
       />,
     );
     await flushEffects();
@@ -2418,98 +2486,8 @@ describe("InkwellEditor — character limit", () => {
       ref.current?.insertContent(" world");
     });
 
-    expect(ref.current?.getState().content).toBe("hello w");
-  });
-
-  it("prevents plugin insertion from exceeding an enforced limit", async () => {
-    const ref = createRef<import("../types").InkwellEditorHandle>();
-    const insertPlugin = createSnippetsPlugin({
-      snippets: [{ title: "Long", content: "abcdef" }],
-    });
-    const { container } = render(
-      <InkwellEditor
-        ref={ref}
-        content="Hi "
-        onChange={vi.fn()}
-        plugins={[insertPlugin]}
-        characterLimit={5}
-        enforceCharacterLimit
-      />,
-    );
-    await flushEffects();
-    const editor = container.querySelector(".inkwell-editor");
-    if (!editor) throw new Error("editor not found");
-
-    await act(async () => {
-      ref.current?.focus({ at: "end" });
-      fireEvent.keyDown(editor, { key: "[" });
-      ref.current?.insertContent("[");
-    });
-    await screen.findByText("Long");
-    await act(async () => {
-      fireEvent.keyDown(editor, { key: "Enter" });
-    });
-
-    expect(ref.current?.getState().content.length).toBeLessThanOrEqual(5);
-  });
-
-  it("does not enforce by default (count only)", async () => {
-    const onCharacterCount = vi.fn();
-    const ref = createRef<import("../types").InkwellEditorHandle>();
-    const { container } = render(
-      <InkwellEditor
-        ref={ref}
-        content="hello"
-        onChange={vi.fn()}
-        characterLimit={3}
-        onCharacterCount={onCharacterCount}
-      />,
-    );
-    await flushEffects();
-
-    expect(ref.current?.getState()).toMatchObject({
-      content: "hello",
-      characterCount: 5,
-      characterLimit: 3,
-      overLimit: true,
-      isEnforcingCharacterLimit: false,
-    });
-    expect(container.querySelector(".inkwell-editor-wrapper")).toHaveClass(
-      "inkwell-editor-over-limit",
-    );
-  });
-
-  it("renders character-limit plugin status when over limit", async () => {
-    render(
-      <InkwellEditor
-        content="hello"
-        onChange={vi.fn()}
-        characterLimit={3}
-        plugins={[createCharacterLimitPlugin()]}
-      />,
-    );
-    await flushEffects();
-
-    const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("Over limit by 2");
-    expect(status).toHaveAttribute("aria-live", "polite");
-  });
-
-  it("renders character-limit plugin status at an enforced limit", async () => {
-    render(
-      <InkwellEditor
-        content="hey"
-        onChange={vi.fn()}
-        characterLimit={3}
-        enforceCharacterLimit
-        plugins={[createCharacterLimitPlugin()]}
-      />,
-    );
-    await flushEffects();
-
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Character limit reached",
-    );
+    expect(ref.current?.getState().content).toBe("hello world");
+    expect(ref.current?.getState().overLimit).toBe(true);
   });
 });
 
@@ -3602,7 +3580,6 @@ describe("InkwellEditor — imperative API and state", () => {
       isEmpty: false,
       isEditable: true,
       characterCount: 5,
-      overLimit: false,
     });
   });
 
@@ -3685,7 +3662,6 @@ describe("InkwellEditor — imperative API and state", () => {
         isEmpty: false,
         characterCount: 5,
         characterLimit: 10,
-        overLimit: false,
       }),
     );
   });
@@ -4522,127 +4498,6 @@ describe("serialize — edge cases", () => {
     const elements = deserialize("> a\n> b");
     const md = serialize(elements);
     expect(md).toBe("> a\n> b");
-  });
-});
-
-describe("InkwellEditor — character limit", () => {
-  it("calls onCharacterCount with length and limit on change", async () => {
-    const ref = createRef<import("../types").InkwellEditorHandle>();
-    const onCharacterCount = vi.fn();
-    render(
-      <InkwellEditor
-        ref={ref}
-        content="hello"
-        onChange={vi.fn()}
-        characterLimit={10}
-        onCharacterCount={onCharacterCount}
-      />,
-    );
-    await flushEffects();
-
-    await act(async () => {
-      ref.current?.focus({ at: "end" });
-      ref.current?.insertContent(" world");
-    });
-
-    await waitFor(() => {
-      expect(onCharacterCount).toHaveBeenCalledWith(11, 10);
-    });
-  });
-
-  it("applies inkwell-editor-over-limit when content exceeds limit", async () => {
-    const onChange = vi.fn();
-    const { container, rerender } = render(
-      <InkwellEditor content="hi" onChange={onChange} characterLimit={3} />,
-    );
-    await flushEffects();
-    expect(container.querySelector(".inkwell-editor-wrapper")).not.toHaveClass(
-      "inkwell-editor-over-limit",
-    );
-
-    await act(async () => {
-      rerender(
-        <InkwellEditor
-          content="too long"
-          onChange={onChange}
-          characterLimit={3}
-        />,
-      );
-    });
-    await waitFor(() => {
-      expect(container.querySelector(".inkwell-editor-wrapper")).toHaveClass(
-        "inkwell-editor-over-limit",
-      );
-    });
-  });
-
-  it("prevents insertContent from exceeding an enforced limit", async () => {
-    const ref = createRef<import("../types").InkwellEditorHandle>();
-    render(
-      <InkwellEditor
-        ref={ref}
-        content="hello"
-        onChange={vi.fn()}
-        characterLimit={7}
-        enforceCharacterLimit
-      />,
-    );
-    await flushEffects();
-
-    await act(async () => {
-      ref.current?.focus({ at: "end" });
-      ref.current?.insertContent(" world");
-    });
-
-    expect(ref.current?.getState().content).toBe("hello w");
-  });
-
-  it("prevents plugin insertion from exceeding an enforced limit", async () => {
-    const ref = createRef<import("../types").InkwellEditorHandle>();
-    const insertPlugin = createSnippetsPlugin({
-      snippets: [{ title: "Long", content: "abcdef" }],
-    });
-    const { container } = render(
-      <InkwellEditor
-        ref={ref}
-        content="Hi "
-        onChange={vi.fn()}
-        plugins={[insertPlugin]}
-        characterLimit={5}
-        enforceCharacterLimit
-      />,
-    );
-    await flushEffects();
-    const editor = container.querySelector(".inkwell-editor");
-    if (!editor) throw new Error("editor not found");
-
-    await act(async () => {
-      ref.current?.focus({ at: "end" });
-      fireEvent.keyDown(editor, { key: "[" });
-      ref.current?.insertContent("[");
-    });
-    await screen.findByText("Long");
-    await act(async () => {
-      fireEvent.keyDown(editor, { key: "Enter" });
-    });
-
-    expect(ref.current?.getState().content.length).toBeLessThanOrEqual(5);
-  });
-
-  it("does not enforce by default (count only)", async () => {
-    const ref = createRef<import("../types").InkwellEditorHandle>();
-    render(
-      <InkwellEditor
-        ref={ref}
-        content="hello"
-        onChange={vi.fn()}
-        characterLimit={3}
-      />,
-    );
-    await flushEffects();
-
-    expect(ref.current?.getState().content).toBe("hello");
-    expect(ref.current?.getState().overLimit).toBe(true);
   });
 });
 

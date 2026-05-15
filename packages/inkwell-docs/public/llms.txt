@@ -115,7 +115,6 @@ Built-in plugin factories include:
 
 - `createAttachmentsPlugin` — `onUpload(file)` returns `string | { url: string; alt?: string }`. Image files are inserted inline; non-image files surface through optional `onAttachmentAdd(attachment)` so the consumer can track them as message-level state. Non-image files with no `onAttachmentAdd` pass through to default paste/drop.
 - `createBubbleMenuPlugin` — options type is `BubbleMenuOptions`
-- `createCharacterLimitPlugin`
 - `createCompletionsPlugin` — options type is `CompletionsPluginOptions`
 - `createEmojiPlugin` — custom item generics work with `emojis` or `search`
 - `createMentionsPlugin`
@@ -133,14 +132,20 @@ const snippets = createSnippetsPlugin({
 <InkwellEditor content={content} onChange={setContent} plugins={[snippets]} />;
 ```
 
-Character-limit toast UI is a plugin:
+`characterLimit` is a soft budget. Typing past it is allowed — the editor
+does not block input or truncate content. When a limit is set, the editor
+renders a `count / limit` readout in the bottom-right of the wrapper, turns
+the readout red when over the limit, adds
+`.inkwell-editor-has-character-limit` when configured, and adds
+`.inkwell-editor-over-limit` to the wrapper (which paints a red border on the
+editor surface). The
+`overLimit` field on `InkwellEditorState` reflects the same condition.
 
 ```tsx
 <InkwellEditor
   content={content}
   onChange={setContent}
   characterLimit={280}
-  plugins={[createCharacterLimitPlugin()]}
 />;
 ```
 

@@ -31,6 +31,7 @@
   --inkwell-accent: hsl(217, 91%, 50%);
   --inkwell-accent-soft: hsla(217, 91%, 50%, 0.12);
   --inkwell-danger: hsl(0, 72%, 51%);
+  --inkwell-danger-soft: hsla(0, 72%, 51%, 0.14);
 
   /* Inline code */
   --inkwell-code-bg: hsl(220, 14%, 94%);
@@ -61,6 +62,8 @@
 
     --inkwell-accent: hsl(217, 91%, 65%);
     --inkwell-accent-soft: hsla(217, 91%, 65%, 0.16);
+    --inkwell-danger: hsl(0, 70%, 65%);
+    --inkwell-danger-soft: hsla(0, 70%, 65%, 0.18);
 
     --inkwell-code-bg: hsl(220, 13%, 18%);
     --inkwell-code-fg: hsl(340, 70%, 75%);
@@ -175,36 +178,35 @@
   height: auto;
 }
 
-/* Built-in character count. Anchored to the bottom-right of the editor
-   wrapper. `characterLimit` is a soft hint — typing past the limit is
-   allowed; the count turns red and the wrapper picks up
-   `.inkwell-editor-over-limit`, which paints a red ring on the editor
-   surface so it's visually obvious the document is over budget. */
+/* Built-in character count. Overlays the top-right corner of the editor
+   wrapper so it never shifts content, and sits on a solid surface tint
+   so it visually layers above any text that wraps underneath. Only
+   rendered once typing reaches 80% of `characterLimit`, since the
+   limit is a soft hint — typing past it is allowed; the count then
+   turns red and the wrapper picks up `.inkwell-editor-over-limit`,
+   which paints a soft red halo on the editor surface so it's visually
+   obvious the document is over budget. */
 .inkwell-editor-character-count {
   position: absolute;
-  right: 0.7rem;
-  bottom: 0.7rem;
+  top: 0.5rem;
+  right: 0.5rem;
   z-index: 10;
-  padding: 0.15rem 0.45rem;
+  padding: 0.1rem 0.4rem;
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
   color: var(--inkwell-text-dim);
+  background: var(--inkwell-bg);
+  border-radius: calc(var(--inkwell-radius) - 2px);
   pointer-events: none;
   user-select: none;
 }
 .inkwell-editor-character-count-over {
-  color: hsl(0, 75%, 55%);
+  color: var(--inkwell-danger);
   font-weight: 500;
 }
-:where(
-    .inkwell-editor-wrapper.inkwell-editor-has-character-limit .inkwell-editor
-  ) {
-  padding-right: 5.25rem;
-  padding-bottom: 2.25rem;
-}
 .inkwell-editor-wrapper.inkwell-editor-over-limit .inkwell-editor {
-  border-color: hsl(0, 75%, 55%);
-  box-shadow: 0 0 0 1px hsl(0, 75%, 55%);
+  border-color: var(--inkwell-danger-soft);
+  box-shadow: 0 0 0 3px var(--inkwell-danger-soft);
 }
 
 .inkwell-editor-backtick,

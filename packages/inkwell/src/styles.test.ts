@@ -134,14 +134,21 @@ describe("bundled stylesheet contract", () => {
     expect(declarations(body ?? "")).toContain("border-color");
   });
 
-  it("wraps the character-limit padding rule in :where()", () => {
-    const body = ruleBody(
-      /^:where\(\s*\.inkwell-editor-wrapper\.inkwell-editor-has-character-limit \.inkwell-editor\s*\)$/,
-    );
+  it("positions the character count as a top-right overlay", () => {
+    const body = ruleBody(/^\.inkwell-editor-character-count$/);
     expect(body).not.toBeNull();
     const props = declarations(body ?? "");
-    expect(props).toContain("padding-right");
-    expect(props).toContain("padding-bottom");
+    expect(props).toContain("position");
+    expect(props).toContain("top");
+    expect(props).toContain("right");
+    expect(props).not.toContain("bottom");
+  });
+
+  it("does not reserve editor padding for the character count", () => {
+    const body = ruleBody(
+      /\.inkwell-editor-wrapper\.inkwell-editor-has-character-limit \.inkwell-editor/,
+    );
+    expect(body).toBeNull();
   });
 
   it("wraps the .inkwell-renderer typography defaults in :where()", () => {

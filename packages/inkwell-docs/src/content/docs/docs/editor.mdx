@@ -260,11 +260,17 @@ Sets a soft character budget for the editor. Typing past the limit is
 allowed — the editor doesn't block input or truncate content.
 
 When the limit is set, the editor renders a small `count / limit` readout
-in the bottom-right of the editor wrapper. Below the limit the readout is
-muted; above it the readout turns red, the wrapper picks up the
-`inkwell-editor-over-limit` class, and the editor surface gets a red
-border. The `overLimit` field on `InkwellEditorState` reflects the same
-condition so consumers can disable submit buttons, etc.
+overlaying the top-right of the editor wrapper, but only once the count
+reaches 80% of the limit (inclusive — at limit 50 the readout appears at
+40, not 39). Under that threshold the readout stays hidden so it doesn't
+add visual noise to a near-empty editor. The readout sits on a solid
+surface background and is absolutely positioned, so it visually layers
+above wrapped text without ever shifting content. Below the limit the
+readout is muted; above it the readout turns red, the wrapper picks up
+the `inkwell-editor-over-limit` class, and the editor surface gains a
+soft red halo (intentionally muted — not a hard ring). The `overLimit`
+field on `InkwellEditorState` reflects the same condition so consumers
+can disable submit buttons, etc.
 
 Style the readout and the over-limit state with the
 [`.inkwell-editor-character-count`](/docs/styling#character-limit)

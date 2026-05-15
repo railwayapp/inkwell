@@ -249,6 +249,8 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     const overLimit =
       characterLimit !== undefined && characterCount > characterLimit;
     const hasCharacterLimit = characterLimit !== undefined;
+    const showCharacterCount =
+      characterLimit !== undefined && characterCount >= characterLimit * 0.8;
 
     const getEditorState = useCallback((): InkwellEditorState => {
       const content = serializeContent();
@@ -1106,7 +1108,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         className={`inkwell-editor-wrapper${hasCharacterLimit ? " inkwell-editor-has-character-limit" : ""}${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}${classNames?.root ? ` ${classNames.root}` : ""}`}
         style={styles?.root}
       >
-        {hasCharacterLimit && (
+        {showCharacterCount && (
           <CharacterCount
             count={characterCount}
             limit={characterLimit}

@@ -135,13 +135,20 @@ Built-in plugin factories:
 - `createSnippetsPlugin`
 
 `characterLimit` is a soft budget — typing past it is allowed. The editor
-renders a built-in `count / limit` readout in the bottom-right of the
-wrapper (`.inkwell-editor-character-count`), flips it to red over the
-limit (`.inkwell-editor-character-count-over`), applies
-`.inkwell-editor-has-character-limit` when a limit is configured, and applies
-`.inkwell-editor-over-limit` to the wrapper for surface-level styling
-(default stylesheet paints a red border on `.inkwell-editor`).
-`InkwellEditorState.overLimit` mirrors the same condition.
+renders a built-in `count / limit` readout overlaying the top-right of the
+wrapper (`.inkwell-editor-character-count`), but only once the count
+reaches 80% of the limit (inclusive — at limit 50, the readout appears
+at 40, not 39). Under the threshold the readout stays hidden so it
+doesn't add visual noise to a near-empty editor. The readout sits on a
+solid `var(--inkwell-bg)` background and is absolutely positioned, so it
+visually layers above any text that wraps under it without shifting
+content. It flips to red over the limit
+(`.inkwell-editor-character-count-over`), the wrapper picks up
+`.inkwell-editor-has-character-limit` whenever a limit is configured,
+and gains `.inkwell-editor-over-limit` while
+`characterCount > characterLimit` (bundled stylesheet paints a soft
+red halo via `--inkwell-danger-soft` — intentionally muted, not a hard
+ring). `InkwellEditorState.overLimit` mirrors the same condition.
 `onCharacterCount` fires on every recount.
 
 We previously tried hard-clamping (`with-character-limit`) but ran into

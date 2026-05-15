@@ -2370,9 +2370,9 @@ describe("InkwellEditor — character limit", () => {
     });
   });
 
-  it("renders the character count when a limit is set", async () => {
+  it("renders the character count once typing reaches 80% of the limit", async () => {
     const { container } = render(
-      <InkwellEditor content="hello" onChange={vi.fn()} characterLimit={20} />,
+      <InkwellEditor content="hello!" onChange={vi.fn()} characterLimit={7} />,
     );
     await flushEffects();
 
@@ -2381,9 +2381,38 @@ describe("InkwellEditor — character limit", () => {
     );
     const count = container.querySelector(".inkwell-editor-character-count");
     expect(count).not.toBeNull();
-    expect(count).toHaveTextContent("5 / 20");
+    expect(count).toHaveTextContent("6 / 7");
     expect(count).not.toHaveClass("inkwell-editor-character-count-over");
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("renders the character count at exactly the 80% threshold", async () => {
+    const { container } = render(
+      <InkwellEditor
+        content="0123456789012345678901234567890123456789"
+        onChange={vi.fn()}
+        characterLimit={50}
+      />,
+    );
+    await flushEffects();
+
+    const count = container.querySelector(".inkwell-editor-character-count");
+    expect(count).not.toBeNull();
+    expect(count).toHaveTextContent("40 / 50");
+  });
+
+  it("does not render the character count below the 80% threshold", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello" onChange={vi.fn()} characterLimit={20} />,
+    );
+    await flushEffects();
+
+    expect(
+      container.querySelector(".inkwell-editor-character-count"),
+    ).toBeNull();
+    expect(container.querySelector(".inkwell-editor-wrapper")).toHaveClass(
+      "inkwell-editor-has-character-limit",
+    );
   });
 
   it("does not render the character count without a configured limit", async () => {

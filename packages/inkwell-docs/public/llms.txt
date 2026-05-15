@@ -144,12 +144,16 @@ const snippets = createSnippetsPlugin({
 
 `characterLimit` is a soft budget. Typing past it is allowed — the editor
 does not block input or truncate content. When a limit is set, the editor
-renders a `count / limit` readout in the bottom-right of the wrapper, turns
-the readout red when over the limit, adds
-`.inkwell-editor-has-character-limit` when configured, and adds
-`.inkwell-editor-over-limit` to the wrapper (which paints a red border on the
-editor surface). The
-`overLimit` field on `InkwellEditorState` reflects the same condition.
+renders a `count / limit` readout overlaying the top-right of the wrapper
+once the count reaches 80% of the limit, inclusive (below that, the
+readout stays hidden). The readout sits on a solid surface background and
+is absolutely positioned, so it visually layers above wrapped text without
+shifting content. The readout turns red when over the limit, the wrapper
+picks up `.inkwell-editor-has-character-limit` whenever a limit is
+configured, and gains `.inkwell-editor-over-limit` while
+`characterCount > characterLimit` (which paints a soft red halo on the
+editor surface — intentionally muted, not a hard ring). The `overLimit`
+field on `InkwellEditorState` reflects the same condition.
 
 ```tsx
 <InkwellEditor

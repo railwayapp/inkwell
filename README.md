@@ -66,7 +66,7 @@ To cut a release from `main`:
 ```bash
 pnpm changeset version   # bumps packages/inkwell/package.json + writes CHANGELOG.md
 git commit -am "🚀 release: v$(node -p "require('./packages/inkwell/package.json').version")"
-git tag "v$(node -p "require('./packages/inkwell/package.json').version")"
+git tag -a "v$(node -p "require('./packages/inkwell/package.json').version")" -m "v$(node -p "require('./packages/inkwell/package.json').version")"
 git push --follow-tags
 ```
 

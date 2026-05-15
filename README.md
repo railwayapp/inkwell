@@ -6,7 +6,7 @@
 [![npm](https://img.shields.io/npm/v/@railway/inkwell?color=7B3FA0)](https://www.npmjs.com/package/@railway/inkwell)
 
 Inkwell is a Markdown editor and renderer for React with an extensible plugin
-system and real-time collaboration.
+system.
 
 ## Usage
 

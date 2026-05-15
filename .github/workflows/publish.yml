@@ -1,26 +1,74 @@
-name: Publish to npm
+name: Publish
 
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*.*"
 
 permissions:
+  contents: write
   id-token: write
-  contents: read
 
 jobs:
-  publish:
+  create-release:
+    name: Create Draft Release
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ env.VERSION }}
+    steps:
+      - name: Get version from tag
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "Version: ${GITHUB_REF#refs/tags/}"
+
+      - uses: actions/checkout@v4
+
+      - name: Build changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configuration: .github/changelog-configuration.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create draft GitHub release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.VERSION }}
+          draft: true
+          prerelease: false
+          body: ${{ steps.changelog.outputs.changelog }}
+
+  publish-npm:
+    name: Publish to npm
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: cp README.md packages/inkwell/README.md
       - run: pnpm --filter @railway/inkwell build
       - run: pnpm --filter @railway/inkwell test
       - run: cd packages/inkwell && npm publish --access public
+
+  publish-release:
+    name: Publish Release
+    needs: [create-release, publish-npm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Un-draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "${{ needs.create-release.outputs.version }}" --draft=false

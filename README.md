@@ -51,26 +51,18 @@ pnpm dev
 
 ## Releases
 
-Versioning and `CHANGELOG.md` are managed by [Changesets](https://github.com/changesets/changesets). Publishing to npm runs via GitHub Actions on a `v*` tag push.
+Releases are automated. Every PR carries exactly one label that determines the next version bump:
 
-When you open a PR that should show up in the changelog:
+| Label | Effect |
+|---|---|
+| `release/patch` | Bumps the patch version (e.g. `1.1.0` → `1.1.1`) |
+| `release/minor` | Bumps the minor version (e.g. `1.1.0` → `1.2.0`) |
+| `release/major` | Bumps the major version (e.g. `1.1.0` → `2.0.0`) |
+| `release/skip`  | No version bump (use for docs-only or chore PRs) |
 
-```bash
-pnpm changeset   # pick bump type, write a user-facing summary
-```
+When a labeled PR merges to `main`, the `auto-release` workflow batches with any other recently-merged PRs, picks the highest bump across them, tags `vX.Y.Z`, and pushes. The tag push triggers the `publish` workflow, which generates release notes from PR titles since the previous tag, drafts a GitHub Release, publishes to npm, and un-drafts.
 
-Commit the generated `.changeset/*.md` file alongside your code.
-
-To cut a release from `main`:
-
-```bash
-pnpm changeset version   # bumps packages/inkwell/package.json + writes CHANGELOG.md
-git commit -am "🚀 release: v$(node -p "require('./packages/inkwell/package.json').version")"
-git tag -a "v$(node -p "require('./packages/inkwell/package.json').version")" -m "v$(node -p "require('./packages/inkwell/package.json').version")"
-git push --follow-tags
-```
-
-Pushing the `v*` tag triggers the publish workflow.
+Release notes live on the [GitHub Releases page](https://github.com/railwayapp/inkwell/releases). There is no in-repo `CHANGELOG.md`.
 
 ## License
 

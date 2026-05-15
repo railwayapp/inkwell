@@ -116,7 +116,11 @@ borders, padding, typography — is wrapped in `:where()` so it carries
 (`strong`, `em`, `del`, `code`), the heading/blockquote block classes,
 every `.inkwell-renderer <tag>` rule (links, headings, lists, code, `hr`,
 images), the bubble menu chrome, and the shared plugin picker chrome.
-Any single-class consumer rule overrides them without `!important` or
+The CSS-custom-property token definitions (both the light defaults and
+the `@media (prefers-color-scheme: dark)` block) are wrapped the same
+way, so class-driven theming (e.g. `:root.dark .inkwell-renderer { ... }`)
+works at single-class specificity without doubled-class hacks. Any
+single-class consumer rule overrides them without `!important` or
 descendant scoping. Don't move these rules back out of `:where()` —
 `packages/inkwell/src/styles.test.ts` will fail at CI.
 

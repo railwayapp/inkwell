@@ -83,6 +83,36 @@ custom properties on the wrapper instead:
 }
 ```
 
+### Class-driven theming
+
+The token defaults themselves — including the dark-mode set inside
+`@media (prefers-color-scheme: dark)` — also live in `:where()`. That
+means apps that drive light/dark via a class on the root element (not
+the OS preference) can override Inkwell's tokens with a single-class
+rule:
+
+```css
+:root.cs-light .inkwell-renderer { --inkwell-text: #1a1a1a; }
+:root.cs-dark  .inkwell-renderer { --inkwell-text: #f4f4f4; }
+```
+
+Or map Inkwell's tokens onto your design-system tokens in one block:
+
+```css
+.inkwell-editor,
+.inkwell-editor-wrapper,
+.inkwell-renderer,
+.inkwell-plugin-bubble-menu-container,
+.inkwell-plugin-picker-popup {
+  --inkwell-bg: var(--background);
+  --inkwell-text: var(--foreground);
+  --inkwell-border: var(--border);
+}
+```
+
+No doubled-class selectors needed. The `prefers-color-scheme: dark`
+defaults still apply whenever a consumer hasn't overridden a token.
+
 ## Component props
 
 Both `<InkwellEditor />` and `<InkwellRenderer />` accept props that let you attach classes and inline styles without writing a global stylesheet.

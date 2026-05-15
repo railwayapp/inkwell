@@ -251,6 +251,36 @@ describe("bundled stylesheet contract", () => {
     expect(declarations(bareBody ?? "")).toContain("position");
   });
 
+  // Token definitions (CSS custom properties on the editor / wrapper /
+  // renderer / bubble menu / picker popup) are wrapped in `:where()` so
+  // a consumer can override them at single-class specificity (e.g.
+  // `.dark .inkwell-renderer { --inkwell-text: ... }` for class-driven
+  // theming that does not rely on `prefers-color-scheme`). Without the
+  // wrapper the rule sits at 0,0,1,0 and consumer overrides need a
+  // doubled-class selector to win. Pattern check on the raw source —
+  // looking for the 5-selector list inside `:where()`.
+  const TOKEN_BLOCK_SELECTOR =
+    /:where\(\s*\.inkwell-editor\s*,\s*\.inkwell-editor-wrapper\s*,\s*\.inkwell-renderer\s*,\s*\.inkwell-plugin-bubble-menu-container\s*,\s*\.inkwell-plugin-picker-popup\s*\)/;
+
+  it("wraps the light-mode token definitions in :where()", () => {
+    expect(STYLES_CSS).toMatch(TOKEN_BLOCK_SELECTOR);
+    // And the same selectors must NOT appear as a bare top-level rule
+    // list (which would re-introduce the 0,0,1,0 specificity).
+    const bareList =
+      /(^|\n)\s*\.inkwell-editor\s*,\s*\.inkwell-editor-wrapper\s*,\s*\.inkwell-renderer\s*,\s*\.inkwell-plugin-bubble-menu-container\s*,\s*\.inkwell-plugin-picker-popup\s*\{/;
+    expect(STYLES_CSS).not.toMatch(bareList);
+  });
+
+  it("wraps the dark-mode token definitions in :where() inside @media", () => {
+    // Find the dark-mode @media block and assert it uses the `:where()`
+    // wrapper for the same 5-selector list.
+    const mediaMatch = STYLES_CSS.match(
+      /@media \(prefers-color-scheme: dark\) \{([\s\S]*?)\n\}/,
+    );
+    expect(mediaMatch).not.toBeNull();
+    expect(mediaMatch?.[1] ?? "").toMatch(TOKEN_BLOCK_SELECTOR);
+  });
+
   // The character-count overlay splits positioning (unwrapped) from chrome
   // (wrapped). The contract: the bare selector keeps `position` / `top` /
   // `right`, while color / background / typography moved into `:where()`

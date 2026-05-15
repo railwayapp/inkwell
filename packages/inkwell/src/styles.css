@@ -22,11 +22,18 @@
 
 /* ── Tokens ──────────────────────────────────────────────────────── */
 
-.inkwell-editor,
-.inkwell-editor-wrapper,
-.inkwell-renderer,
-.inkwell-plugin-bubble-menu-container,
-.inkwell-plugin-picker-popup {
+/* Token definitions sit at 0,0,0 specificity so a consumer rule with even
+   a single class on a parent (e.g. `.dark .inkwell-renderer { --inkwell-text: ... }`
+   for class-driven theming that does not rely on `prefers-color-scheme`)
+   beats them automatically. The OS-level dark-mode block below uses the
+   same `:where()` wrapper for the same reason. */
+:where(
+    .inkwell-editor,
+    .inkwell-editor-wrapper,
+    .inkwell-renderer,
+    .inkwell-plugin-bubble-menu-container,
+    .inkwell-plugin-picker-popup
+  ) {
   /* Surfaces */
   --inkwell-bg: hsl(0, 0%, 100%);
   --inkwell-bg-elevated: hsl(0, 0%, 100%);
@@ -58,11 +65,13 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .inkwell-editor,
-  .inkwell-editor-wrapper,
-  .inkwell-renderer,
-  .inkwell-plugin-bubble-menu-container,
-  .inkwell-plugin-picker-popup {
+  :where(
+      .inkwell-editor,
+      .inkwell-editor-wrapper,
+      .inkwell-renderer,
+      .inkwell-plugin-bubble-menu-container,
+      .inkwell-plugin-picker-popup
+    ) {
     --inkwell-bg: hsl(220, 13%, 10%);
     --inkwell-bg-elevated: hsl(220, 13%, 13%);
     --inkwell-bg-subtle: hsl(220, 13%, 16%);

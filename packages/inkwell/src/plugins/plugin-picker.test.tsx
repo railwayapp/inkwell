@@ -169,6 +169,7 @@ describe("PluginMenuPrimitive", () => {
         popupFlipped: "inkwell-plugin-picker-popup-flipped",
         picker: "inkwell-plugin-picker",
         search: "inkwell-plugin-picker-search",
+        list: "inkwell-plugin-picker-list",
         item: "inkwell-plugin-picker-item",
         itemActive: "inkwell-plugin-picker-item-active",
         empty: "inkwell-plugin-picker-empty",
@@ -425,12 +426,14 @@ describe("PluginMenuPrimitive", () => {
      */
     function mountWithGeometry({
       wrapperRect,
+      wrapperSize = { width: 600, height: 200 },
       popupSize,
       cursorRect,
       innerHeight = 800,
       innerWidth = 1024,
     }: {
       wrapperRect: { top: number; left: number };
+      wrapperSize?: { width: number; height: number };
       popupSize: { width: number; height: number };
       cursorRect: { top: number; bottom: number; left: number };
       innerHeight?: number;
@@ -444,10 +447,10 @@ describe("PluginMenuPrimitive", () => {
         value: () => ({
           top: wrapperRect.top,
           left: wrapperRect.left,
-          right: wrapperRect.left + 600,
-          bottom: wrapperRect.top + 200,
-          width: 600,
-          height: 200,
+          right: wrapperRect.left + wrapperSize.width,
+          bottom: wrapperRect.top + wrapperSize.height,
+          width: wrapperSize.width,
+          height: wrapperSize.height,
           x: wrapperRect.left,
           y: wrapperRect.top,
           toJSON() {},
@@ -536,9 +539,12 @@ describe("PluginMenuPrimitive", () => {
     it("anchors below the caret when there is room", () => {
       const { popup, cleanup } = mountWithGeometry({
         wrapperRect: { top: 50, left: 80 },
+        // Tall wrapper so the popup fits comfortably below the caret
+        // within the editor's visible box.
+        wrapperSize: { width: 600, height: 800 },
         popupSize: { width: 260, height: 200 },
         cursorRect: { top: 60, bottom: 80, left: 100 },
-        innerHeight: 800,
+        innerHeight: 1200,
       });
 
       expect(popup.style.top).toBe("84px");
@@ -570,16 +576,41 @@ describe("PluginMenuPrimitive", () => {
     });
 
     it("stays below when there is room above but also room below", () => {
-      // Plenty of room both ways — should prefer below.
+      // Plenty of room both ways — should prefer below. Tall wrapper so
+      // the popup fits comfortably below the caret without overflowing
+      // the editor's visible box.
       const { popup, cleanup } = mountWithGeometry({
         wrapperRect: { top: 300, left: 80 },
+        wrapperSize: { width: 600, height: 800 },
         popupSize: { width: 260, height: 200 },
         cursorRect: { top: 60, bottom: 80, left: 100 },
-        innerHeight: 800,
+        innerHeight: 1200,
       });
 
       expect(popup.style.transform).toBe("");
       expect(popup.className).not.toContain(pluginPickerClass.popupFlipped);
+
+      cleanup();
+    });
+
+    it("flips above when the popup overflows the wrapper bottom even if the viewport has room", () => {
+      // Short editor wrapper (e.g. chat composer or compact embed) sitting
+      // mid-viewport. The popup would extend past the wrapper's visible
+      // bottom edge even though the browser viewport has plenty of space
+      // below. Flip above so the popup stays anchored to the editor.
+      const { popup, cleanup } = mountWithGeometry({
+        wrapperRect: { top: 200, left: 80 },
+        wrapperSize: { width: 600, height: 120 },
+        popupSize: { width: 260, height: 200 },
+        // Caret near the top of the small wrapper. wrapperBottom = 320,
+        // cursorBottomViewport = 240 → wrapper has only 80px below the
+        // caret, but viewport has ~960px below.
+        cursorRect: { top: 20, bottom: 40, left: 100 },
+        innerHeight: 1200,
+      });
+
+      expect(popup.style.transform).toBe("translateY(-100%)");
+      expect(popup.className).toContain(pluginPickerClass.popupFlipped);
 
       cleanup();
     });

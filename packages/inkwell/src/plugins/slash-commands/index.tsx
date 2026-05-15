@@ -361,6 +361,7 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
             id={listboxId}
             role="listbox"
             aria-activedescendant={activeOptionId}
+            className={pluginPickerClass.list}
           >
             {items.map((item, index) => {
               const active = index === selectedIndex;

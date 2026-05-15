@@ -20,6 +20,7 @@ export const pluginPickerClass = {
   popupFlipped: `${BASE}-popup-flipped`,
   picker: `${BASE}`,
   search: `${BASE}-search`,
+  list: `${BASE}-list`,
   item: `${BASE}-item`,
   itemActive: `${BASE}-item-active`,
   empty: `${BASE}-empty`,
@@ -63,12 +64,20 @@ interface PickerPlacementResult {
 }
 
 /**
- * Viewport-aware popup placement. Picks an anchor based on available space:
+ * Wrapper- and viewport-aware popup placement. Picks an anchor based on
+ * available space:
  *
- *  - vertical: flips above the caret when the popup would clip the viewport
- *    bottom and there's room above. Falls back to below in all other cases.
+ *  - vertical: flips above the caret when the popup would clip either the
+ *    editor wrapper's bottom or the viewport bottom, as long as there is
+ *    room above the caret in the viewport. Falls back to below otherwise.
  *  - horizontal: shifts left when the popup would clip the viewport right
  *    edge, clamping to a small margin.
+ *
+ * The wrapper-bottom check catches the common case where the editor's
+ * visible box is short (chat composer, small embeds, or any editor where
+ * the wrapper height is much smaller than the viewport) — a popup
+ * extending past the editor's visual bottom looks broken even if it fits
+ * in the viewport, so we flip above instead.
  *
  * Re-measures on resize, scroll, and content-driven popup resizes via
  * `ResizeObserver`, so mode transitions inside a picker (e.g. slash
@@ -109,8 +118,10 @@ function usePickerPlacement(
       const cursorBottomViewport = wrapperRect.top + cursorBottomWrapper;
       const cursorLeftViewport = wrapperRect.left + cursorLeftWrapper;
 
-      const spaceBelow =
+      const spaceBelowViewport =
         window.innerHeight - cursorBottomViewport - VIEWPORT_MARGIN;
+      const spaceBelowWrapper = wrapperRect.bottom - cursorBottomViewport;
+      const spaceBelow = Math.min(spaceBelowViewport, spaceBelowWrapper);
       const spaceAbove = cursorTopViewport - VIEWPORT_MARGIN;
       const needsFlip = popupHeight + POPUP_GAP > spaceBelow;
       const fitsAbove = popupHeight + POPUP_GAP <= spaceAbove;
@@ -419,7 +430,7 @@ export function PluginMenuPrimitive<T>({
             {emptyMessage}
           </div>
         ) : (
-          <div id={listboxId} role="listbox">
+          <div id={listboxId} role="listbox" className={pluginPickerClass.list}>
             {renderedResults}
           </div>
         )}

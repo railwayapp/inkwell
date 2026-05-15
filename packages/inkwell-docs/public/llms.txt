@@ -196,7 +196,10 @@ narrow `InkwellPluginEditor` controller for editor actions.
 Render props include `position` (wrapper-relative caret coords with a 4px gap
 below the caret, intended as the popup's default top-left anchor) and
 `cursorRect` (`{ top, bottom, left }`, also wrapper-relative). Built-in pickers
-flip above the caret when the popup wouldn't fit below the viewport and shift
-left when it would overflow the right edge. The flipped state adds the
-`inkwell-plugin-picker-popup-flipped` class to the popup root for any
+flip above the caret when the popup would clip the editor wrapper's bottom or
+the viewport bottom (whichever is more restrictive), and shift left when it
+would overflow the right edge. The wrapper-bottom check matters for short
+editors (chat composers, compact embeds) where the popup would spill past the
+editor's visible box even when the viewport has room below. The flipped state
+adds the `inkwell-plugin-picker-popup-flipped` class to the popup root for any
 flip-specific styling.

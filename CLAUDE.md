@@ -186,8 +186,11 @@ not part of the root public API.
 a 4px gap below the caret — the default popup anchor) and `cursorRect`
 (`{ top, bottom, left }`, wrapper-relative). Built-in pickers use a shared
 internal `usePluginPopupPlacement` hook (in `plugins/plugin-picker.tsx`) to
-flip above the caret when the popup wouldn't fit below the viewport and shift
-left when it would overflow the right edge. Flipped popups get the
+flip above the caret when the popup would clip the editor wrapper's bottom or
+the viewport bottom (whichever is more restrictive), and shift left when it
+would overflow the right edge. The wrapper-bottom check catches short editors
+(chat composers, compact embeds) where the popup would spill past the editor's
+visible box even when the viewport has room. Flipped popups get the
 `inkwell-plugin-picker-popup-flipped` class. The hook reads `popupEl.offsetParent`
 to get the wrapper viewport position, so the picker must remain absolutely
 positioned inside the editor wrapper.

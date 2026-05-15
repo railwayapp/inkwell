@@ -73,11 +73,18 @@ The bundled stylesheet ships no `min-height`, `max-height`, or `height`
 opinion on `.inkwell-editor` — container sizing is a consumer decision.
 Set the size you want via `styles.editor` or your own CSS class.
 
-Layout-chrome defaults (padding, border, border-radius, background,
-font-size, line-height) on `.inkwell-editor` are wrapped in `:where()` so
-any single-class consumer rule (e.g. `classNames={{ editor: "border-0 px-3" }}`
-with Tailwind, or your own class) overrides them without `!important`.
-The same applies to `.inkwell-renderer` (font-size, line-height).
+Every visual-chrome default (color, background, border, padding,
+typography) across the editor surface, plugins, and renderer is wrapped
+in `:where()` so any single-class consumer rule wins by specificity
+tie-break — no `!important` or descendant scoping. Tailwind utilities on
+`classNames.editor` win automatically; restyling a rendered tag via
+`<InkwellRenderer components={...} />` with a single class on the
+wrapped element also wins. Layout-critical rules (positioning of the
+wrapper, bubble menu, picker popup, copy button, and the picker list's
+structural `max-height`) deliberately keep their normal specificity so
+consumer classes can't silently break geometry. For sweeping color
+changes, override the CSS custom properties (`--inkwell-accent`,
+`--inkwell-text`, `--inkwell-border`, etc.) on the wrapper.
 
 ## Features
 

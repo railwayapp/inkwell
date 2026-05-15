@@ -72,20 +72,33 @@
 .inkwell-editor-wrapper {
   position: relative;
 }
-.inkwell-editor {
-  min-height: 200px;
+
+/* Visual-chrome defaults (padding, border, background, type) are wrapped in
+   `:where()` so they carry 0,0,0 specificity. Any single-class consumer rule
+   on `.inkwell-editor` (Tailwind utilities, `classNames.editor`, etc.) wins
+   automatically — no `!important` or selector gymnastics needed.
+
+   Container size (min-height, max-height, height) is deliberately NOT
+   defaulted here. Inkwell sits inside the consumer's layout and the right
+   size is a consumer decision: a full-page editor wants `min-height: 60vh`,
+   a chat composer wants `min-height: 0`, a panel just wants to fill its
+   container. Set it on the editor via `styles.editor`, `classNames.editor`,
+   or your own CSS. */
+:where(.inkwell-editor) {
   padding: 1rem 1.25rem;
-  outline: none;
   border: 1px solid var(--inkwell-border);
   border-radius: var(--inkwell-radius);
   background: var(--inkwell-bg);
-  color: var(--inkwell-text);
   line-height: 1.6;
   font-size: 0.95rem;
   transition: border-color 0.15s ease;
 }
-.inkwell-editor:focus-within {
+:where(.inkwell-editor:focus-within) {
   border-color: var(--inkwell-border-strong);
+}
+.inkwell-editor {
+  outline: none;
+  color: var(--inkwell-text);
 }
 
 .inkwell-editor p {
@@ -183,7 +196,9 @@
   color: hsl(0, 75%, 55%);
   font-weight: 500;
 }
-.inkwell-editor-wrapper.inkwell-editor-has-character-limit .inkwell-editor {
+:where(
+    .inkwell-editor-wrapper.inkwell-editor-has-character-limit .inkwell-editor
+  ) {
   padding-right: 5.25rem;
   padding-bottom: 2.25rem;
 }
@@ -348,9 +363,13 @@
 
 /* ── Renderer ────────────────────────────────────────────────────── */
 
-.inkwell-renderer {
+/* Layout defaults on the renderer follow the same low-specificity pattern
+   as the editor — a single-class consumer rule wins automatically. */
+:where(.inkwell-renderer) {
   line-height: 1.65;
   font-size: 0.95rem;
+}
+.inkwell-renderer {
   color: var(--inkwell-text);
 }
 .inkwell-renderer :first-child {

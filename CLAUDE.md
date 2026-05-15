@@ -99,6 +99,21 @@ Use slot styling:
 
 Do not add a public top-level `style` prop.
 
+The bundled stylesheet ships **no container-size opinion** (`min-height`,
+`max-height`, `height`) on `.inkwell-editor`. Container sizing is a
+consumer decision — fights between the library default and a chat
+composer / panel embed / custom layout were not worth shipping. Demos and
+docs set their own size via `styles.editor`.
+
+Visual-chrome defaults that the stylesheet *does* ship (padding, border,
+border-radius, background, font-size, line-height, transition on
+`.inkwell-editor`; font-size/line-height on `.inkwell-renderer`) are
+wrapped in `:where()` so they carry 0,0,0 specificity. Any single-class
+consumer rule overrides them without `!important`. Don't move these
+rules back out of `:where()` — `packages/inkwell/src/styles.test.ts`
+will fail at CI. Typography/color rules (`strong`, `em`, code colors)
+stay at normal specificity intentionally.
+
 ## Built-in Plugins
 
 Built-in plugin factories:

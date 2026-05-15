@@ -10,6 +10,39 @@ import "@railway/inkwell/styles.css";
 
 The defaults are intentionally easy to override: every element also gets a stable CSS class, so you still have full control over the look and feel of both the editor and the rendered output.
 
+## Sizing the editor
+
+Inkwell ships no `min-height`, `max-height`, or `height` default on the
+editor surface. The right container size depends on where the editor lives —
+a chat composer wants to size to its content, a full-page editor wants to
+fill the viewport, a panel just wants to fill its container. Set the size
+you want on `styles.editor` or via your own class:
+
+```tsx
+// Fixed minimum height
+<InkwellEditor styles={{ editor: { minHeight: 200 } }} />
+
+// Chat-style composer that grows with content
+<InkwellEditor
+  classNames={{ editor: "chat-composer" }}
+  styles={{ editor: { maxHeight: 160, overflowY: "auto" } }}
+/>
+```
+
+## Overriding the layout defaults
+
+The visual-chrome defaults that Inkwell does ship (padding, border,
+border-radius, background, font-size, line-height, transition) are all
+wrapped in `:where()` so they carry zero specificity. Any single-class
+consumer rule wins automatically — no `!important`, no descendant scoping:
+
+```tsx
+// Tailwind utility classes Just Work
+<InkwellEditor classNames={{ editor: "border-0 bg-transparent px-3 py-2" }} />
+```
+
+The same applies to `.inkwell-renderer` (font-size, line-height).
+
 ## Component props
 
 Both `<InkwellEditor />` and `<InkwellRenderer />` accept props that let you attach classes and inline styles without writing a global stylesheet.

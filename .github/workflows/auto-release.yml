@@ -187,6 +187,14 @@ jobs:
           echo "New version: $NEW_VERSION"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Clean working tree post-version
+        if: steps.check-release.outputs.skip != 'true' && steps.check-changes.outputs.has_changes == 'true'
+        run: |
+          echo "Files left unstaged by npm version (will be discarded):"
+          git status --short
+          git reset --hard HEAD
+          git clean -fd
+
       - name: Push changes and tag
         if: steps.check-release.outputs.skip != 'true' && steps.check-changes.outputs.has_changes == 'true'
         run: |

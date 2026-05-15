@@ -174,26 +174,32 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump version and create tag
+      - name: Bump version, commit, and tag
         if: steps.check-release.outputs.skip != 'true' && steps.check-changes.outputs.has_changes == 'true'
         id: bump
-        working-directory: packages/inkwell
+        env:
+          BUMP: ${{ steps.release-type.outputs.bump }}
         run: |
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "Current version: $CURRENT_VERSION"
-
-          NEW_TAG=$(npm version ${{ steps.release-type.outputs.bump }} -m "🚀 release: v%s")
-          NEW_VERSION=${NEW_TAG#v}
+          set -euo pipefail
+          NEW_VERSION=$(node -e "
+            const fs = require('fs');
+            const path = 'packages/inkwell/package.json';
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const v = pkg.version.split('.').map(Number);
+            const bump = process.env.BUMP;
+            if (bump === 'major') { v[0]++; v[1] = 0; v[2] = 0; }
+            else if (bump === 'minor') { v[1]++; v[2] = 0; }
+            else { v[2]++; }
+            pkg.version = v.join('.');
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+            console.log(pkg.version);
+          ")
           echo "New version: $NEW_VERSION"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Clean working tree post-version
-        if: steps.check-release.outputs.skip != 'true' && steps.check-changes.outputs.has_changes == 'true'
-        run: |
-          echo "Files left unstaged by npm version (will be discarded):"
-          git status --short
-          git reset --hard HEAD
-          git clean -fd
+          git add packages/inkwell/package.json
+          git commit -m "🚀 release: v$NEW_VERSION"
+          git tag -a "v$NEW_VERSION" -m "v$NEW_VERSION"
 
       - name: Push changes and tag
         if: steps.check-release.outputs.skip != 'true' && steps.check-changes.outputs.has_changes == 'true'

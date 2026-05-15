@@ -46,12 +46,36 @@ import type {
   InkwellElement,
   InkwellEditor as InkwellSlateEditor,
 } from "./slate/types";
-import { withCharacterLimit } from "./slate/with-character-limit";
 import { withMarkdown } from "./slate/with-markdown";
 import { generateId, withNodeId } from "./slate/with-node-id";
 
 const IS_SERVER = typeof window === "undefined";
 const EMPTY_PLUGINS: InkwellPlugin[] = [];
+
+function CharacterCount({
+  count,
+  limit,
+  over,
+}: {
+  count: number;
+  limit: number;
+  over: boolean;
+}) {
+  const label = `${count} of ${limit} characters${over ? ", over limit" : ""}`;
+
+  return (
+    <div
+      className={`inkwell-editor-character-count${over ? " inkwell-editor-character-count-over" : ""}`}
+      role={over ? "status" : undefined}
+      aria-live={over ? "polite" : "off"}
+      aria-atomic={over ? true : undefined}
+      aria-label={label}
+    >
+      {count} / {limit}
+    </div>
+  );
+}
+
 /**
  * Tab-on-list-marker recognizers. Markdown list lines stay as paragraph
  * text in the editor model, so Tab handling matches the raw text instead
@@ -110,7 +134,6 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       features,
       bubbleMenu = true,
       characterLimit,
-      enforceCharacterLimit = false,
       onCharacterCount,
       submitOnEnter = false,
       onSubmit,
@@ -134,21 +157,9 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       return [...survivingBuiltIns, ...userPlugins];
     }, [userPlugins, bubbleMenu]);
 
-    const characterLimitRef = useRef({
-      limit: characterLimit,
-      enforce: enforceCharacterLimit,
-    });
-    characterLimitRef.current = {
-      limit: characterLimit,
-      enforce: enforceCharacterLimit,
-    };
-
     const editor = useMemo<InkwellSlateEditor>(() => {
       const base = withNodeId(withReact(createEditor()));
-      return withCharacterLimit(
-        withMarkdown(withHistory(base), featuresRef),
-        characterLimitRef,
-      );
+      return withMarkdown(withHistory(base), featuresRef);
     }, []);
 
     const initialValue = useMemo(
@@ -237,6 +248,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
 
     const overLimit =
       characterLimit !== undefined && characterCount > characterLimit;
+    const hasCharacterLimit = characterLimit !== undefined;
 
     const getEditorState = useCallback((): InkwellEditorState => {
       const content = serializeContent();
@@ -248,13 +260,11 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         characterCount,
         characterLimit,
         overLimit,
-        isEnforcingCharacterLimit: enforceCharacterLimit,
       };
     }, [
       characterCount,
       characterLimit,
       editable,
-      enforceCharacterLimit,
       editor,
       isFocused,
       overLimit,
@@ -1072,9 +1082,16 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     return (
       <div
         ref={wrapperRef}
-        className={`inkwell-editor-wrapper${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}${classNames?.root ? ` ${classNames.root}` : ""}`}
+        className={`inkwell-editor-wrapper${hasCharacterLimit ? " inkwell-editor-has-character-limit" : ""}${overLimit ? " inkwell-editor-over-limit" : ""}${className ? ` ${className}` : ""}${classNames?.root ? ` ${classNames.root}` : ""}`}
         style={styles?.root}
       >
+        {hasCharacterLimit && (
+          <CharacterCount
+            count={characterCount}
+            limit={characterLimit}
+            over={overLimit}
+          />
+        )}
         {activePlugin && (
           <div
             className="inkwell-plugin-backdrop"

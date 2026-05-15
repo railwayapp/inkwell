@@ -25,10 +25,8 @@ export interface InkwellEditorState {
   characterCount: number;
   /** Configured character limit, if any. */
   characterLimit?: number;
-  /** True when characterCount exceeds characterLimit. */
+  /** True when `characterCount` exceeds `characterLimit`. */
   overLimit: boolean;
-  /** True when input past characterLimit is blocked. */
-  isEnforcingCharacterLimit: boolean;
 }
 
 export interface InkwellEditorFocusOptions {
@@ -135,10 +133,8 @@ export interface InkwellEditorProps {
   features?: InkwellFeatures;
   /** Include the built-in bubble menu plugin. Defaults to true. */
   bubbleMenu?: boolean;
-  /** Maximum number of characters the editor should track. */
+  /** Soft character budget. Typing, paste, and inserts past the limit are allowed. */
   characterLimit?: number;
-  /** When true and a characterLimit is set, the editor blocks input past the limit. */
-  enforceCharacterLimit?: boolean;
   /** Called on every document change with the current character count and configured limit. */
   onCharacterCount?: (count: number, limit?: number) => void;
   /** When true, Enter submits the editor instead of inserting a newline. */

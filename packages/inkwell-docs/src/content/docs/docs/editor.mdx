@@ -187,8 +187,8 @@ Called on every document change with the updated content.
 
 Called with a full state snapshot when content, focus, editability, or
 character count changes. The state includes `content`, `isEmpty`,
-`isFocused`, `isEditable`, `characterCount`, `characterLimit`, `overLimit`,
-and `isEnforcingCharacterLimit`.
+`isFocused`, `isEditable`, `characterCount`, `characterLimit`, and
+`overLimit`.
 
 ### `placeholder`
 
@@ -256,18 +256,19 @@ function or a tuple such as `[plugin, ...options]`. See
 
 **Type:** `number`
 
-Tracks the current character count and adds `inkwell-editor-over-limit` to
-the wrapper when exceeded. Add the [Character Limit plugin](/docs/plugins/character-limit)
-when you want the built-in limit toast UI.
+Sets a soft character budget for the editor. Typing past the limit is
+allowed — the editor doesn't block input or truncate content.
 
-### `enforceCharacterLimit`
+When the limit is set, the editor renders a small `count / limit` readout
+in the bottom-right of the editor wrapper. Below the limit the readout is
+muted; above it the readout turns red, the wrapper picks up the
+`inkwell-editor-over-limit` class, and the editor surface gets a red
+border. The `overLimit` field on `InkwellEditorState` reflects the same
+condition so consumers can disable submit buttons, etc.
 
-**Type:** `boolean` — default: `false`
-
-When `true`, blocks text input, pasted content, plugin insertions, and
-`editor.insertContent()` past `characterLimit`. Overlong text insertions are
-truncated to the remaining capacity. Structured non-text insertions are blocked
-when no capacity remains.
+Style the readout and the over-limit state with the
+[`.inkwell-editor-character-count`](/docs/styling#character-limit)
+classes.
 
 ### `onCharacterCount`
 

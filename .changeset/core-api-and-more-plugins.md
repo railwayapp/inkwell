@@ -27,9 +27,7 @@ Additions and behavior updates:
   behaves like a normal edit.
 - Adds slot-based `classNames` and `styles` props; `className` remains an
   alias for `classNames.root`.
-- Adds `characterLimit`, `enforceCharacterLimit`, and `onCharacterCount`
-  editor props.
-- Adds `createCharacterLimitPlugin()` for the built-in character-limit toast.
+- Adds `characterLimit` and `onCharacterCount` editor props.
 - Adds `createCompletionsPlugin()` for generic placeholder completions and
   exports `CompletionsPluginOptions`.
 - Adds `InkwellPluginPlaceholder` and plugin `getPlaceholder()` handling.
@@ -46,4 +44,3 @@ Additions and behavior updates:
 - Allows rehype plugin tuples with rest options via `[plugin, ...options]`.
 - Keeps Markdown source markers in the editor content model; character counts
   and empty-state checks derive from serialized source content.
-- Seeds an empty collaborative Yjs document from the optional `content` prop.

@@ -7,7 +7,7 @@ import type { InkwellElement } from "../../editor/slate/types";
 import { withMarkdown } from "../../editor/slate/with-markdown";
 import { generateId, withNodeId } from "../../editor/slate/with-node-id";
 import type { InkwellPluginEditor } from "../../types";
-import { createAttachmentsPlugin } from ".";
+import { type AttachmentsHandle, createAttachmentsPlugin } from ".";
 
 function createTestEditor() {
   const featuresRef = {
@@ -502,5 +502,173 @@ describe("createAttachmentsPlugin", () => {
     expect(onAttachmentAdd.mock.calls[0][0]).toMatchObject({
       filename: "attachment",
     });
+  });
+});
+
+describe("createAttachmentsPlugin — imperative upload via ref", () => {
+  it("populates the ref on setup and clears it on cleanup", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const ref: { current: AttachmentsHandle | null } = { current: null };
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => "https://cdn/x.png",
+      ref,
+    });
+
+    expect(ref.current).toBeNull();
+
+    const cleanup = plugin.setup?.(createPluginEditor(editor));
+    expect(ref.current).not.toBeNull();
+    expect(ref.current?.upload).toBeTypeOf("function");
+
+    cleanup?.();
+    expect(ref.current).toBeNull();
+  });
+
+  it("upload([imageFile]) inserts an inline image via the same pipeline as drop", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    let resolveUpload: ((url: string) => void) | undefined;
+    const ref: { current: AttachmentsHandle | null } = { current: null };
+    const plugin = createAttachmentsPlugin({
+      onUpload: () =>
+        new Promise<string>(r => {
+          resolveUpload = r;
+        }),
+      ref,
+    });
+    plugin.setup?.(createPluginEditor(editor));
+
+    const file = new File(["data"], "cat.png", { type: "image/png" });
+    ref.current?.upload([file]);
+
+    expect(images(editor)).toHaveLength(1);
+    expect(images(editor)[0].alt).toBe("Uploading…");
+
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+    resolveUpload?.("https://cdn/cat.png");
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(images(editor)[0].url).toBe("https://cdn/cat.png");
+    expect(images(editor)[0].alt).toBe("cat.png");
+  });
+
+  it("upload([nonImageFile]) fires onAttachmentAdd", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onAttachmentAdd = vi.fn();
+    const ref: { current: AttachmentsHandle | null } = { current: null };
+    const plugin = createAttachmentsPlugin({
+      onUpload: async () => "https://cdn/report.pdf",
+      onAttachmentAdd,
+      ref,
+    });
+    plugin.setup?.(createPluginEditor(editor));
+
+    const pdf = new File(["data"], "report.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(pdf, "size", { value: 4242 });
+    ref.current?.upload([pdf]);
+
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(onAttachmentAdd).toHaveBeenCalledTimes(1);
+    expect(onAttachmentAdd).toHaveBeenCalledWith({
+      url: "https://cdn/report.pdf",
+      filename: "report.pdf",
+      mime: "application/pdf",
+      size: 4242,
+    });
+  });
+
+  it("upload routes a mixed payload to the right branch per file", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onAttachmentAdd = vi.fn();
+    const onUpload = vi.fn(async (file: File) =>
+      file.type.startsWith("image/")
+        ? "https://cdn/a.png"
+        : "https://cdn/report.pdf",
+    );
+    const ref: { current: AttachmentsHandle | null } = { current: null };
+    const plugin = createAttachmentsPlugin({
+      onUpload,
+      onAttachmentAdd,
+      ref,
+    });
+    plugin.setup?.(createPluginEditor(editor));
+
+    const image = new File(["data"], "a.png", { type: "image/png" });
+    const pdf = new File(["data"], "report.pdf", {
+      type: "application/pdf",
+    });
+    ref.current?.upload([image, pdf]);
+
+    expect(images(editor)).toHaveLength(1);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(onUpload).toHaveBeenCalledTimes(2);
+    expect(onAttachmentAdd).toHaveBeenCalledTimes(1);
+    expect(onAttachmentAdd.mock.calls[0][0]).toMatchObject({
+      filename: "report.pdf",
+    });
+  });
+
+  it("upload silently skips files filtered out by accept", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onUpload = vi.fn(async () => "https://cdn/x.png");
+    const onAttachmentAdd = vi.fn();
+    const ref: { current: AttachmentsHandle | null } = { current: null };
+    const plugin = createAttachmentsPlugin({
+      onUpload,
+      onAttachmentAdd,
+      accept: "image/*",
+      ref,
+    });
+    plugin.setup?.(createPluginEditor(editor));
+
+    const pdf = new File(["data"], "report.pdf", {
+      type: "application/pdf",
+    });
+    ref.current?.upload([pdf]);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(onAttachmentAdd).not.toHaveBeenCalled();
+    expect(images(editor)).toHaveLength(0);
+  });
+
+  it("upload([]) is a no-op", async () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    const onUpload = vi.fn(async () => "https://cdn/x.png");
+    const onAttachmentAdd = vi.fn();
+    const ref: { current: AttachmentsHandle | null } = { current: null };
+    const plugin = createAttachmentsPlugin({
+      onUpload,
+      onAttachmentAdd,
+      ref,
+    });
+    plugin.setup?.(createPluginEditor(editor));
+
+    ref.current?.upload([]);
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(onAttachmentAdd).not.toHaveBeenCalled();
   });
 });

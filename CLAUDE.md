@@ -69,6 +69,11 @@ Use `ref={useRef<InkwellEditorHandle>(null)}` for imperative actions:
 `setContent()` and `clear()` do not call `onChange`. `insertContent()` behaves
 like a normal edit and flows through change handling.
 
+The editor handle stays plugin-agnostic. Plugins that need an imperative
+surface (e.g. click-to-attach for attachments) expose their own ref via
+plugin options — see `AttachmentsHandle` and the `ref` option on
+`createAttachmentsPlugin`.
+
 The root package exports the component APIs, built-in plugin factories, renderer
 utilities (`parseMarkdown(content, options)`, `htmlToMarkdown(html)`), and public
 types. `RehypePluginConfig` accepts plugin tuples with rest options:
@@ -123,7 +128,12 @@ Built-in plugin factories:
   through optional `onAttachmentAdd(attachment)` so consumers can track
   them as message-level state (the markdown source has no syntax for
   arbitrary file attachments). Non-image files with no `onAttachmentAdd`
-  pass through to default paste/drop.
+  pass through to default paste/drop. Accepts `ref?: RefObject<AttachmentsHandle | null>`
+  populated on mount with `{ upload(files) }` for click-to-attach
+  buttons — files filtered out by `accept` are silently skipped by
+  `upload()` (paste/drop forwards them to default handling instead).
+  The shared internal `routeFiles()` helper backs both paste and the
+  imperative `upload()` so behavior stays identical.
 - `createBubbleMenuPlugin` — `BubbleMenuOptions` is public for reusable
   menu configuration.
 - `createCompletionsPlugin` — options type is `CompletionsPluginOptions`.

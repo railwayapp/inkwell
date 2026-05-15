@@ -123,7 +123,7 @@ const markdown = htmlToMarkdown(html);
 
 Built-in plugin factories include:
 
-- `createAttachmentsPlugin` — `onUpload(file)` returns `string | { url: string; alt?: string }`. Image files are inserted inline; non-image files surface through optional `onAttachmentAdd(attachment)` so the consumer can track them as message-level state. Non-image files with no `onAttachmentAdd` pass through to default paste/drop.
+- `createAttachmentsPlugin` — `onUpload(file)` returns `string | { url: string; alt?: string }`. Image files are inserted inline; non-image files surface through optional `onAttachmentAdd(attachment)` so the consumer can track them as message-level state. Non-image files with no `onAttachmentAdd` pass through to default paste/drop. Pass `ref?: RefObject<AttachmentsHandle | null>` to receive an imperative `upload(files)` method (populated on mount, nulled on unmount) for click-to-attach buttons.
 - `createBubbleMenuPlugin` — options type is `BubbleMenuOptions`
 - `createCompletionsPlugin` — options type is `CompletionsPluginOptions`
 - `createEmojiPlugin` — custom item generics work with `emojis` or `search`

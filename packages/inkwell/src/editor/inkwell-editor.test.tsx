@@ -18,6 +18,10 @@ import {
 import { withHistory } from "slate-history";
 import { ReactEditor, withReact } from "slate-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type AttachmentsHandle,
+  createAttachmentsPlugin,
+} from "../plugins/attachments";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import { createCompletionsPlugin } from "../plugins/completions";
 import { createMentionsPlugin } from "../plugins/mentions";
@@ -1488,6 +1492,37 @@ describe("InkwellEditor — imperative API and state", () => {
 
     expect(event).toBe(false);
     expect(ref.current?.getState().content).toBe("  -");
+  });
+
+  it("populates the attachments plugin ref after mount and routes upload() through it", async () => {
+    const attachmentsRef: { current: AttachmentsHandle | null } = {
+      current: null,
+    };
+    const onUpload = vi.fn(async () => "https://cdn/cat.png");
+    const plugin = createAttachmentsPlugin({
+      onUpload,
+      ref: attachmentsRef,
+    });
+
+    const { container, unmount } = render(
+      <InkwellEditor content="" plugins={[plugin]} />,
+    );
+    await flushEffects();
+
+    expect(attachmentsRef.current).not.toBeNull();
+
+    const file = new File(["data"], "cat.png", { type: "image/png" });
+    await act(async () => {
+      attachmentsRef.current?.upload([file]);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+
+    expect(onUpload).toHaveBeenCalledWith(file);
+    const img = container.querySelector(".inkwell-editor img");
+    expect(img).toHaveAttribute("src", "https://cdn/cat.png");
+
+    unmount();
+    expect(attachmentsRef.current).toBeNull();
   });
 
   it("reports state changes through onStateChange", () => {

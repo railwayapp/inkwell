@@ -141,6 +141,55 @@ Any extra fields returned from `onUpload` (here, `id`) are forwarded onto
 the `Attachment` object so you can pass through service-side identifiers
 without modeling them in your component state.
 
+### Click-to-attach button
+
+To trigger the same upload pipeline from a button, pass a `ref` to the
+plugin. After the editor mounts, the plugin populates the ref with an
+imperative `upload(files)` method that routes each file through the same
+pipeline a paste or drop uses — images insert inline, non-image files
+fire `onAttachmentAdd`.
+
+```tsx
+import {
+  type AttachmentsHandle,
+  createAttachmentsPlugin,
+  InkwellEditor,
+} from "@railway/inkwell";
+import { useMemo, useRef } from "react";
+
+function Composer() {
+  const attachmentsRef = useRef<AttachmentsHandle>(null);
+  const plugin = useMemo(
+    () =>
+      createAttachmentsPlugin({
+        ref: attachmentsRef,
+        onUpload,
+        onAttachmentAdd,
+      }),
+    [],
+  );
+
+  return (
+    <>
+      <input
+        type="file"
+        multiple
+        onChange={event => {
+          const files = Array.from(event.target.files ?? []);
+          if (files.length > 0) attachmentsRef.current?.upload(files);
+          event.target.value = "";
+        }}
+      />
+      <InkwellEditor plugins={[plugin]} />
+    </>
+  );
+}
+```
+
+Files that don't match `accept` are silently skipped by `upload()` (the
+paste/drop path forwards them to default handling instead, but a
+click-to-attach flow has nowhere to forward them).
+
 ### Why attachments aren't in the Markdown
 
 Inkwell's content model is a Markdown source string. Markdown has no
@@ -171,14 +220,22 @@ interface Attachment {
   [key: string]: unknown;
 }
 
+interface AttachmentsHandle {
+  upload: (files: File[]) => void;
+}
+
 interface AttachmentsPluginOptions {
   onUpload: (file: File) => Promise<AttachmentUploadResult>;
   accept?: string;
+  ref?: React.RefObject<AttachmentsHandle | null>;
   uploadingPlaceholder?: (file: File) => string;
   onAttachmentAdd?: (attachment: Attachment) => void;
   onError?: (error: unknown, file: File) => void;
 }
 ```
+
+`ref` is populated after the editor mounts and cleared on unmount.
+See [Click-to-attach button](#click-to-attach-button) for usage.
 
 `accept` allows exact MIME types such as `image/png` and wildcards such as
 `image/*`. Files that do not match are passed through to the editor's

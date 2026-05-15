@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import { isSafeImageUrl, sanitizeImageUrl } from "../../lib/safe-url";
 import type { InkwellPlugin, InkwellPluginEditor } from "../../types";
 
@@ -23,6 +24,10 @@ export interface Attachment {
   [key: string]: unknown;
 }
 
+export interface AttachmentsHandle {
+  upload: (files: File[]) => void;
+}
+
 export interface AttachmentsPluginOptions {
   /**
    * Upload a single file and resolve to the public URL, or an object
@@ -35,6 +40,8 @@ export interface AttachmentsPluginOptions {
    * (`image/*`). Files that don't match pass through untouched.
    */
   accept?: string;
+  /** Populated on editor mount, nulled on unmount. */
+  ref?: RefObject<AttachmentsHandle | null>;
   /**
    * Placeholder alt text shown on the inserted image element while an
    * image upload is in flight. Defaults to `"Uploading…"`.
@@ -189,6 +196,32 @@ const insertUploadedAttachment = (
     });
 };
 
+function routeFiles(
+  editor: InkwellPluginEditor,
+  files: File[],
+  options: AttachmentsPluginOptions,
+): { handled: File[]; skipped: File[] } {
+  const { accept } = options;
+  const matching = accept
+    ? files.filter(f => mimeMatches(f.type, accept))
+    : files;
+
+  const handled = matching.filter(
+    f => isImageFile(f) || options.onAttachmentAdd !== undefined,
+  );
+
+  for (const file of handled) {
+    if (isImageFile(file)) {
+      insertUploadedImage(editor, file, options);
+    } else {
+      insertUploadedAttachment(file, options);
+    }
+  }
+
+  const skipped = files.filter(f => !handled.includes(f));
+  return { handled, skipped };
+}
+
 /**
  * Intercepts file paste/drop, uploads via `onUpload`, and either
  * inserts an inline image element (for `image/*` files) or fires
@@ -199,22 +232,28 @@ const insertUploadedAttachment = (
 export function createAttachmentsPlugin(
   options: AttachmentsPluginOptions,
 ): InkwellPlugin {
-  const { accept } = options;
-
   return {
     name: "attachments",
+    setup(editor) {
+      if (!options.ref) return;
+      // RefObject's `current` is typed readonly by React even though
+      // the underlying object is writable at runtime — the cast is
+      // the standard pattern for populating a ref handed in by a
+      // consumer.
+      const writableRef = options.ref as { current: AttachmentsHandle | null };
+      writableRef.current = {
+        upload: files => {
+          if (files.length === 0) return;
+          routeFiles(editor, files, options);
+        },
+      };
+      return () => {
+        writableRef.current = null;
+      };
+    },
     onInsertData(data, { editor, insertData }) {
       const files = extractFiles(data);
-      const matching = accept
-        ? files.filter(f => mimeMatches(f.type, accept))
-        : files;
-
-      // Files that match `accept` but aren't images and have no
-      // attachment callback fall through to default handling so we
-      // don't silently consume and drop them.
-      const handled = matching.filter(
-        f => isImageFile(f) || options.onAttachmentAdd !== undefined,
-      );
+      const { handled, skipped } = routeFiles(editor, files, options);
 
       if (handled.length === 0) {
         const htmlImages = extractHtmlImages(data);
@@ -226,17 +265,8 @@ export function createAttachmentsPlugin(
         return true;
       }
 
-      const unhandled = files.filter(f => !handled.includes(f));
-      if (unhandled.length > 0) {
-        insertData(filesOnlyDataTransfer(unhandled));
-      }
-
-      for (const file of handled) {
-        if (isImageFile(file)) {
-          insertUploadedImage(editor, file, options);
-        } else {
-          insertUploadedAttachment(file, options);
-        }
+      if (skipped.length > 0) {
+        insertData(filesOnlyDataTransfer(skipped));
       }
 
       return true;

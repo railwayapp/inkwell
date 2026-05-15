@@ -136,14 +136,14 @@ needs to handle positioning and opacity.
 
 ### Character limit
 
-`characterLimit` is a soft budget — typing past it is allowed. When a limit is configured the editor renders a small `count / limit` readout in the bottom-right of the wrapper and flags the over-limit state with a wrapper class.
+`characterLimit` is a soft budget — typing past it is allowed. When a limit is configured the editor renders a small `count / limit` readout overlaying the top-right of the wrapper, but only once the count reaches 80% of the limit (inclusive — at limit 50, the readout shows at 40). The readout sits on a solid surface background and is absolutely positioned, so it visually layers above wrapped text without shifting content. The wrapper picks up a class while the limit is configured and a separate class while the count exceeds the limit.
 
 | Selector | Element |
 |----------|---------|
-| `.inkwell-editor-character-count` | The `count / limit` readout. Muted gray by default. |
+| `.inkwell-editor-character-count` | The `count / limit` readout. Muted gray text on the editor surface background, only rendered once the count reaches 80% of `characterLimit`. |
 | `.inkwell-editor-character-count.inkwell-editor-character-count-over` | The readout when the count exceeds the limit. Red by default. |
-| `.inkwell-editor-wrapper.inkwell-editor-has-character-limit` | The wrapper while any `characterLimit` is configured. The bundled stylesheet reserves bottom-right editor padding for the count. |
-| `.inkwell-editor-wrapper.inkwell-editor-over-limit` | The wrapper while `characterCount > characterLimit`. The bundled stylesheet paints a red border on the editor surface; override or extend as you like. |
+| `.inkwell-editor-wrapper.inkwell-editor-has-character-limit` | The wrapper while any `characterLimit` is configured. Acts purely as a styling hook — the bundled stylesheet ships no rules against it. |
+| `.inkwell-editor-wrapper.inkwell-editor-over-limit` | The wrapper while `characterCount > characterLimit`. The bundled stylesheet paints a soft red halo (`--inkwell-danger-soft`) around the editor surface; override or extend as you like. |
 
 ## Renderer
 

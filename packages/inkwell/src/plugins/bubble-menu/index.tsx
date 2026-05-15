@@ -147,7 +147,7 @@ function BubbleMenuWidget({
             ? "translateX(-50%) translateY(-100%)"
             : "translateX(-50%)",
         marginTop: position.placement === "above" ? -8 : 8,
-        zIndex: 1100,
+        zIndex: 9999,
       }}
       onMouseDown={e => e.preventDefault()}
     >

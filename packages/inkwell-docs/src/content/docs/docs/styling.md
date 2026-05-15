@@ -103,13 +103,14 @@ needs to handle positioning and opacity.
 
 ### Character limit
 
-Applied when a `characterLimit` is configured on the editor:
+`characterLimit` is a soft budget — typing past it is allowed. When a limit is configured the editor renders a small `count / limit` readout in the bottom-right of the wrapper and flags the over-limit state with a wrapper class.
 
 | Selector | Element |
 |----------|---------|
-| `.inkwell-editor-wrapper.inkwell-editor-over-limit` | Wrapper while `characterCount > characterLimit`. Use to flag the surface (e.g. red outline). |
-| `.inkwell-editor-limit-toast` | Toast rendered by `createCharacterLimitPlugin()` when the document is over limit, or exactly at the limit when `enforceCharacterLimit` blocks more typing. |
-| `.inkwell-editor-limit-toast-icon` | The leading icon inside the toast. |
+| `.inkwell-editor-character-count` | The `count / limit` readout. Muted gray by default. |
+| `.inkwell-editor-character-count.inkwell-editor-character-count-over` | The readout when the count exceeds the limit. Red by default. |
+| `.inkwell-editor-wrapper.inkwell-editor-has-character-limit` | The wrapper while any `characterLimit` is configured. The bundled stylesheet reserves bottom-right editor padding for the count. |
+| `.inkwell-editor-wrapper.inkwell-editor-over-limit` | The wrapper while `characterCount > characterLimit`. The bundled stylesheet paints a red border on the editor surface; override or extend as you like. |
 
 ## Renderer
 

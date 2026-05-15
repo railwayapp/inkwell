@@ -21,7 +21,6 @@ function createPluginEditor(content = ""): InkwellPluginEditor {
       isEditable: true,
       characterCount: currentContent.length,
       overLimit: false,
-      isEnforcingCharacterLimit: false,
     }),
     isEmpty: () => currentContent.trim().length === 0,
     focus: () => {},

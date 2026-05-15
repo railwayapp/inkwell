@@ -36,7 +36,6 @@ function createPluginEditor(): InkwellPluginEditor {
       isEditable: true,
       characterCount: 0,
       overLimit: false,
-      isEnforcingCharacterLimit: false,
     }),
     isEmpty: () => true,
     focus: () => {},

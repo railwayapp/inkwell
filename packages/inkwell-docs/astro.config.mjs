@@ -44,7 +44,6 @@ export default defineConfig({
                 { slug: "docs/plugins/slash-commands" },
                 { slug: "docs/plugins/mentions" },
                 { slug: "docs/plugins/attachments" },
-                { slug: "docs/plugins/character-limit" },
               ],
             },
           ],

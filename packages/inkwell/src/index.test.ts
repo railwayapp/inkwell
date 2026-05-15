@@ -19,7 +19,6 @@ describe("@railway/inkwell public exports", () => {
   it("re-exports the built-in plugin creators", () => {
     expect(Inkwell.createAttachmentsPlugin).toBeTypeOf("function");
     expect(Inkwell.createBubbleMenuPlugin).toBeTypeOf("function");
-    expect(Inkwell.createCharacterLimitPlugin).toBeTypeOf("function");
     expect(Inkwell.createCompletionsPlugin).toBeTypeOf("function");
     expect(Inkwell.createEmojiPlugin).toBeTypeOf("function");
     expect(Inkwell.defaultEmojis).toBeInstanceOf(Array);

@@ -811,21 +811,16 @@ function SubRow({
 }
 
 function CharacterLimitRow({
-  enforce,
-  setEnforce,
+  enabled,
+  setEnabled,
   limit,
   setLimit,
-  count,
-  overLimit,
 }: {
-  enforce: boolean;
-  setEnforce: (next: boolean) => void;
+  enabled: boolean;
+  setEnabled: (next: boolean) => void;
   limit: number;
   setLimit: (next: number) => void;
-  count: number;
-  overLimit: boolean;
 }) {
-  const pct = Math.min(100, (count / limit) * 100);
   return (
     <div
       style={{
@@ -853,7 +848,8 @@ function CharacterLimitRow({
           color: SURFACE.textDim,
         }}
       >
-        Track and optionally enforce a maximum character count.
+        Soft budget. Typing past the limit is allowed; the editor shows a count
+        and a red border once you go over.
       </div>
 
       <div
@@ -865,18 +861,18 @@ function CharacterLimitRow({
         }}
       >
         <SubRow
-          label="Enforce limit"
+          label="Limit enabled"
           control={
             <Switch
-              on={enforce}
-              onChange={setEnforce}
-              label="Enforce character limit"
+              on={enabled}
+              onChange={setEnabled}
+              label="Enable character limit"
             />
           }
         />
         <SubRow
           label="Character limit"
-          disabled={!enforce}
+          disabled={!enabled}
           control={
             <NumberInput
               ariaLabel="Character limit"
@@ -886,62 +882,10 @@ function CharacterLimitRow({
               max={CHARACTER_LIMIT_MAX}
               step={50}
               suffix="chars"
-              disabled={!enforce}
+              disabled={!enabled}
             />
           }
         />
-        <div style={{ padding: "0.6rem 0.85rem 0.7rem" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: "0.4rem",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "0.85rem",
-                color: SURFACE.text,
-                letterSpacing: "-0.005em",
-              }}
-            >
-              Character count
-            </span>
-            <span
-              aria-live="polite"
-              style={{
-                fontFamily:
-                  '"JetBrains Mono", "Fira Code", ui-monospace, monospace',
-                fontSize: "0.75rem",
-                fontVariantNumeric: "tabular-nums",
-                color: overLimit ? "hsl(0, 75%, 72%)" : SURFACE.textDim,
-              }}
-            >
-              {count} / {limit}
-            </span>
-          </div>
-          <div
-            style={{
-              position: "relative",
-              height: 6,
-              borderRadius: 9999,
-              background: SURFACE.cardElevated,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                right: "auto",
-                width: `${pct}%`,
-                background: overLimit ? "hsl(0, 75%, 60%)" : SURFACE.accent,
-                transition: "width 0.18s ease, background 0.2s ease",
-              }}
-            />
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -1202,10 +1146,7 @@ export function Demo() {
     bubbleMenuEnabled,
   } = usePluginSelector();
 
-  const [characterCount, setCharacterCount] = useState(
-    () => INITIAL_MARKDOWN.length,
-  );
-  const [enforceCharacterLimit, setEnforceCharacterLimit] = useState(false);
+  const [characterLimitEnabled, setCharacterLimitEnabled] = useState(false);
   const [characterLimit, setCharacterLimit] = useState(DEFAULT_CHARACTER_LIMIT);
   const [completion, setCompletion] = useState<string | null>(DEMO_COMPLETION);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -1213,7 +1154,6 @@ export function Demo() {
   const completionRef = useRef(completion);
   editorContentRef.current = editorContent;
   completionRef.current = completion;
-  const overLimit = characterCount > characterLimit;
   const selectedPlugins = useMemo(
     () =>
       AVAILABLE_PLUGINS.filter(p => p.create && enabledPluginIds.has(p.id)).map(
@@ -1243,9 +1183,7 @@ export function Demo() {
       placeholder="Start writing Markdown..."
       plugins={selectedPlugins}
       bubbleMenu={bubbleMenuEnabled}
-      characterLimit={characterLimit}
-      enforceCharacterLimit={enforceCharacterLimit}
-      onCharacterCount={setCharacterCount}
+      characterLimit={characterLimitEnabled ? characterLimit : undefined}
       styles={{ editor: { maxHeight: 760, overflowY: "auto" } }}
     />
   );
@@ -1375,12 +1313,10 @@ export function Demo() {
             })}
 
             <CharacterLimitRow
-              enforce={enforceCharacterLimit}
-              setEnforce={setEnforceCharacterLimit}
+              enabled={characterLimitEnabled}
+              setEnabled={setCharacterLimitEnabled}
               limit={characterLimit}
               setLimit={setCharacterLimit}
-              count={characterCount}
-              overLimit={overLimit}
             />
           </Section>
         </Modal>

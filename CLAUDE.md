@@ -111,7 +111,6 @@ Built-in plugin factories:
   pass through to default paste/drop.
 - `createBubbleMenuPlugin` — `BubbleMenuOptions` is public for reusable
   menu configuration.
-- `createCharacterLimitPlugin`
 - `createCompletionsPlugin` — options type is `CompletionsPluginOptions`.
 - `createEmojiPlugin` — custom item generics work when callers provide
   `emojis` or `search`.
@@ -120,9 +119,21 @@ Built-in plugin factories:
   `args` array.
 - `createSnippetsPlugin`
 
-Character-limit toast UI lives in `createCharacterLimitPlugin()`. The editor
-still owns `characterLimit`, `enforceCharacterLimit`, and `onCharacterCount` for
-counting/enforcement.
+`characterLimit` is a soft budget — typing past it is allowed. The editor
+renders a built-in `count / limit` readout in the bottom-right of the
+wrapper (`.inkwell-editor-character-count`), flips it to red over the
+limit (`.inkwell-editor-character-count-over`), applies
+`.inkwell-editor-has-character-limit` when a limit is configured, and applies
+`.inkwell-editor-over-limit` to the wrapper for surface-level styling
+(default stylesheet paints a red border on `.inkwell-editor`).
+`InkwellEditorState.overLimit` mirrors the same condition.
+`onCharacterCount` fires on every recount.
+
+We previously tried hard-clamping (`with-character-limit`) but ran into
+unfixable bypass paths in slate-react's native fast-path for ASCII typing
+and various `Transforms.insertNodes` callers. The soft-limit + visual
+signal is the chosen design — don't reintroduce a clamp without a
+concrete reason.
 
 
 ## Plugin API

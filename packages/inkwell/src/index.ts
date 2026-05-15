@@ -11,10 +11,6 @@ export {
   defaultBubbleMenuItems,
 } from "./plugins/bubble-menu";
 export {
-  type CharacterLimitPluginOptions,
-  createCharacterLimitPlugin,
-} from "./plugins/character-limit";
-export {
   type CompletionsPluginOptions,
   createCompletionsPlugin,
 } from "./plugins/completions";

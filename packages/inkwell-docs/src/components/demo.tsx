@@ -1184,7 +1184,9 @@ export function Demo() {
       plugins={selectedPlugins}
       bubbleMenu={bubbleMenuEnabled}
       characterLimit={characterLimitEnabled ? characterLimit : undefined}
-      styles={{ editor: { maxHeight: 760, overflowY: "auto" } }}
+      styles={{
+        editor: { minHeight: 200, maxHeight: 760, overflowY: "auto" },
+      }}
     />
   );
 
@@ -1276,7 +1278,7 @@ export function Demo() {
         {activeTab === "preview" && (
           <div
             className="inkwell-editor"
-            style={{ maxHeight: 760, overflowY: "auto" }}
+            style={{ minHeight: 200, maxHeight: 760, overflowY: "auto" }}
           >
             <InkwellRenderer
               content={editorContent}

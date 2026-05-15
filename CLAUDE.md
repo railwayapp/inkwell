@@ -167,6 +167,16 @@ interface PluginKeyDownContext {
 Picker-style built-ins may share internal primitives, but those primitives are
 not part of the root public API.
 
+`PluginRenderProps` exposes both `position` (wrapper-relative caret coords with
+a 4px gap below the caret — the default popup anchor) and `cursorRect`
+(`{ top, bottom, left }`, wrapper-relative). Built-in pickers use a shared
+internal `usePluginPopupPlacement` hook (in `plugins/plugin-picker.tsx`) to
+flip above the caret when the popup wouldn't fit below the viewport and shift
+left when it would overflow the right edge. Flipped popups get the
+`inkwell-plugin-picker-popup-flipped` class. The hook reads `popupEl.offsetParent`
+to get the wrapper viewport position, so the picker must remain absolutely
+positioned inside the editor wrapper.
+
 ## Code Conventions
 
 - TypeScript strict mode, kebab-case file names (Biome enforced)

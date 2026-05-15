@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -15,6 +17,7 @@ const BASE = "inkwell-plugin-picker";
 
 export const pluginPickerClass = {
   popup: `${BASE}-popup`,
+  popupFlipped: `${BASE}-popup-flipped`,
   picker: `${BASE}`,
   search: `${BASE}-search`,
   item: `${BASE}-item`,
@@ -24,6 +27,165 @@ export const pluginPickerClass = {
   subtitle: `${BASE}-subtitle`,
   preview: `${BASE}-preview`,
 };
+
+interface PickerPosition {
+  top: number;
+  left: number;
+}
+
+interface PickerCursorRect {
+  top: number;
+  bottom: number;
+  left: number;
+}
+
+/** Gap (px) between the caret and the popup. Matches the gap baked into
+ *  `getCursorPosition` for the below-anchor case so the above-anchor case
+ *  mirrors it. */
+const POPUP_GAP = 4;
+/** Breathing room from the viewport edge when deciding whether the popup
+ *  fits in a given direction. */
+const VIEWPORT_MARGIN = 8;
+/** Fallback caret height used when `cursorRect` is missing (older render
+ *  fixtures). Roughly one editor line height — good enough for the flip
+ *  heuristic in test paths that don't supply real geometry. */
+const CURSOR_HEIGHT_FALLBACK = 20;
+
+interface PickerPlacementResult {
+  /** Ref callback to attach to the popup root. */
+  setPopupEl: (el: HTMLDivElement | null) => void;
+  /** Style to apply to the popup root (position, top, left, transform). */
+  style: CSSProperties;
+  /** Class names to apply to the popup root for flipped-state styling. */
+  className: string;
+  /** True when the popup was flipped above the caret. */
+  flippedAbove: boolean;
+}
+
+/**
+ * Viewport-aware popup placement. Picks an anchor based on available space:
+ *
+ *  - vertical: flips above the caret when the popup would clip the viewport
+ *    bottom and there's room above. Falls back to below in all other cases.
+ *  - horizontal: shifts left when the popup would clip the viewport right
+ *    edge, clamping to a small margin.
+ *
+ * Re-measures on resize, scroll, and content-driven popup resizes via
+ * `ResizeObserver`, so mode transitions inside a picker (e.g. slash
+ * commands → args → ready) re-evaluate placement.
+ *
+ * The popup must be `position: absolute` inside the editor's positioned
+ * wrapper so `offsetParent` resolves to the wrapper element.
+ */
+function usePickerPlacement(
+  position: PickerPosition,
+  cursorRect: PickerCursorRect | undefined,
+): PickerPlacementResult {
+  const [popupEl, setPopupEl] = useState<HTMLDivElement | null>(null);
+  const [placement, setPlacement] = useState<{
+    flippedAbove: boolean;
+    leftOverride: number | null;
+  }>({ flippedAbove: false, leftOverride: null });
+
+  const cursorTopWrapper =
+    cursorRect?.top ??
+    Math.max(0, position.top - POPUP_GAP - CURSOR_HEIGHT_FALLBACK);
+  const cursorBottomWrapper =
+    cursorRect?.bottom ?? Math.max(0, position.top - POPUP_GAP);
+  const cursorLeftWrapper = cursorRect?.left ?? position.left;
+
+  useLayoutEffect(() => {
+    if (!popupEl) return;
+
+    const measure = () => {
+      const offsetParent = popupEl.offsetParent;
+      if (!(offsetParent instanceof HTMLElement)) return;
+      const wrapperRect = offsetParent.getBoundingClientRect();
+      const popupRect = popupEl.getBoundingClientRect();
+      const popupHeight = popupRect.height;
+      const popupWidth = popupRect.width;
+
+      const cursorTopViewport = wrapperRect.top + cursorTopWrapper;
+      const cursorBottomViewport = wrapperRect.top + cursorBottomWrapper;
+      const cursorLeftViewport = wrapperRect.left + cursorLeftWrapper;
+
+      const spaceBelow =
+        window.innerHeight - cursorBottomViewport - VIEWPORT_MARGIN;
+      const spaceAbove = cursorTopViewport - VIEWPORT_MARGIN;
+      const needsFlip = popupHeight + POPUP_GAP > spaceBelow;
+      const fitsAbove = popupHeight + POPUP_GAP <= spaceAbove;
+      const flippedAbove = needsFlip && fitsAbove;
+
+      const maxRightViewport = window.innerWidth - VIEWPORT_MARGIN;
+      const popupRightIfDefault = cursorLeftViewport + popupWidth;
+      const leftOverride =
+        popupRightIfDefault > maxRightViewport
+          ? Math.max(
+              VIEWPORT_MARGIN - wrapperRect.left,
+              maxRightViewport - popupWidth - wrapperRect.left,
+            )
+          : null;
+
+      setPlacement(prev =>
+        prev.flippedAbove === flippedAbove && prev.leftOverride === leftOverride
+          ? prev
+          : { flippedAbove, leftOverride },
+      );
+    };
+
+    measure();
+
+    const ResizeObserverCtor =
+      typeof window !== "undefined"
+        ? (window as unknown as { ResizeObserver?: typeof ResizeObserver })
+            .ResizeObserver
+        : undefined;
+    const resizeObserver = ResizeObserverCtor
+      ? new ResizeObserverCtor(() => measure())
+      : null;
+    resizeObserver?.observe(popupEl);
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [popupEl, cursorTopWrapper, cursorBottomWrapper, cursorLeftWrapper]);
+
+  const style: CSSProperties = {
+    position: "absolute",
+    top: placement.flippedAbove ? cursorTopWrapper - POPUP_GAP : position.top,
+    left: placement.leftOverride ?? position.left,
+    transform: placement.flippedAbove ? "translateY(-100%)" : undefined,
+    zIndex: 1001,
+  };
+
+  const className = placement.flippedAbove
+    ? `${pluginPickerClass.popup} ${pluginPickerClass.popupFlipped}`
+    : pluginPickerClass.popup;
+
+  return {
+    setPopupEl,
+    style,
+    className,
+    flippedAbove: placement.flippedAbove,
+  };
+}
+
+/**
+ * Shared placement helper exported for built-in plugins that render their
+ * own popup wrappers (e.g. the slash commands menu has separate popups
+ * for the picker and the ready-to-execute hint). External plugins should
+ * prefer `PluginMenuPrimitive`, which wires this in automatically.
+ */
+export function usePluginPopupPlacement(
+  position: PickerPosition,
+  cursorRect: PickerCursorRect | undefined,
+): PickerPlacementResult {
+  return usePickerPlacement(position, cursorRect);
+}
 
 interface PluginMenuPrimitiveProps<T> extends PluginRenderProps {
   /**
@@ -64,6 +226,7 @@ export function PluginMenuPrimitive<T>({
   onSelect,
   onDismiss,
   position,
+  cursorRect,
   subscribeForwardedKey,
 }: PluginMenuPrimitiveProps<T>): ReactNode {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -230,15 +393,13 @@ export function PluginMenuPrimitive<T>({
     ],
   );
 
+  const placement = usePickerPlacement(position, cursorRect);
+
   return (
     <div
-      className={pluginPickerClass.popup}
-      style={{
-        position: "absolute",
-        top: position.top,
-        left: position.left,
-        zIndex: 1001,
-      }}
+      ref={placement.setPopupEl}
+      className={placement.className}
+      style={placement.style}
       onMouseDown={event => event.preventDefault()}
     >
       <div

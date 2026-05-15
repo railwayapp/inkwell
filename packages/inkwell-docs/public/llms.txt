@@ -182,3 +182,11 @@ interface InkwellPlugin {
 
 Use `ctx.activate()` and `ctx.dismiss()` for manual activation. Plugins receive a
 narrow `InkwellPluginEditor` controller for editor actions.
+
+Render props include `position` (wrapper-relative caret coords with a 4px gap
+below the caret, intended as the popup's default top-left anchor) and
+`cursorRect` (`{ top, bottom, left }`, also wrapper-relative). Built-in pickers
+flip above the caret when the popup wouldn't fit below the viewport and shift
+left when it would overflow the right edge. The flipped state adds the
+`inkwell-plugin-picker-popup-flipped` class to the popup root for any
+flip-specific styling.

@@ -337,9 +337,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     const activePluginQueryRef = useRef("");
     const activePluginRef = useRef<InkwellPlugin | null>(null);
     activePluginRef.current = activePlugin;
-    const pluginPositionRef = useRef<{ top: number; left: number }>({
+    const pluginPositionRef = useRef<{
+      top: number;
+      left: number;
+      cursorRect: { top: number; bottom: number; left: number };
+    }>({
       top: 0,
       left: 0,
+      cursorRect: { top: 0, bottom: 0, left: 0 },
     });
     const forwardedKeyListenersRef = useRef<
       Map<string, Set<(key: string) => void>>
@@ -482,10 +487,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     );
 
     const getCursorPosition = useCallback(() => {
+      const empty = {
+        top: 0,
+        left: 0,
+        cursorRect: { top: 0, bottom: 0, left: 0 },
+      };
       try {
         const domSelection = window.getSelection();
-        if (!domSelection || domSelection.rangeCount === 0)
-          return { top: 0, left: 0 };
+        if (!domSelection || domSelection.rangeCount === 0) return empty;
         const range = domSelection.getRangeAt(0);
         let rect = range.getBoundingClientRect();
         if (rect.width === 0 && rect.height === 0 && domSelection.anchorNode) {
@@ -496,14 +505,22 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           if (node) rect = node.getBoundingClientRect();
         }
         const wrapperEl = wrapperRef.current;
-        if (!wrapperEl) return { top: 0, left: 0 };
+        if (!wrapperEl) return empty;
         const wrapperRect = wrapperEl.getBoundingClientRect();
+        const cursorTop = rect.top - wrapperRect.top;
+        const cursorBottom = rect.bottom - wrapperRect.top;
+        const cursorLeft = rect.left - wrapperRect.left;
         return {
-          top: rect.bottom - wrapperRect.top + 4,
-          left: rect.left - wrapperRect.left,
+          top: cursorBottom + 4,
+          left: cursorLeft,
+          cursorRect: {
+            top: cursorTop,
+            bottom: cursorBottom,
+            left: cursorLeft,
+          },
         };
       } catch {
-        return { top: 0, left: 0 };
+        return empty;
       }
     }, []);
 
@@ -832,7 +849,11 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       query: activePlugin === plugin ? activePluginQuery : "",
       onSelect: handlePluginSelect,
       onDismiss: dismissPlugin,
-      position: pluginPositionRef.current,
+      position: {
+        top: pluginPositionRef.current.top,
+        left: pluginPositionRef.current.left,
+      },
+      cursorRect: pluginPositionRef.current.cursorRect,
       editorRef: editorElRef,
       editor: pluginEditor,
       wrapSelection,

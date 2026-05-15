@@ -214,8 +214,13 @@ export interface PluginRenderProps {
   onSelect: (content: string) => void;
   /** Deactivate this plugin. */
   onDismiss: () => void;
-  /** Cursor position when the trigger fired. */
+  /** Cursor position when the trigger fired. Wrapper-relative; sits just
+   *  below the caret so a popup with `top: position.top` renders below it. */
   position: { top: number; left: number };
+  /** Wrapper-relative caret bounding rect when the trigger fired. Lets pickers
+   *  flip above the caret when there isn't room below. Optional for backwards
+   *  compatibility with consumers that pass synthesized props. */
+  cursorRect?: { top: number; bottom: number; left: number };
   /** Ref to the editable DOM element. */
   editorRef: RefObject<HTMLDivElement | null>;
   /** Narrow editor controller for plugin actions. */

@@ -16,7 +16,7 @@ import type {
   PluginKeyDownContext,
   PluginRenderProps,
 } from "../../types";
-import { pluginPickerClass } from "../plugin-picker";
+import { pluginPickerClass, usePluginPopupPlacement } from "../plugin-picker";
 
 export interface SlashCommandChoice {
   value: string;
@@ -115,6 +115,7 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
     onExecute,
     onDismiss,
     position,
+    cursorRect,
     getEditor,
   }: SlashCommandMenuProps<T>,
   ref: React.Ref<SlashMenuHandle>,
@@ -321,16 +322,14 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
     ],
   );
 
+  const placement = usePluginPopupPlacement(position, cursorRect);
+
   if (mode === "ready" && selectedCommand) {
     return (
       <div
-        className={pluginPickerClass.popup}
-        style={{
-          position: "absolute",
-          top: position.top,
-          left: position.left,
-          zIndex: 1001,
-        }}
+        ref={placement.setPopupEl}
+        className={placement.className}
+        style={placement.style}
       >
         <div className={pluginPickerClass.picker}>
           <div className="inkwell-plugin-slash-commands-execute">
@@ -343,13 +342,9 @@ const SlashCommandMenuInner = forwardRef(function SlashCommandMenuInner<
 
   return (
     <div
-      className={pluginPickerClass.popup}
-      style={{
-        position: "absolute",
-        top: position.top,
-        left: position.left,
-        zIndex: 1001,
-      }}
+      ref={placement.setPopupEl}
+      className={placement.className}
+      style={placement.style}
     >
       <div className={pluginPickerClass.picker}>
         <div className={pluginPickerClass.search}>

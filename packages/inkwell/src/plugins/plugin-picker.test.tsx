@@ -166,6 +166,7 @@ describe("PluginMenuPrimitive", () => {
     it("matches the documented class names", () => {
       expect(pluginPickerClass).toEqual({
         popup: "inkwell-plugin-picker-popup",
+        popupFlipped: "inkwell-plugin-picker-popup-flipped",
         picker: "inkwell-plugin-picker",
         search: "inkwell-plugin-picker-search",
         item: "inkwell-plugin-picker-item",
@@ -411,6 +412,208 @@ describe("PluginMenuPrimitive", () => {
       renderPrimitive({ items: ITEMS, onSelect });
       fireEvent.click(screen.getByText("Charlie"));
       expect(onSelect).toHaveBeenCalledWith("c");
+    });
+  });
+
+  describe("viewport-aware placement", () => {
+    /**
+     * Drive the popup through one measurement pass with a mocked wrapper +
+     * popup geometry. Returns the popup root so callers can read its
+     * applied style/className. The hook keys off the popup element's
+     * `offsetParent` (the editor wrapper) and `getBoundingClientRect` —
+     * tests stub both since JSDOM does not lay them out.
+     */
+    function mountWithGeometry({
+      wrapperRect,
+      popupSize,
+      cursorRect,
+      innerHeight = 800,
+      innerWidth = 1024,
+    }: {
+      wrapperRect: { top: number; left: number };
+      popupSize: { width: number; height: number };
+      cursorRect: { top: number; bottom: number; left: number };
+      innerHeight?: number;
+      innerWidth?: number;
+    }) {
+      const wrapper = document.createElement("div");
+      wrapper.style.position = "relative";
+      document.body.appendChild(wrapper);
+      Object.defineProperty(wrapper, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: wrapperRect.top,
+          left: wrapperRect.left,
+          right: wrapperRect.left + 600,
+          bottom: wrapperRect.top + 200,
+          width: 600,
+          height: 200,
+          x: wrapperRect.left,
+          y: wrapperRect.top,
+          toJSON() {},
+        }),
+      });
+
+      const originalInnerHeight = window.innerHeight;
+      const originalInnerWidth = window.innerWidth;
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: innerHeight,
+      });
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: innerWidth,
+      });
+
+      const channel = createForwardedKeyChannel();
+      const result = render(
+        <PluginMenuPrimitive<Item>
+          pluginName="placement"
+          items={ITEMS}
+          getKey={item => item.id}
+          renderItem={(item, active) => (
+            <span data-active={active ? "true" : "false"}>{item.label}</span>
+          )}
+          itemToText={item => item.id}
+          {...baseProps({
+            position: {
+              top: cursorRect.bottom + 4,
+              left: cursorRect.left,
+            },
+            cursorRect,
+            subscribeForwardedKey: channel.subscribe,
+          })}
+        />,
+        { container: wrapper },
+      );
+
+      const popup = wrapper.querySelector(
+        `.${pluginPickerClass.popup}`,
+      ) as HTMLDivElement;
+      // Stub the popup geometry so the placement math sees real numbers.
+      Object.defineProperty(popup, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 0,
+          left: 0,
+          right: popupSize.width,
+          bottom: popupSize.height,
+          width: popupSize.width,
+          height: popupSize.height,
+          x: 0,
+          y: 0,
+          toJSON() {},
+        }),
+      });
+      // JSDOM doesn't compute layout, so `offsetParent` is null. Pin it to
+      // the wrapper so the hook can read its viewport rect.
+      Object.defineProperty(popup, "offsetParent", {
+        configurable: true,
+        value: wrapper,
+      });
+
+      // Kick a measurement now that the geometry is in place.
+      act(() => {
+        window.dispatchEvent(new Event("resize"));
+      });
+
+      const cleanup = () => {
+        result.unmount();
+        wrapper.remove();
+        Object.defineProperty(window, "innerHeight", {
+          configurable: true,
+          value: originalInnerHeight,
+        });
+        Object.defineProperty(window, "innerWidth", {
+          configurable: true,
+          value: originalInnerWidth,
+        });
+      };
+
+      return { popup, cleanup };
+    }
+
+    it("anchors below the caret when there is room", () => {
+      const { popup, cleanup } = mountWithGeometry({
+        wrapperRect: { top: 50, left: 80 },
+        popupSize: { width: 260, height: 200 },
+        cursorRect: { top: 60, bottom: 80, left: 100 },
+        innerHeight: 800,
+      });
+
+      expect(popup.style.top).toBe("84px");
+      expect(popup.style.transform).toBe("");
+      expect(popup.className).toContain(pluginPickerClass.popup);
+      expect(popup.className).not.toContain(pluginPickerClass.popupFlipped);
+
+      cleanup();
+    });
+
+    it("flips above the caret when there is not enough room below", () => {
+      // wrapperTop (700) + cursorBottom (80) = 780 viewport. popupHeight 200
+      // would extend to 980 — past innerHeight 800. There's plenty of room
+      // above (wrapperTop 700 + cursorTop 60 = 760), so flip above.
+      const { popup, cleanup } = mountWithGeometry({
+        wrapperRect: { top: 700, left: 80 },
+        popupSize: { width: 260, height: 200 },
+        cursorRect: { top: 60, bottom: 80, left: 100 },
+        innerHeight: 800,
+      });
+
+      // Above-anchored: top = cursorTop (60) - POPUP_GAP (4) = 56, with
+      // translateY(-100%) anchoring the popup's bottom to that y.
+      expect(popup.style.top).toBe("56px");
+      expect(popup.style.transform).toBe("translateY(-100%)");
+      expect(popup.className).toContain(pluginPickerClass.popupFlipped);
+
+      cleanup();
+    });
+
+    it("stays below when there is room above but also room below", () => {
+      // Plenty of room both ways — should prefer below.
+      const { popup, cleanup } = mountWithGeometry({
+        wrapperRect: { top: 300, left: 80 },
+        popupSize: { width: 260, height: 200 },
+        cursorRect: { top: 60, bottom: 80, left: 100 },
+        innerHeight: 800,
+      });
+
+      expect(popup.style.transform).toBe("");
+      expect(popup.className).not.toContain(pluginPickerClass.popupFlipped);
+
+      cleanup();
+    });
+
+    it("stays below when the popup also wouldn't fit above", () => {
+      // Tiny viewport: doesn't fit below OR above. Falls back to below
+      // (prefers the original anchor when neither direction is comfortable).
+      const { popup, cleanup } = mountWithGeometry({
+        wrapperRect: { top: 0, left: 0 },
+        popupSize: { width: 260, height: 600 },
+        cursorRect: { top: 60, bottom: 80, left: 100 },
+        innerHeight: 400,
+      });
+
+      expect(popup.style.transform).toBe("");
+      expect(popup.className).not.toContain(pluginPickerClass.popupFlipped);
+
+      cleanup();
+    });
+
+    it("shifts left when the popup would overflow the viewport right edge", () => {
+      // wrapperLeft 0 + cursorLeft 900 + popupWidth 260 = 1160, past innerWidth 1024.
+      // Expected leftOverride = 1024 - 8 (margin) - 260 = 756.
+      const { popup, cleanup } = mountWithGeometry({
+        wrapperRect: { top: 100, left: 0 },
+        popupSize: { width: 260, height: 200 },
+        cursorRect: { top: 60, bottom: 80, left: 900 },
+        innerHeight: 800,
+        innerWidth: 1024,
+      });
+
+      expect(popup.style.left).toBe("756px");
+
+      cleanup();
     });
   });
 

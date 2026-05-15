@@ -161,6 +161,7 @@ is consistent regardless of which plugin opened it.
 | Selector | Element |
 |----------|---------|
 | `.inkwell-plugin-picker-popup` | Positioned container |
+| `.inkwell-plugin-picker-popup-flipped` | Added when the popup was flipped above the caret (not enough room below) |
 | `.inkwell-plugin-picker` | Picker wrapper |
 | `.inkwell-plugin-picker-search` | Inline query display (characters typed after the trigger) |
 | `.inkwell-plugin-picker-item` | Item row |

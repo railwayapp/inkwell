@@ -137,7 +137,7 @@ Your `render` function receives these props:
 | `active`                | `boolean`                               | Whether this plugin is active. Always-on plugins receive `true` every render.                                                     |
 | `query`                 | `string`                                | Text typed since the trigger fired. Useful for filtering results.                                                                 |
 | `position`              | `{ top, left }`                         | Wrapper-relative cursor coords (with a 4px gap below the caret). Use as the default top-left anchor for popups.                   |
-| `cursorRect`            | `{ top, bottom, left }` (optional)      | Wrapper-relative caret bounding rect. Use to flip a popup above the caret when it would overflow the viewport bottom.            |
+| `cursorRect`            | `{ top, bottom, left }` (optional)      | Wrapper-relative caret bounding rect. Use to flip a popup above the caret when it would overflow the editor wrapper's bottom or the viewport bottom. |
 | `onSelect`              | `(text: string) => void`                | Insert content at the cursor. For character triggers, removes the trigger character first.                                       |
 | `onDismiss`             | `() => void`                            | Deactivate the plugin and return focus to the editor.                                                                             |
 | `wrapSelection`         | `(before, after) => void`               | Toggle Markdown markers around the current selection.                                                                             |

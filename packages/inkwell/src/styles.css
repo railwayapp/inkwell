@@ -318,6 +318,28 @@
 .inkwell-plugin-picker-search::placeholder {
   color: var(--inkwell-text-dim);
 }
+.inkwell-plugin-picker-list {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--inkwell-border-strong) transparent;
+}
+.inkwell-plugin-picker-list::-webkit-scrollbar {
+  width: 8px;
+}
+.inkwell-plugin-picker-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.inkwell-plugin-picker-list::-webkit-scrollbar-thumb {
+  background-color: var(--inkwell-border-strong);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.inkwell-plugin-picker-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--inkwell-text-dim);
+}
 .inkwell-plugin-picker-item {
   padding: 7px 10px;
   cursor: pointer;

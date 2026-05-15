@@ -22,7 +22,13 @@ import {
   Transforms,
 } from "slate";
 import { HistoryEditor, withHistory } from "slate-history";
-import { Editable, ReactEditor, Slate, withReact } from "slate-react";
+import {
+  Editable,
+  ReactEditor,
+  type RenderPlaceholderProps,
+  Slate,
+  withReact,
+} from "slate-react";
 import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import type {
   InkwellEditorFocusOptions,
@@ -1102,6 +1108,48 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       stateVersion,
     ]);
 
+    // slate-react drives editor growth for multi-line placeholders by
+    // observing the placeholder element's size and writing
+    // `min-height: placeholderHeight` onto the editable. The measurement
+    // doesn't include the editable's own padding, so under
+    // `box-sizing: border-box` (the common case in consumer apps) the
+    // editable's content area ends up shorter than the placeholder by
+    // exactly its vertical padding and the placeholder text overflows
+    // the visible editor — see the createCompletionsPlugin ghost-text
+    // case where the LLM completion can be many lines long.
+    //
+    // Hack: pad the placeholder element's bottom by 2rem (the editor's
+    // default top + bottom padding) so slate's measured height already
+    // includes the frame, and the resulting min-height covers the full
+    // visible box. The bottom padding sits below opacity-0.333 text in
+    // an absolutely positioned element, so it's invisible — pure
+    // measurement padding. Two known limitations:
+    //
+    //  1. If a consumer overrides the editor's vertical padding via
+    //     `styles.editor` / `classNames.editor`, the 2rem buffer is off
+    //     by the delta. The padding is consciously hardcoded to the
+    //     library's default; reading `getComputedStyle` per-render
+    //     wasn't worth the complexity.
+    //  2. If a consumer passes `minHeight` on `styles.editor`, slate's
+    //     own `min-height` is overridden (`userStyle` spreads last on
+    //     `<Editable>`), so this hack has no effect. Consumers in that
+    //     state need to size the editor large enough to fit completions
+    //     themselves.
+    const renderPlaceholder = useCallback(
+      ({ attributes, children }: RenderPlaceholderProps) => (
+        <span
+          {...attributes}
+          style={{
+            ...attributes.style,
+            paddingBottom: "2rem",
+          }}
+        >
+          {children}
+        </span>
+      ),
+      [],
+    );
+
     return (
       <div
         ref={wrapperRef}
@@ -1143,6 +1191,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
             style={styles?.editor}
             renderElement={RenderElement}
             renderLeaf={RenderLeaf}
+            renderPlaceholder={renderPlaceholder}
             decorate={decorate}
             placeholder={resolvedPlaceholder}
             spellCheck

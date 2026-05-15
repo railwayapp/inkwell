@@ -110,14 +110,27 @@ consumer decision — fights between the library default and a chat
 composer / panel embed / custom layout were not worth shipping. Demos and
 docs set their own size via `styles.editor`.
 
-Visual-chrome defaults that the stylesheet *does* ship (padding, border,
-border-radius, background, font-size, line-height, transition on
-`.inkwell-editor`; font-size/line-height on `.inkwell-renderer`) are
-wrapped in `:where()` so they carry 0,0,0 specificity. Any single-class
-consumer rule overrides them without `!important`. Don't move these
-rules back out of `:where()` — `packages/inkwell/src/styles.test.ts`
-will fail at CI. Typography/color rules (`strong`, `em`, code colors)
-stay at normal specificity intentionally.
+Every visual-chrome default the stylesheet ships — colors, backgrounds,
+borders, padding, typography — is wrapped in `:where()` so it carries
+0,0,0 specificity. That covers `.inkwell-editor` and its inline marks
+(`strong`, `em`, `del`, `code`), the heading/blockquote block classes,
+every `.inkwell-renderer <tag>` rule (links, headings, lists, code, `hr`,
+images), the bubble menu chrome, and the shared plugin picker chrome.
+Any single-class consumer rule overrides them without `!important` or
+descendant scoping. Don't move these rules back out of `:where()` —
+`packages/inkwell/src/styles.test.ts` will fail at CI.
+
+What stays at normal specificity — and MUST stay there — is layout-critical
+geometry: `.inkwell-editor-wrapper` (position relative anchors plugins),
+`.inkwell-plugin-bubble-menu-container` and `.inkwell-plugin-picker-popup`
+(positioning + z-index), `.inkwell-plugin-picker-list` (`max-height`
+prevents viewport blowout), `.inkwell-editor-character-count` (top-right
+overlay positioning — chrome is split into a sibling `:where()` rule),
+`.inkwell-renderer-code-block` and `.inkwell-renderer-copy-btn`
+(positioning), and `.inkwell-editor p` (`position: relative` only — its
+margin is wrapped). The same rule of thumb when adding new styles: if
+overriding a property with a consumer class would silently break
+positioning or geometry, leave it unwrapped; otherwise wrap.
 
 ## Built-in Plugins
 

@@ -29,19 +29,59 @@ you want on `styles.editor` or via your own class:
 />
 ```
 
-## Overriding the layout defaults
+## Overriding the visual defaults
 
-The visual-chrome defaults that Inkwell does ship (padding, border,
-border-radius, background, font-size, line-height, transition) are all
-wrapped in `:where()` so they carry zero specificity. Any single-class
-consumer rule wins automatically — no `!important`, no descendant scoping:
+Every visual-chrome default Inkwell ships — colors, backgrounds, borders,
+padding, typography on the editor, plugins, and renderer — is wrapped in
+`:where()` so it carries zero specificity. Any single-class consumer rule
+wins automatically by specificity tie-break, no `!important` or
+descendant scoping required.
+
+That covers `.inkwell-editor` and its inline marks (`strong`, `em`,
+`del`, `code`), the heading and blockquote block classes, every
+`.inkwell-renderer <tag>` rule (including links, headings, lists, code,
+images, `hr`), the bubble menu chrome, and the shared plugin picker
+chrome. Three concrete patterns:
 
 ```tsx
-// Tailwind utility classes Just Work
+// Tailwind utility classes on the editor surface
 <InkwellEditor classNames={{ editor: "border-0 bg-transparent px-3 py-2" }} />
+
+// Restyle rendered links with a single class
+<InkwellRenderer
+  content={content}
+  components={{
+    a: ({ children, href }) => (
+      <a className="text-pink-500 underline" href={href}>
+        {children}
+      </a>
+    ),
+  }}
+/>
+
+// Or with global CSS — a single-class rule wins
+// .my-renderer-link { color: hotpink; }
 ```
 
-The same applies to `.inkwell-renderer` (font-size, line-height).
+What does NOT live in `:where()` is layout-critical geometry: the editor
+wrapper's `position: relative`, the bubble menu and picker popup
+positioning, the picker list's structural `max-height`, the renderer
+copy button's absolute placement, and a handful of structural overflow
+rules. Those keep their normal specificity so a consumer utility class
+can't silently break positioning or break the picker's flip math.
+Override them with descendant selectors or an explicit `!important` when
+you actually mean to.
+
+For sweeping color changes without per-element overrides, set the CSS
+custom properties on the wrapper instead:
+
+```css
+.my-editor {
+  --inkwell-accent: hotpink;
+  --inkwell-text: #111;
+  --inkwell-border: #eee;
+}
+```
 
 ## Component props
 

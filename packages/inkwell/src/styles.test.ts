@@ -1,13 +1,19 @@
 /**
- * Locks in two contracts of the bundled stylesheet:
+ * Locks in three contracts of the bundled stylesheet:
  *
  *  1. No container-size opinion (`min-height`, `max-height`, `height`)
  *     is shipped on `.inkwell-editor`. Sizing is a consumer decision —
  *     a chat composer wants `min-height: 0`, a full-page editor wants
  *     `min-height: 60vh`, etc.
- *  2. Visual-chrome defaults (padding, border, background, type) are
- *     wrapped in `:where()` so any single-class consumer rule wins by
- *     specificity tie-break — no `!important`, no descendant scoping.
+ *  2. Visual-chrome defaults (color, background, border, padding, type)
+ *     across the editor, plugins, and renderer are wrapped in `:where()`
+ *     so any single-class consumer rule (Tailwind utilities,
+ *     `classNames` slot styling, `components` overrides on the renderer)
+ *     wins by specificity tie-break — no `!important`, no descendant
+ *     scoping, no inline-style hacks.
+ *  3. Layout-critical rules (positioning, z-index, picker flip math,
+ *     structural overflow) stay at normal specificity so consumers can't
+ *     silently break editor or picker geometry.
  *
  * These are CSS-source checks rather than runtime-cascade checks because
  * jsdom's CSS engine caches rule indexing across tests, which masks
@@ -157,5 +163,113 @@ describe("bundled stylesheet contract", () => {
     const props = declarations(body ?? "");
     expect(props).toContain("font-size");
     expect(props).toContain("line-height");
+  });
+
+  // The renderer emits standard HTML elements (`a`, `h1`–`h3`, `p`,
+  // `blockquote`, `ul`, `ol`, `li`, `code`, `pre`, `hr`, `strong`, `em`,
+  // `del`, `img`) which consumers customize via
+  // `<InkwellRenderer components={{ a: ... }} />` or by adding a class on
+  // the rendered element. Every chrome rule on those elements must live
+  // inside `:where()` so a single consumer class wins automatically.
+  it.each([
+    ".inkwell-renderer a",
+    ".inkwell-renderer h1",
+    ".inkwell-renderer h2",
+    ".inkwell-renderer h3",
+    ".inkwell-renderer p",
+    ".inkwell-renderer blockquote",
+    ".inkwell-renderer li",
+    ".inkwell-renderer code",
+    ".inkwell-renderer pre",
+    ".inkwell-renderer pre code",
+    ".inkwell-renderer hr",
+    ".inkwell-renderer strong",
+    ".inkwell-renderer em",
+    ".inkwell-renderer del",
+    ".inkwell-renderer img",
+  ])("wraps renderer chrome rule for `%s` in :where()", selector => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const wrapped = new RegExp(`:where\\(${escaped}\\)`);
+    const unwrapped = new RegExp(`(^|[\\s,}])${escaped}\\s*[,{]`, "m");
+    expect(STYLES_CSS).toMatch(wrapped);
+    // The selector must not appear bare (outside of :where()) anywhere
+    // else, otherwise the chrome rule keeps its old specificity.
+    const withoutWhereForm = STYLES_CSS.replace(
+      new RegExp(`:where\\(${escaped}\\)`, "g"),
+      "",
+    );
+    expect(withoutWhereForm).not.toMatch(unwrapped);
+  });
+
+  // Same contract for editor inline marks, block elements, and code chrome.
+  it.each([
+    ":where(.inkwell-editor strong)",
+    ":where(.inkwell-editor em)",
+    ":where(.inkwell-editor del)",
+    ":where(.inkwell-editor code)",
+    ":where(.inkwell-editor-blockquote)",
+    ":where(.inkwell-editor-heading)",
+    ":where(.inkwell-editor-heading-1)",
+    ":where(.inkwell-editor-heading-2)",
+    ":where(.inkwell-editor-heading-3)",
+    ":where(.inkwell-editor-image)",
+  ])("wraps editor chrome rule `%s` in :where()", wrappedSelector => {
+    expect(STYLES_CSS).toContain(wrappedSelector);
+  });
+
+  // Same contract for plugin chrome — bubble menu buttons, picker items,
+  // and slash command surface.
+  it.each([
+    ":where(.inkwell-plugin-bubble-menu-inner)",
+    ":where(.inkwell-plugin-bubble-menu-btn)",
+    ":where(.inkwell-plugin-picker)",
+    ":where(.inkwell-plugin-picker-search)",
+    ":where(.inkwell-plugin-picker-item)",
+    ":where(.inkwell-plugin-picker-title)",
+    ":where(.inkwell-plugin-slash-commands-execute)",
+  ])("wraps plugin chrome rule `%s` in :where()", wrappedSelector => {
+    expect(STYLES_CSS).toContain(wrappedSelector);
+  });
+
+  // Layout-critical rules MUST stay at normal specificity. If any of these
+  // ends up inside `:where()`, consumer classes can silently break
+  // positioning, z-index, or the picker flip math.
+  it.each([
+    ".inkwell-editor-wrapper",
+    ".inkwell-plugin-bubble-menu-container",
+    ".inkwell-plugin-picker-popup",
+    ".inkwell-renderer-code-block",
+    ".inkwell-renderer-copy-btn",
+  ])("keeps layout-critical rule `%s` unwrapped", selector => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // A bare occurrence of the selector at the start of a rule block.
+    const bare = new RegExp(`(^|[\\s,}])${escaped}\\s*\\{`, "m");
+    expect(STYLES_CSS).toMatch(bare);
+    // And inside the bare rule, a positioning declaration.
+    const bareBody = ruleBody(new RegExp(`^${escaped}$`));
+    expect(bareBody).not.toBeNull();
+    expect(declarations(bareBody ?? "")).toContain("position");
+  });
+
+  // The character-count overlay splits positioning (unwrapped) from chrome
+  // (wrapped). The contract: the bare selector keeps `position` / `top` /
+  // `right`, while color / background / typography moved into `:where()`
+  // so a consumer class can restyle the readout without losing placement.
+  it("splits character-count positioning from chrome", () => {
+    const positioning = ruleBody(/^\.inkwell-editor-character-count$/);
+    expect(positioning).not.toBeNull();
+    const layoutProps = declarations(positioning ?? "");
+    expect(layoutProps).toContain("position");
+    expect(layoutProps).toContain("top");
+    expect(layoutProps).toContain("right");
+    expect(layoutProps).not.toContain("color");
+    expect(layoutProps).not.toContain("background");
+
+    const chrome = ruleBody(/^:where\(\.inkwell-editor-character-count\)$/);
+    expect(chrome).not.toBeNull();
+    const chromeProps = declarations(chrome ?? "");
+    expect(chromeProps).toContain("color");
+    expect(chromeProps).toContain("background");
+    expect(chromeProps).toContain("font-size");
   });
 });

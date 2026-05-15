@@ -4,6 +4,19 @@
  * consumer can drop in and either keep or override. Light by default,
  * dark via `prefers-color-scheme: dark`. No saturated brand colors.
  *
+ * Specificity strategy:
+ * Visual-chrome defaults (color, background, border, padding, typography)
+ * are wrapped in `:where()` so they carry 0,0,0 specificity. Any single-class
+ * consumer rule — Tailwind utilities, `classNames` slot styling, `components`
+ * overrides on the renderer — wins automatically by specificity tie-break.
+ * No `!important`, no descendant scoping, no inline-style hacks needed.
+ *
+ * Layout-critical rules (position, z-index, structural width/height/overflow,
+ * picker flip math) deliberately stay at normal specificity. Consumers should
+ * not silently break editor or picker geometry by adding a class — when they
+ * want to override layout, they can with descendant or `!important` rules
+ * applied intentionally.
+ *
  * Import with: `import "@railway/inkwell/styles.css";`
  */
 
@@ -72,14 +85,16 @@
 
 /* ── Editor surface ──────────────────────────────────────────────── */
 
+/* Wrapper position is structural — plugin pickers, bubble menus, and the
+   character-count overlay all absolutely position against it. Stays at
+   normal specificity. */
 .inkwell-editor-wrapper {
   position: relative;
 }
 
-/* Visual-chrome defaults (padding, border, background, type) are wrapped in
-   `:where()` so they carry 0,0,0 specificity. Any single-class consumer rule
-   on `.inkwell-editor` (Tailwind utilities, `classNames.editor`, etc.) wins
-   automatically — no `!important` or selector gymnastics needed.
+/* Visual-chrome defaults on the editable surface live inside `:where()`
+   so a single-class consumer rule (Tailwind utilities, `classNames.editor`,
+   etc.) wins automatically.
 
    Container size (min-height, max-height, height) is deliberately NOT
    defaulted here. Inkwell sits inside the consumer's layout and the right
@@ -88,10 +103,12 @@
    container. Set it on the editor via `styles.editor`, `classNames.editor`,
    or your own CSS. */
 :where(.inkwell-editor) {
+  outline: none;
   padding: 1rem 1.25rem;
   border: 1px solid var(--inkwell-border);
   border-radius: var(--inkwell-radius);
   background: var(--inkwell-bg);
+  color: var(--inkwell-text);
   line-height: 1.6;
   font-size: 0.95rem;
   transition: border-color 0.15s ease;
@@ -99,27 +116,28 @@
 :where(.inkwell-editor:focus-within) {
   border-color: var(--inkwell-border-strong);
 }
-.inkwell-editor {
-  outline: none;
-  color: var(--inkwell-text);
-}
 
+/* `position: relative` on paragraphs is structural — Slate decorations and
+   inline children position against it. Margin is theming and goes through
+   `:where()` so a consumer paragraph-spacing utility wins. */
 .inkwell-editor p {
-  margin: 0;
   position: relative;
 }
-.inkwell-editor strong {
+:where(.inkwell-editor p) {
+  margin: 0;
+}
+:where(.inkwell-editor strong) {
   font-weight: 600;
   color: var(--inkwell-text);
 }
-.inkwell-editor em {
+:where(.inkwell-editor em) {
   font-style: italic;
 }
-.inkwell-editor del {
+:where(.inkwell-editor del) {
   text-decoration: line-through;
   color: var(--inkwell-text-muted);
 }
-.inkwell-editor code {
+:where(.inkwell-editor code) {
   background: var(--inkwell-code-bg);
   color: var(--inkwell-code-fg);
   padding: 0.1em 0.35em;
@@ -128,38 +146,38 @@
   font-size: 0.85em;
 }
 
-.inkwell-editor-blockquote {
+:where(.inkwell-editor-blockquote) {
   border-left: 3px solid var(--inkwell-border-strong);
   padding-left: 0.85em;
   margin: 0.5em 0;
   color: var(--inkwell-text-muted);
 }
 
-.inkwell-editor-heading {
+:where(.inkwell-editor-heading) {
   font-weight: 600;
   line-height: 1.3;
   color: var(--inkwell-text);
 }
-.inkwell-editor-heading-1 {
+:where(.inkwell-editor-heading-1) {
   font-size: 1.75em;
 }
-.inkwell-editor-heading-2 {
+:where(.inkwell-editor-heading-2) {
   font-size: 1.4em;
 }
-.inkwell-editor-heading-3 {
+:where(.inkwell-editor-heading-3) {
   font-size: 1.2em;
 }
-.inkwell-editor-heading-4 {
+:where(.inkwell-editor-heading-4) {
   font-size: 1em;
 }
-.inkwell-editor-heading-5 {
+:where(.inkwell-editor-heading-5) {
   font-size: 0.9em;
 }
-.inkwell-editor-heading-6 {
+:where(.inkwell-editor-heading-6) {
   font-size: 0.8em;
 }
 
-.inkwell-editor-image {
+:where(.inkwell-editor-image) {
   margin: 0.75em 0;
   border-radius: var(--inkwell-radius);
   overflow: hidden;
@@ -168,10 +186,14 @@
     border-color 0.15s ease,
     box-shadow 0.15s ease;
 }
-.inkwell-editor-image[data-selected] {
+:where(.inkwell-editor-image[data-selected]) {
   border-color: var(--inkwell-accent);
   box-shadow: 0 0 0 3px var(--inkwell-accent-soft);
 }
+/* Image fitting stays structural — `max-width: 100%` and `height: auto`
+   are the only sensible defaults for keeping aspect ratio inside a
+   variable-width editor. Consumers who want a different sizing model
+   should opt in with a descendant or higher-specificity rule. */
 .inkwell-editor-image img {
   display: block;
   max-width: 100%;
@@ -185,44 +207,53 @@
    limit is a soft hint — typing past it is allowed; the count then
    turns red and the wrapper picks up `.inkwell-editor-over-limit`,
    which paints a soft red halo on the editor surface so it's visually
-   obvious the document is over budget. */
+   obvious the document is over budget.
+
+   Positioning stays at normal specificity — the overlay only works
+   from the top-right corner of the wrapper. Chrome (color, font-weight,
+   etc.) lives below in `:where()`. */
 .inkwell-editor-character-count {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
   z-index: 10;
+  pointer-events: none;
+  user-select: none;
+}
+:where(.inkwell-editor-character-count) {
   padding: 0.1rem 0.4rem;
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
   color: var(--inkwell-text-dim);
   background: var(--inkwell-bg);
   border-radius: calc(var(--inkwell-radius) - 2px);
-  pointer-events: none;
-  user-select: none;
 }
-.inkwell-editor-character-count-over {
+:where(.inkwell-editor-character-count-over) {
   color: var(--inkwell-danger);
   font-weight: 500;
 }
-.inkwell-editor-wrapper.inkwell-editor-over-limit .inkwell-editor {
+:where(.inkwell-editor-wrapper.inkwell-editor-over-limit .inkwell-editor) {
   border-color: var(--inkwell-danger-soft);
   box-shadow: 0 0 0 3px var(--inkwell-danger-soft);
 }
 
-.inkwell-editor-backtick,
-.inkwell-editor-marker {
+:where(.inkwell-editor-backtick),
+:where(.inkwell-editor-marker) {
   color: var(--inkwell-text-dim);
 }
-.inkwell-editor .inkwell-editor-code-fence {
+:where(.inkwell-editor .inkwell-editor-code-fence) {
   color: var(--inkwell-text-dim);
 }
-.inkwell-editor .inkwell-editor-code-line,
-.inkwell-editor .inkwell-editor-code-fence,
-.inkwell-renderer pre code {
+:where(.inkwell-editor .inkwell-editor-code-line),
+:where(.inkwell-editor .inkwell-editor-code-fence),
+:where(.inkwell-renderer pre code) {
   font-family: var(--inkwell-font-mono);
   font-size: 0.85em;
   line-height: 1.55;
 }
+/* Wrapping behavior for code lines stays structural — Slate emits one
+   contenteditable line per node and depends on `white-space: pre-wrap`
+   for correct caret placement. */
 .inkwell-editor .inkwell-editor-code-line {
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -241,11 +272,13 @@
   }
 }
 
+/* Container positioning is layout-critical — the bubble menu is JS-
+   positioned against the selection. Keep at normal specificity. */
 .inkwell-plugin-bubble-menu-container {
   position: absolute;
   z-index: 9999;
 }
-.inkwell-plugin-bubble-menu-inner {
+:where(.inkwell-plugin-bubble-menu-inner) {
   display: flex;
   gap: 2px;
   background: var(--inkwell-bg-elevated);
@@ -255,7 +288,7 @@
   box-shadow: 0 6px 20px hsla(220, 20%, 10%, 0.12);
   animation: inkwell-fade-in 0.12s ease-out;
 }
-.inkwell-plugin-bubble-menu-btn {
+:where(.inkwell-plugin-bubble-menu-btn) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -270,35 +303,38 @@
     background 0.1s ease,
     color 0.1s ease;
 }
-.inkwell-plugin-bubble-menu-btn:hover {
+:where(.inkwell-plugin-bubble-menu-btn:hover) {
   background: var(--inkwell-bg-subtle);
   color: var(--inkwell-text);
 }
-.inkwell-plugin-bubble-menu-btn-active {
+:where(.inkwell-plugin-bubble-menu-btn-active) {
   background: var(--inkwell-bg-subtle);
   color: var(--inkwell-text);
 }
-.inkwell-plugin-bubble-menu-item-bold {
+:where(.inkwell-plugin-bubble-menu-item-bold) {
   font-weight: 700;
   font-size: 14px;
 }
-.inkwell-plugin-bubble-menu-item-italic {
+:where(.inkwell-plugin-bubble-menu-item-italic) {
   font-style: italic;
   font-size: 14px;
   font-family: Georgia, "Times New Roman", serif;
 }
-.inkwell-plugin-bubble-menu-item-strike {
+:where(.inkwell-plugin-bubble-menu-item-strike) {
   text-decoration: line-through;
   font-size: 14px;
 }
 
 /* ── Shared plugin picker (snippets, mentions, etc.) ─────────────── */
 
+/* Popup positioning is layout-critical — the picker reads
+   `popupEl.offsetParent` for flip math, so it must remain absolutely
+   positioned inside the editor wrapper. */
 .inkwell-plugin-picker-popup {
   position: absolute;
   z-index: 1001;
 }
-.inkwell-plugin-picker {
+:where(.inkwell-plugin-picker) {
   background: var(--inkwell-bg-elevated);
   border: 1px solid var(--inkwell-border);
   border-radius: var(--inkwell-radius);
@@ -307,7 +343,7 @@
   max-width: 320px;
   box-shadow: 0 6px 24px hsla(220, 20%, 10%, 0.14);
 }
-.inkwell-plugin-picker-search {
+:where(.inkwell-plugin-picker-search) {
   width: 100%;
   padding: 7px 10px;
   background: var(--inkwell-bg);
@@ -317,9 +353,12 @@
   font-size: 0.85rem;
   outline: none;
 }
-.inkwell-plugin-picker-search::placeholder {
+:where(.inkwell-plugin-picker-search::placeholder) {
   color: var(--inkwell-text-dim);
 }
+/* List `max-height` is structural — prevents the picker from blowing out
+   the viewport with long item lists. Scroll behavior and scrollbar
+   styling stay alongside it for a single source of truth. */
 .inkwell-plugin-picker-list {
   max-height: 240px;
   overflow-y: auto;
@@ -342,27 +381,27 @@
 .inkwell-plugin-picker-list::-webkit-scrollbar-thumb:hover {
   background-color: var(--inkwell-text-dim);
 }
-.inkwell-plugin-picker-item {
+:where(.inkwell-plugin-picker-item) {
   padding: 7px 10px;
   cursor: pointer;
   transition: background 0.1s ease;
 }
-.inkwell-plugin-picker-item:hover,
-.inkwell-plugin-picker-item-active {
+:where(.inkwell-plugin-picker-item:hover),
+:where(.inkwell-plugin-picker-item-active) {
   background: var(--inkwell-bg-subtle);
 }
-.inkwell-plugin-picker-title {
+:where(.inkwell-plugin-picker-title) {
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--inkwell-text);
   margin-right: 0.5rem;
 }
-.inkwell-plugin-picker-subtitle {
+:where(.inkwell-plugin-picker-subtitle) {
   font-size: 0.75rem;
   color: var(--inkwell-text-muted);
   margin-top: 2px;
 }
-.inkwell-plugin-picker-preview {
+:where(.inkwell-plugin-picker-preview) {
   font-size: 0.75rem;
   color: var(--inkwell-text-muted);
   margin-top: 2px;
@@ -370,14 +409,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.inkwell-plugin-picker-empty {
+:where(.inkwell-plugin-picker-empty) {
   padding: 12px;
   text-align: center;
   color: var(--inkwell-text-dim);
   font-size: 0.85rem;
 }
 
-.inkwell-plugin-slash-commands-execute {
+:where(.inkwell-plugin-slash-commands-execute) {
   padding: 8px 10px;
   color: var(--inkwell-text);
   font-size: 0.85rem;
@@ -387,57 +426,58 @@
 
 /* ── Renderer ────────────────────────────────────────────────────── */
 
-/* Layout defaults on the renderer follow the same low-specificity pattern
-   as the editor — a single-class consumer rule wins automatically. */
+/* Every rule below targets a rendered HTML element (`a`, `h1`, `p`, ...)
+   that consumers customize through the `components` prop on
+   `<InkwellRenderer />` or by adding a class on the rendered element. All
+   chrome lives inside `:where()` so those overrides win without
+   `!important`. */
 :where(.inkwell-renderer) {
+  color: var(--inkwell-text);
   line-height: 1.65;
   font-size: 0.95rem;
 }
-.inkwell-renderer {
-  color: var(--inkwell-text);
-}
-.inkwell-renderer :first-child {
+:where(.inkwell-renderer :first-child) {
   margin-top: 0;
 }
-.inkwell-renderer h1 {
+:where(.inkwell-renderer h1) {
   font-size: 1.75em;
   font-weight: 600;
   margin: 0.67em 0;
 }
-.inkwell-renderer h2 {
+:where(.inkwell-renderer h2) {
   font-size: 1.4em;
   font-weight: 600;
   margin: 0.75em 0;
 }
-.inkwell-renderer h3 {
+:where(.inkwell-renderer h3) {
   font-size: 1.2em;
   font-weight: 600;
   margin: 0.8em 0;
 }
-.inkwell-renderer p {
+:where(.inkwell-renderer p) {
   margin: 0.5em 0;
 }
-.inkwell-renderer blockquote {
+:where(.inkwell-renderer blockquote) {
   border-left: 3px solid var(--inkwell-border-strong);
   padding-left: 0.85em;
   margin: 1em 0;
   color: var(--inkwell-text-muted);
 }
-.inkwell-renderer ul,
-.inkwell-renderer ol {
+:where(.inkwell-renderer ul),
+:where(.inkwell-renderer ol) {
   padding-left: 1.5em;
   margin: 1em 0;
 }
-.inkwell-renderer ul {
+:where(.inkwell-renderer ul) {
   list-style: disc;
 }
-.inkwell-renderer ol {
+:where(.inkwell-renderer ol) {
   list-style: decimal;
 }
-.inkwell-renderer li {
+:where(.inkwell-renderer li) {
   margin: 0.25em 0;
 }
-.inkwell-renderer code {
+:where(.inkwell-renderer code) {
   background: var(--inkwell-code-bg);
   color: var(--inkwell-code-fg);
   padding: 0.1em 0.35em;
@@ -445,13 +485,21 @@
   font-family: var(--inkwell-font-mono);
   font-size: 0.85em;
 }
+/* Code-block wrapper position is structural — the copy button absolutely
+   positions inside it. */
 .inkwell-renderer-code-block {
   position: relative;
 }
+/* Copy button positioning is layout-critical (top-right inside the code
+   block); its chrome lives in `:where()` so consumers can restyle without
+   breaking placement. */
 .inkwell-renderer-copy-btn {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
+  z-index: 1;
+}
+:where(.inkwell-renderer-copy-btn) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -467,49 +515,48 @@
     opacity 0.15s ease,
     color 0.15s ease,
     background 0.15s ease;
-  z-index: 1;
 }
-.inkwell-renderer-code-block:hover .inkwell-renderer-copy-btn {
+:where(.inkwell-renderer-code-block:hover .inkwell-renderer-copy-btn) {
   opacity: 1;
 }
-.inkwell-renderer-copy-btn:hover {
+:where(.inkwell-renderer-copy-btn:hover) {
   background: var(--inkwell-bg-subtle);
   color: var(--inkwell-text);
 }
-.inkwell-renderer pre {
+:where(.inkwell-renderer pre) {
   margin: 1em 0;
   border-radius: var(--inkwell-radius);
   overflow: auto;
   border: 1px solid var(--inkwell-border);
   background: var(--inkwell-bg-subtle);
 }
-.inkwell-renderer pre code {
+:where(.inkwell-renderer pre code) {
   display: block;
   padding: 0.85em 1em;
   background: transparent;
   color: var(--inkwell-text);
   font-size: 0.82em;
 }
-.inkwell-renderer a {
+:where(.inkwell-renderer a) {
   color: var(--inkwell-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.inkwell-renderer hr {
+:where(.inkwell-renderer hr) {
   border: none;
   border-top: 1px solid var(--inkwell-border);
   margin: 2em 0;
 }
-.inkwell-renderer strong {
+:where(.inkwell-renderer strong) {
   font-weight: 600;
 }
-.inkwell-renderer em {
+:where(.inkwell-renderer em) {
   font-style: italic;
 }
-.inkwell-renderer del {
+:where(.inkwell-renderer del) {
   text-decoration: line-through;
 }
-.inkwell-renderer img {
+:where(.inkwell-renderer img) {
   max-width: 100%;
   height: auto;
   border-radius: var(--inkwell-radius);

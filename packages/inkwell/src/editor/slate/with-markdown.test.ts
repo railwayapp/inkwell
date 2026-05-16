@@ -896,10 +896,49 @@ describe("withMarkdown — paste (insertData)", () => {
 
     Transforms.select(editor, Editor.end(editor, [0]));
 
-    const nodes = deserialize("\n\nafter");
-    Transforms.insertNodes(editor, nodes);
+    editor.insertData(makeDataTransfer("\n\nafter"));
 
     expect(Node.string(editor)).toContain("after");
+  });
+
+  it("pasting plain text into an empty editor stays in a single paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertData(makeDataTransfer("hello"));
+
+    const elements = getElements(editor);
+    expect(elements.length).toBe(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(editor)).toBe("hello");
+  });
+
+  it("pasting plain text at the end of a paragraph merges into the same block", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("foo");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertData(makeDataTransfer("bar"));
+
+    const elements = getElements(editor);
+    expect(elements.length).toBe(1);
+    expect(Node.string(editor)).toBe("foobar");
+  });
+
+  it("pasting plain text into the middle of a paragraph merges inline", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello world");
+    editor.onChange();
+
+    Transforms.select(editor, { path: [0, 0], offset: 5 });
+    editor.insertData(makeDataTransfer(" there"));
+
+    const elements = getElements(editor);
+    expect(elements.length).toBe(1);
+    expect(Node.string(editor)).toBe("hello there world");
   });
 
   it("pasting a URL over a selection wraps the selection as [text](url)", () => {

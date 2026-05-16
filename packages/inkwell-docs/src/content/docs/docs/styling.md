@@ -246,13 +246,26 @@ Target these within the editor: `.inkwell-editor strong`,
 
 ### Syntax markers
 
-The raw Markdown characters (`**`, `_`, `` ` ``, `~~`) are wrapped in
+The raw Markdown characters (`**`, `_`, `` ` ``, `~~`, `[`, `]`, `(`, `)`) are wrapped in
 spans you can style separately — useful for dimming or hiding them:
 
 | Selector | Characters |
 |----------|------------|
-| `.inkwell-editor-marker` | General syntax markers |
+| `.inkwell-editor-marker` | General syntax markers (also applied to link brackets and the URL inside `[text](url)`) |
 | `.inkwell-editor-backtick` | Backtick characters |
+
+### Links
+
+`[text](url)` and bare URLs (`https://...`, `www....`) decorate inline.
+The label text and bare-URL text get `.inkwell-editor-link`; the URL
+inside `(...)` gets both `.inkwell-editor-marker` (for the dim color)
+and `.inkwell-editor-link-url` (so consumers can restyle just the URL
+without touching every other dimmed marker).
+
+| Selector | Element |
+|----------|---------|
+| `.inkwell-editor-link` | Visible link text — the label inside `[text](url)`, and the entire text of a bare URL autolink |
+| `.inkwell-editor-link-url` | URL token inside `(...)` of a markdown link |
 
 ### Remote cursors
 

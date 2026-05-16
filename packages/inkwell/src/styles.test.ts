@@ -213,6 +213,8 @@ describe("bundled stylesheet contract", () => {
     ":where(.inkwell-editor-heading-2)",
     ":where(.inkwell-editor-heading-3)",
     ":where(.inkwell-editor-image)",
+    ":where(.inkwell-editor-link)",
+    ":where(.inkwell-editor-link-url)",
   ])("wraps editor chrome rule `%s` in :where()", wrappedSelector => {
     expect(STYLES_CSS).toContain(wrappedSelector);
   });

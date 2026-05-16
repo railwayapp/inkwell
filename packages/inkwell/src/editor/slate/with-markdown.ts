@@ -20,6 +20,12 @@ const UNORDERED_LIST_CONTINUE_RE = /^(\s*)([-*+]) \S/;
 const UNORDERED_LIST_EMPTY_RE = /^(\s*)([-*+]) ?$/;
 /** Matches a line that opens with valid heading syntax: `#{1,6}` + space. */
 const HEADING_LINE_RE = /^(#{1,6})\s/;
+/**
+ * Matches a single URL token on the clipboard — `https?://...` or `www....`,
+ * no embedded whitespace. Used to detect "paste URL over selection" and wrap
+ * the selection as `[selected](url)` rather than dropping the bare URL.
+ */
+const PASTED_URL_RE = /^(?:https?:\/\/|www\.)\S+$/i;
 
 /**
  * Classify a single line of text into the element type it should render as.
@@ -509,10 +515,26 @@ export function withMarkdown(
     insertText(text);
   };
 
-  // Paste: parse as markdown and insert structured nodes
+  // Paste: parse as markdown and insert structured nodes. If the pasted
+  // payload is a single URL and there's a non-empty selection, wrap the
+  // selected text as `[selected](url)` instead — common "paste a URL onto
+  // selected text" UX from rich editors.
   editor.insertData = (data: DataTransfer) => {
     const text = data.getData("text/plain");
     if (text) {
+      const trimmed = text.trim();
+      const sel = editor.selection;
+      if (
+        PASTED_URL_RE.test(trimmed) &&
+        sel &&
+        !Range.isCollapsed(sel) &&
+        Editor.string(editor, sel).length > 0
+      ) {
+        const selectedText = Editor.string(editor, sel);
+        Transforms.delete(editor);
+        Transforms.insertText(editor, `[${selectedText}](${trimmed})`);
+        return;
+      }
       const nodes = deserialize(text, featuresRef.current);
       Transforms.insertNodes(editor, nodes);
       return;

@@ -81,12 +81,18 @@ plain text in the editor.
 
 Wrap text with these markers anywhere in a line:
 
-| Syntax       | Result            |
-| ------------ | ----------------- |
-| `**text**`   | **Bold**          |
-| `_text_`     | _Italic_          |
-| `~~text~~`   | ~~Strikethrough~~ |
-| `` `text` `` | `Inline code`     |
+| Syntax            | Result            |
+| ----------------- | ----------------- |
+| `**text**`        | **Bold**          |
+| `_text_`          | _Italic_          |
+| `~~text~~`        | ~~Strikethrough~~ |
+| `` `text` ``      | `Inline code`     |
+| `[text](url)`     | Link              |
+| `https://...`     | Auto-linked URL   |
+
+Pasting a URL on top of a non-empty selection wraps the selection as
+`[selected](pasted-url)`. Pasting a URL with no selection drops it
+in bare — the autolink decoration picks it up.
 
 ### Keyboard shortcuts
 

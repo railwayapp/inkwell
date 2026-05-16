@@ -96,6 +96,28 @@ part of configurable editor features.
 Inline Markdown styling is still implemented internally with Slate decoration
 ranges. Public docs should call the configurable behavior “features.”
 
+Inline marks include `bold`, `italic`, `strikethrough`, `inlineCode`, and
+their `*Marker` counterparts, plus link marks: `link` (visible link text
+— covers both the `[text]` label of `[text](url)` and the entire text of
+bare URL autolinks), `linkUrl` (URL token inside `(url)`), and
+`linkMarker` (`[`, `]`, `(`, `)` brackets). Links are always on; the
+content model stays the markdown source — no link nodes, no separate
+rich-text model. `[text](url)` and bare URLs (`https://...`, `www....`)
+are matched after the inline-code pass and skip ranges already covered
+by backticks or another link. Trailing punctuation (`.,;:!?`) is
+trimmed off bare-URL matches so "see https://x.com." doesn't pull the
+period into the link.
+
+Paste-over-selection: when the clipboard payload trims to a single URL
+and the editor selection is non-empty, `withMarkdown`'s `insertData`
+override replaces the selection with `[selected](url)` instead of
+dropping the bare URL. Paste with a collapsed selection (or empty
+editor) follows the normal markdown-deserialize path — the URL ends up
+as plain text and the autolink decoration picks it up. There is no
+bubble-menu "insert link" button (the symmetric `wrapSelection`
+primitive doesn't fit `[text](url)`); editing the markdown source IS
+the link editing UX.
+
 Use slot styling:
 
 - `className` aliases `classNames.root`

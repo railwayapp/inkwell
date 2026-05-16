@@ -128,6 +128,49 @@ describe("parseMarkdown", () => {
     expect(extractText(code)).toContain("const x = 1;");
   });
 
+  describe("fenced code block trailing newline", () => {
+    it("does not leave a trailing newline on a plain code block", () => {
+      const { container } = render(<>{parseMarkdown("```\nhello\n```")}</>);
+      const code = container.querySelector("pre > code");
+      expect(code).not.toBeNull();
+      expect(code?.textContent).toBe("hello");
+    });
+
+    it("does not leave a trailing newline on a multi-line code block", () => {
+      const { container } = render(
+        <>{parseMarkdown("```\nhello\nworld\n```")}</>,
+      );
+      const code = container.querySelector("pre > code");
+      expect(code?.textContent).toBe("hello\nworld");
+    });
+
+    it("preserves intentional trailing blank lines (strips exactly one)", () => {
+      const { container } = render(<>{parseMarkdown("```\nhello\n\n\n```")}</>);
+      const code = container.querySelector("pre > code");
+      expect(code?.textContent).toBe("hello\n\n");
+    });
+
+    it("does not leave a trailing newline on a highlighted code block", () => {
+      const { container } = render(
+        <>{parseMarkdown("```js\nconst x = 1;\n```")}</>,
+      );
+      const code = container.querySelector("pre > code");
+      expect(code?.textContent).toBe("const x = 1;");
+      // sanity check: highlighting still ran
+      expect(code?.className).toMatch(/hljs/);
+    });
+
+    it("leaves inline code untouched (no <pre> parent)", () => {
+      const { container } = render(
+        <>{parseMarkdown("use `console.log` here")}</>,
+      );
+      const code = container.querySelector("code");
+      expect(code).not.toBeNull();
+      expect(code?.closest("pre")).toBeNull();
+      expect(code?.textContent).toBe("console.log");
+    });
+  });
+
   it("parses unordered lists", () => {
     const md = "- one\n- two\n- three";
     const result = parseMarkdown(md);

@@ -536,7 +536,10 @@ export function withMarkdown(
         return;
       }
       const nodes = deserialize(text, featuresRef.current);
-      Transforms.insertNodes(editor, nodes);
+      // insertFragment merges the first node's text into the current block
+      // and only splits when the fragment introduces a new block. insertNodes
+      // always splits at the caret, leaving an empty paragraph behind.
+      Transforms.insertFragment(editor, nodes);
       return;
     }
     insertData(data);

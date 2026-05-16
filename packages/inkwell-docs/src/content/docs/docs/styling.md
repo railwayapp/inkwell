@@ -83,6 +83,55 @@ custom properties on the wrapper instead:
 }
 ```
 
+### Typography & spacing tokens
+
+Font sizes, line heights, heading weights, paragraph margins, list
+spacing, and so on are defined once and consumed by both the editor and
+the renderer. Override one token and both surfaces follow — the editor
+stays WYSIWYG with the rendered output.
+
+| Token | Default | What it controls |
+|-------|---------|------------------|
+| `--inkwell-font-size` | `0.95rem` | Body text size on both surfaces |
+| `--inkwell-line-height` | `1.6` | Body line-height on both surfaces |
+| `--inkwell-heading-weight` | `600` | Heading font-weight |
+| `--inkwell-heading-line-height` | `1.3` | Heading line-height |
+| `--inkwell-h1-size` | `1.75em` | `h1` font-size |
+| `--inkwell-h2-size` | `1.4em` | `h2` font-size |
+| `--inkwell-h3-size` | `1.2em` | `h3` font-size |
+| `--inkwell-h4-size` | `1em` | `h4` font-size |
+| `--inkwell-h5-size` | `0.9em` | `h5` font-size |
+| `--inkwell-h6-size` | `0.8em` | `h6` font-size |
+| `--inkwell-code-font-size` | `0.85em` | Inline and block code font-size |
+| `--inkwell-space-paragraph` | `0.5em` | Top/bottom margin on paragraphs |
+| `--inkwell-space-heading` | `0.75em` | Top/bottom margin on headings |
+| `--inkwell-space-blockquote` | `1em` | Top/bottom margin on blockquotes |
+| `--inkwell-space-list` | `1em` | Top/bottom margin on `ul` / `ol` |
+| `--inkwell-space-list-item` | `0.25em` | Top/bottom margin on `li` |
+| `--inkwell-list-indent` | `1.5em` | Left padding on `ul` / `ol` |
+| `--inkwell-space-code-block` | `1em` | Top/bottom margin on code blocks |
+| `--inkwell-space-image` | `1em` | Top/bottom margin on images |
+| `--inkwell-space-hr` | `2em` | Top/bottom margin on `hr` |
+
+Apply tokens on either the editor wrapper, the renderer wrapper, or
+both — the surfaces share the token namespace:
+
+```css
+/* Retune everywhere */
+.inkwell-editor,
+.inkwell-renderer {
+  --inkwell-font-size: 1rem;
+  --inkwell-line-height: 1.7;
+  --inkwell-h1-size: 2em;
+}
+
+/* Tighten only the editor (e.g. chat composer) without changing the
+   renderer. Adjacent paragraphs hug instead of stacking with air. */
+.inkwell-editor {
+  --inkwell-space-paragraph: 0;
+}
+```
+
 ### Class-driven theming
 
 The token defaults themselves — including the dark-mode set inside

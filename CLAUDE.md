@@ -124,6 +124,28 @@ single-class consumer rule overrides them without `!important` or
 descendant scoping. Don't move these rules back out of `:where()` —
 `packages/inkwell/src/styles.test.ts` will fail at CI.
 
+Typography and spacing are tokenized and shared across both surfaces so
+the editor stays WYSIWYG with the renderer. Tokens live alongside the
+color tokens in the 5-selector `:where()` block: `--inkwell-font-size`,
+`--inkwell-line-height`, `--inkwell-heading-weight`,
+`--inkwell-heading-line-height`, `--inkwell-h1-size`…`--inkwell-h6-size`,
+`--inkwell-code-font-size`, `--inkwell-space-paragraph`,
+`--inkwell-space-heading`, `--inkwell-space-blockquote`,
+`--inkwell-space-list`, `--inkwell-space-list-item`,
+`--inkwell-list-indent`, `--inkwell-space-code-block`,
+`--inkwell-space-image`, `--inkwell-space-hr`. Editor rules
+(`.inkwell-editor`, `.inkwell-editor-blockquote`,
+`.inkwell-editor-heading-*`, `.inkwell-editor-image`,
+`.inkwell-editor p`, `.inkwell-editor code`) and renderer rules
+(`.inkwell-renderer`, `.inkwell-renderer h1`-`h6`, `.inkwell-renderer p`,
+`.inkwell-renderer blockquote`, `.inkwell-renderer ul/ol/li`,
+`.inkwell-renderer code/pre`, `.inkwell-renderer hr`,
+`.inkwell-renderer img`) all consume the tokens — the
+`styles.test.ts > references … in both editor and renderer` cases
+enforce that the shared tokens stay referenced on both surfaces. When
+adding a new typography or spacing rule, route it through a token
+rather than a literal so both surfaces stay aligned.
+
 What stays at normal specificity — and MUST stay there — is layout-critical
 geometry: `.inkwell-editor-wrapper` (position relative anchors plugins),
 `.inkwell-plugin-bubble-menu-container` and `.inkwell-plugin-picker-popup`

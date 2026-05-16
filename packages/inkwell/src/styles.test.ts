@@ -321,7 +321,17 @@ describe("bundled stylesheet contract", () => {
 
   // Tokens that appear in both editor and renderer rules. If a future
   // change tokenizes a value on only one surface, the WYSIWYG promise
-  // breaks — call that out by making the missing reference a test failure.
+  // breaks — call that out by making the missing reference a test
+  // failure.
+  //
+  // `--inkwell-space-paragraph` is intentionally NOT in this list. The
+  // editor model emits one `<p>` per source line (blank lines become
+  // empty paragraph nodes that serve as cursor targets), so a non-zero
+  // paragraph margin in the editor would compound with those empty
+  // paragraphs and visually multiply the gap between blocks. The
+  // editor's paragraph margin stays at `0` until the empty-paragraph
+  // encoding is reworked; the renderer keeps the token as its source
+  // of truth.
   const SHARED_TOKENS = [
     "--inkwell-font-size",
     "--inkwell-line-height",
@@ -330,7 +340,6 @@ describe("bundled stylesheet contract", () => {
     "--inkwell-h3-size",
     "--inkwell-heading-weight",
     "--inkwell-heading-line-height",
-    "--inkwell-space-paragraph",
     "--inkwell-space-heading",
     "--inkwell-space-blockquote",
     "--inkwell-space-image",

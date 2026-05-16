@@ -103,7 +103,7 @@ stays WYSIWYG with the rendered output.
 | `--inkwell-h5-size` | `0.9em` | `h5` font-size |
 | `--inkwell-h6-size` | `0.8em` | `h6` font-size |
 | `--inkwell-code-font-size` | `0.85em` | Inline and block code font-size |
-| `--inkwell-space-paragraph` | `0.5em` | Top/bottom margin on paragraphs |
+| `--inkwell-space-paragraph` | `0.5em` | Top/bottom margin on renderer paragraphs. The editor's paragraph margin stays at `0` regardless — see the note below. |
 | `--inkwell-space-heading` | `0.75em` | Top/bottom margin on headings |
 | `--inkwell-space-blockquote` | `1em` | Top/bottom margin on blockquotes |
 | `--inkwell-space-list` | `1em` | Top/bottom margin on `ul` / `ol` |
@@ -124,12 +124,22 @@ both — the surfaces share the token namespace:
   --inkwell-line-height: 1.7;
   --inkwell-h1-size: 2em;
 }
+```
 
-/* Tighten only the editor (e.g. chat composer) without changing the
-   renderer. Adjacent paragraphs hug instead of stacking with air. */
-.inkwell-editor {
-  --inkwell-space-paragraph: 0;
-}
+#### Why editor paragraphs ship with `margin: 0`
+
+The editor's content model stores one `<p>` node per source line, so a
+blank line in the Markdown source becomes an empty `<p>` between two
+paragraphs — a cursor target that keeps the source round-trip lossless.
+If the editor honored `--inkwell-space-paragraph` by default, those
+empty paragraphs would add their own top/bottom margin on top of the
+real paragraphs', visually multiplying the gap and breaking WYSIWYG in
+the opposite direction. The editor opts out of the token and keeps
+paragraph margins at `0`. If you want non-zero spacing in the editor,
+set it explicitly with a higher-specificity rule:
+
+```css
+.my-editor.inkwell-editor p { margin: 0.5em 0; }
 ```
 
 ### Class-driven theming

@@ -136,15 +136,26 @@ color tokens in the 5-selector `:where()` block: `--inkwell-font-size`,
 `--inkwell-space-image`, `--inkwell-space-hr`. Editor rules
 (`.inkwell-editor`, `.inkwell-editor-blockquote`,
 `.inkwell-editor-heading-*`, `.inkwell-editor-image`,
-`.inkwell-editor p`, `.inkwell-editor code`) and renderer rules
-(`.inkwell-renderer`, `.inkwell-renderer h1`-`h6`, `.inkwell-renderer p`,
+`.inkwell-editor code`) and renderer rules (`.inkwell-renderer`,
+`.inkwell-renderer h1`-`h6`, `.inkwell-renderer p`,
 `.inkwell-renderer blockquote`, `.inkwell-renderer ul/ol/li`,
 `.inkwell-renderer code/pre`, `.inkwell-renderer hr`,
-`.inkwell-renderer img`) all consume the tokens — the
+`.inkwell-renderer img`) consume the tokens — the
 `styles.test.ts > references … in both editor and renderer` cases
 enforce that the shared tokens stay referenced on both surfaces. When
 adding a new typography or spacing rule, route it through a token
 rather than a literal so both surfaces stay aligned.
+
+Editor paragraphs are the deliberate exception: `.inkwell-editor p`
+keeps `margin: 0` and does not consume `--inkwell-space-paragraph`. The
+editor's content model emits one `<p>` per source line and represents
+blank lines as empty `<p>` nodes (cursor targets needed for source
+round-trip fidelity). A non-zero paragraph margin in the editor would
+compound with those empty paragraphs and visually multiply the gap
+between blocks — the opposite of WYSIWYG. Don't reintroduce a non-zero
+default until the empty-paragraph encoding is reworked; the test in
+`styles.test.ts` deliberately excludes `--inkwell-space-paragraph`
+from the shared-token list.
 
 What stays at normal specificity — and MUST stay there — is layout-critical
 geometry: `.inkwell-editor-wrapper` (position relative anchors plugins),

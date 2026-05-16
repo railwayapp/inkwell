@@ -155,17 +155,25 @@
 }
 
 /* `position: relative` on paragraphs is structural — Slate decorations and
-   inline children position against it. Margin is theming and goes through
-   `:where()` so a consumer paragraph-spacing utility wins. The default
-   matches the renderer (`--inkwell-space-paragraph`) so what you type
-   in the editor lays out the same as the rendered output. For a
-   chat-composer or compact embed where adjacent paragraphs should hug,
-   set `--inkwell-space-paragraph: 0` on the editor surface. */
+   inline children position against it.
+
+   Margin stays at `0` here even though the renderer's paragraphs use
+   `--inkwell-space-paragraph`. Reason: the editor's content model emits
+   one `<p>` per source line, so a blank line in Markdown becomes an
+   empty `<p>` node between two paragraphs (a cursor target, kept for
+   round-trip fidelity). With a non-zero paragraph margin, those empty
+   paragraphs add their own top/bottom margin on top of the real
+   paragraphs' margins — visually multiplying the gap and breaking the
+   WYSIWYG promise in the other direction (editor looks more airy than
+   the renderer). Until the empty-paragraph encoding is reworked, the
+   editor opts out of the shared paragraph-spacing token. Consumers
+   who want non-zero spacing in the editor can set the margin
+   themselves with a higher-specificity rule. */
 .inkwell-editor p {
   position: relative;
 }
 :where(.inkwell-editor p) {
-  margin: var(--inkwell-space-paragraph) 0;
+  margin: 0;
 }
 :where(.inkwell-editor strong) {
   font-weight: 600;

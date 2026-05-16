@@ -875,6 +875,20 @@ describe("withMarkdown — insertSoftBreak fallthrough", () => {
 });
 
 describe("withMarkdown — paste (insertData)", () => {
+  function makeDataTransfer(text: string): DataTransfer {
+    const store: Record<string, string> = { "text/plain": text };
+    return {
+      setData: (type: string, value: string) => {
+        store[type] = value;
+      },
+      getData: (type: string) => store[type] ?? "",
+      clearData: () => {
+        for (const key of Object.keys(store)) delete store[key];
+      },
+      types: ["text/plain"],
+    } as unknown as DataTransfer;
+  }
+
   it("parses pasted text as markdown", () => {
     const editor = createTestEditor();
     editor.children = deserialize("before");
@@ -886,5 +900,75 @@ describe("withMarkdown — paste (insertData)", () => {
     Transforms.insertNodes(editor, nodes);
 
     expect(Node.string(editor)).toContain("after");
+  });
+
+  it("pasting a URL over a selection wraps the selection as [text](url)", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello world");
+    editor.onChange();
+
+    // Select "world" (offsets 6..11).
+    Transforms.select(editor, {
+      anchor: { path: [0, 0], offset: 6 },
+      focus: { path: [0, 0], offset: 11 },
+    });
+
+    editor.insertData(makeDataTransfer("https://example.com"));
+
+    expect(Node.string(editor)).toBe("hello [world](https://example.com)");
+  });
+
+  it("pasting a URL with no selection inserts it bare", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello ");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertData(makeDataTransfer("https://example.com"));
+
+    expect(Node.string(editor)).toBe("hello https://example.com");
+  });
+
+  it("pasting a URL with a collapsed selection inserts it bare (no wrapping)", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello world");
+    editor.onChange();
+
+    // Collapsed caret inside the text.
+    Transforms.select(editor, { path: [0, 0], offset: 5 });
+    editor.insertData(makeDataTransfer("https://example.com"));
+
+    expect(Node.string(editor)).toBe("hellohttps://example.com world");
+  });
+
+  it("pasting non-URL text over a selection replaces it normally (no wrapping)", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello world");
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: { path: [0, 0], offset: 6 },
+      focus: { path: [0, 0], offset: 11 },
+    });
+
+    editor.insertData(makeDataTransfer("there"));
+
+    expect(Node.string(editor)).toBe("hello there");
+  });
+
+  it("pasting a URL with surrounding whitespace still triggers wrapping", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello world");
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: { path: [0, 0], offset: 6 },
+      focus: { path: [0, 0], offset: 11 },
+    });
+
+    // Clipboard often includes trailing newlines / spaces from a copy.
+    editor.insertData(makeDataTransfer("  https://example.com  "));
+
+    expect(Node.string(editor)).toBe("hello [world](https://example.com)");
   });
 });

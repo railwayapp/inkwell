@@ -165,6 +165,96 @@ function computeInlineDecorations(entry: NodeEntry): Range[] {
     } as Range & InkwellText);
   }
 
+  // Markdown links: [text](url). The negative lookbehind on `!` excludes
+  // image syntax `![alt](url)` — images are handled by the deserializer as
+  // their own block element and never reach this code path, but the
+  // lookbehind is the cheapest defense against a single-line image edge case.
+  const linkRanges: Array<{ start: number; end: number }> = [];
+  const linkRegex = /(?<!!)\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+  while ((match = linkRegex.exec(text)) !== null) {
+    if (isInCode(match.index)) continue;
+    const start = match.index;
+    const end = start + match[0].length;
+    const labelLen = match[1].length;
+    const urlLen = match[2].length;
+    // Layout: [ label ] ( url )
+    //         start  ...  end
+    const openBracket = start;
+    const labelStart = start + 1;
+    const labelEnd = labelStart + labelLen;
+    const closeBracket = labelEnd;
+    const openParen = closeBracket + 1;
+    const urlStart = openParen + 1;
+    const urlEnd = urlStart + urlLen;
+    const closeParen = urlEnd;
+
+    linkRanges.push({ start, end });
+
+    // [
+    ranges.push({
+      anchor: { path: [...path, 0], offset: openBracket },
+      focus: { path: [...path, 0], offset: openBracket + 1 },
+      linkMarker: true,
+    } as Range & InkwellText);
+    // label
+    ranges.push({
+      anchor: { path: [...path, 0], offset: labelStart },
+      focus: { path: [...path, 0], offset: labelEnd },
+      link: true,
+    } as Range & InkwellText);
+    // ]
+    ranges.push({
+      anchor: { path: [...path, 0], offset: closeBracket },
+      focus: { path: [...path, 0], offset: closeBracket + 1 },
+      linkMarker: true,
+    } as Range & InkwellText);
+    // (
+    ranges.push({
+      anchor: { path: [...path, 0], offset: openParen },
+      focus: { path: [...path, 0], offset: openParen + 1 },
+      linkMarker: true,
+    } as Range & InkwellText);
+    // url
+    ranges.push({
+      anchor: { path: [...path, 0], offset: urlStart },
+      focus: { path: [...path, 0], offset: urlEnd },
+      linkUrl: true,
+    } as Range & InkwellText);
+    // )
+    ranges.push({
+      anchor: { path: [...path, 0], offset: closeParen },
+      focus: { path: [...path, 0], offset: closeParen + 1 },
+      linkMarker: true,
+    } as Range & InkwellText);
+  }
+
+  const isInLink = (offset: number) =>
+    linkRanges.some(r => offset >= r.start && offset < r.end);
+
+  // Bare URL autolinks: `https?://...` and `www....`. Stops at whitespace
+  // and any of `<>()[]` so it never collides with a markdown link's URL
+  // (which lives inside `( )` already covered by the pass above).
+  // Trailing punctuation (`.,;:!?`) is trimmed — matches GFM behavior so
+  // "see https://example.com." doesn't pull the period into the link.
+  const urlRegex = /(?:https?:\/\/|www\.)[^\s<>()[\]]+/g;
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (isInCode(match.index)) continue;
+    if (isInLink(match.index)) continue;
+    let matched = match[0];
+    let start = match.index;
+    let end = start + matched.length;
+    while (matched.length > 0 && /[.,;:!?]/.test(matched[matched.length - 1])) {
+      matched = matched.slice(0, -1);
+      end--;
+    }
+    if (matched.length === 0) continue;
+    ranges.push({
+      anchor: { path: [...path, 0], offset: start },
+      focus: { path: [...path, 0], offset: end },
+      link: true,
+    } as Range & InkwellText);
+  }
+
   return ranges;
 }
 

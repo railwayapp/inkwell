@@ -194,6 +194,24 @@
   font-family: var(--inkwell-font-mono);
   font-size: var(--inkwell-code-font-size);
 }
+/* Visible link text — mirrors `.inkwell-renderer a` so the editor stays
+   WYSIWYG. Applies to both the label inside `[text](url)` and the entire
+   text of a bare URL autolink. */
+:where(.inkwell-editor-link) {
+  color: var(--inkwell-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* URL token inside `(...)` of a markdown link. Inherits the dim color
+   from the `.inkwell-editor-marker` class it ships alongside; this rule
+   exists so consumers have a stable hook to restyle the URL separately
+   from generic markers (different color, hover state, etc.) without
+   touching every dimmed bracket / asterisk in the editor. Empty by
+   design — overriding `text-decoration: underline` etc. is a consumer
+   call. */
+:where(.inkwell-editor-link-url) {
+  text-decoration: none;
+}
 
 :where(.inkwell-editor-blockquote) {
   border-left: 3px solid var(--inkwell-border-strong);

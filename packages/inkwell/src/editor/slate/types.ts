@@ -53,6 +53,12 @@ export interface InkwellText extends BaseText {
   italicMarker?: true;
   strikeMarker?: true;
   codeMarker?: true;
+  /** Visible link text — styled as an anchor. */
+  link?: true;
+  /** URL inside `(...)` or a bare URL autolink target — dimmed. */
+  linkUrl?: true;
+  /** `[`, `]`, `(`, `)` brackets in `[text](url)` — dimmed. */
+  linkMarker?: true;
   hljs?: string;
 }
 

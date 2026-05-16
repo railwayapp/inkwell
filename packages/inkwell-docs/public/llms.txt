@@ -131,6 +131,21 @@ Use `features` to disable Markdown recognition:
 
 Available features are `headings`, `blockquotes`, `codeBlocks`, and `images`.
 
+## Inline formatting
+
+`**bold**`, `_italic_` / `*italic*`, `~~strike~~`, `` `code` ``,
+`[text](url)`, and bare URLs (`https://...`, `www....`) all decorate
+inline. The decoration is computed at render time, never stored as a
+separate model — the Markdown source is the content.
+
+Pasting a URL on top of a non-empty selection wraps the selection as
+`[selected](pasted-url)`. Pasting a URL with no selection drops it
+in bare and the autolink decoration picks it up. The relevant editor
+classes are `.inkwell-editor-link` (visible link text — label or bare
+URL), `.inkwell-editor-link-url` (URL inside `(...)`, shipped alongside
+`.inkwell-editor-marker` so the dim color applies), and the existing
+`.inkwell-editor-marker` (now also applied to `[`, `]`, `(`, `)`).
+
 ## Renderer
 
 ```tsx

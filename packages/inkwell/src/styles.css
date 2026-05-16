@@ -62,6 +62,34 @@
     "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
   --inkwell-radius: 6px;
+
+  /* Typography & spacing. Defined once and consumed by both
+     `.inkwell-editor` and `.inkwell-renderer` so the two surfaces stay
+     WYSIWYG — what you type matches what renders. Override any token
+     on either surface to retune both (or use a per-surface selector
+     to retune just one). For chat-composer or compact embeds, set
+     `--inkwell-space-paragraph: 0` on the editor surface. */
+  --inkwell-font-size: 0.95rem;
+  --inkwell-line-height: 1.6;
+  --inkwell-heading-weight: 600;
+  --inkwell-heading-line-height: 1.3;
+  --inkwell-h1-size: 1.75em;
+  --inkwell-h2-size: 1.4em;
+  --inkwell-h3-size: 1.2em;
+  --inkwell-h4-size: 1em;
+  --inkwell-h5-size: 0.9em;
+  --inkwell-h6-size: 0.8em;
+  --inkwell-code-font-size: 0.85em;
+
+  --inkwell-space-paragraph: 0.5em;
+  --inkwell-space-heading: 0.75em;
+  --inkwell-space-blockquote: 1em;
+  --inkwell-space-list: 1em;
+  --inkwell-space-list-item: 0.25em;
+  --inkwell-list-indent: 1.5em;
+  --inkwell-space-code-block: 1em;
+  --inkwell-space-image: 1em;
+  --inkwell-space-hr: 2em;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -118,8 +146,8 @@
   border-radius: var(--inkwell-radius);
   background: var(--inkwell-bg);
   color: var(--inkwell-text);
-  line-height: 1.6;
-  font-size: 0.95rem;
+  line-height: var(--inkwell-line-height);
+  font-size: var(--inkwell-font-size);
   transition: border-color 0.15s ease;
 }
 :where(.inkwell-editor:focus-within) {
@@ -127,8 +155,20 @@
 }
 
 /* `position: relative` on paragraphs is structural — Slate decorations and
-   inline children position against it. Margin is theming and goes through
-   `:where()` so a consumer paragraph-spacing utility wins. */
+   inline children position against it.
+
+   Margin stays at `0` here even though the renderer's paragraphs use
+   `--inkwell-space-paragraph`. Reason: the editor's content model emits
+   one `<p>` per source line, so a blank line in Markdown becomes an
+   empty `<p>` node between two paragraphs (a cursor target, kept for
+   round-trip fidelity). With a non-zero paragraph margin, those empty
+   paragraphs add their own top/bottom margin on top of the real
+   paragraphs' margins — visually multiplying the gap and breaking the
+   WYSIWYG promise in the other direction (editor looks more airy than
+   the renderer). Until the empty-paragraph encoding is reworked, the
+   editor opts out of the shared paragraph-spacing token. Consumers
+   who want non-zero spacing in the editor can set the margin
+   themselves with a higher-specificity rule. */
 .inkwell-editor p {
   position: relative;
 }
@@ -152,42 +192,43 @@
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-family: var(--inkwell-font-mono);
-  font-size: 0.85em;
+  font-size: var(--inkwell-code-font-size);
 }
 
 :where(.inkwell-editor-blockquote) {
   border-left: 3px solid var(--inkwell-border-strong);
   padding-left: 0.85em;
-  margin: 0.5em 0;
+  margin: var(--inkwell-space-blockquote) 0;
   color: var(--inkwell-text-muted);
 }
 
 :where(.inkwell-editor-heading) {
-  font-weight: 600;
-  line-height: 1.3;
+  font-weight: var(--inkwell-heading-weight);
+  line-height: var(--inkwell-heading-line-height);
+  margin: var(--inkwell-space-heading) 0;
   color: var(--inkwell-text);
 }
 :where(.inkwell-editor-heading-1) {
-  font-size: 1.75em;
+  font-size: var(--inkwell-h1-size);
 }
 :where(.inkwell-editor-heading-2) {
-  font-size: 1.4em;
+  font-size: var(--inkwell-h2-size);
 }
 :where(.inkwell-editor-heading-3) {
-  font-size: 1.2em;
+  font-size: var(--inkwell-h3-size);
 }
 :where(.inkwell-editor-heading-4) {
-  font-size: 1em;
+  font-size: var(--inkwell-h4-size);
 }
 :where(.inkwell-editor-heading-5) {
-  font-size: 0.9em;
+  font-size: var(--inkwell-h5-size);
 }
 :where(.inkwell-editor-heading-6) {
-  font-size: 0.8em;
+  font-size: var(--inkwell-h6-size);
 }
 
 :where(.inkwell-editor-image) {
-  margin: 0.75em 0;
+  margin: var(--inkwell-space-image) 0;
   border-radius: var(--inkwell-radius);
   overflow: hidden;
   border: 1px solid transparent;
@@ -257,7 +298,7 @@
 :where(.inkwell-editor .inkwell-editor-code-fence),
 :where(.inkwell-renderer pre code) {
   font-family: var(--inkwell-font-mono);
-  font-size: 0.85em;
+  font-size: var(--inkwell-code-font-size);
   line-height: 1.55;
 }
 /* Wrapping behavior for code lines stays structural — Slate emits one
@@ -442,40 +483,61 @@
    `!important`. */
 :where(.inkwell-renderer) {
   color: var(--inkwell-text);
-  line-height: 1.65;
-  font-size: 0.95rem;
+  line-height: var(--inkwell-line-height);
+  font-size: var(--inkwell-font-size);
 }
 :where(.inkwell-renderer :first-child) {
   margin-top: 0;
 }
 :where(.inkwell-renderer h1) {
-  font-size: 1.75em;
-  font-weight: 600;
-  margin: 0.67em 0;
+  font-size: var(--inkwell-h1-size);
+  font-weight: var(--inkwell-heading-weight);
+  line-height: var(--inkwell-heading-line-height);
+  margin: var(--inkwell-space-heading) 0;
 }
 :where(.inkwell-renderer h2) {
-  font-size: 1.4em;
-  font-weight: 600;
-  margin: 0.75em 0;
+  font-size: var(--inkwell-h2-size);
+  font-weight: var(--inkwell-heading-weight);
+  line-height: var(--inkwell-heading-line-height);
+  margin: var(--inkwell-space-heading) 0;
 }
 :where(.inkwell-renderer h3) {
-  font-size: 1.2em;
-  font-weight: 600;
-  margin: 0.8em 0;
+  font-size: var(--inkwell-h3-size);
+  font-weight: var(--inkwell-heading-weight);
+  line-height: var(--inkwell-heading-line-height);
+  margin: var(--inkwell-space-heading) 0;
+}
+:where(.inkwell-renderer h4) {
+  font-size: var(--inkwell-h4-size);
+  font-weight: var(--inkwell-heading-weight);
+  line-height: var(--inkwell-heading-line-height);
+  margin: var(--inkwell-space-heading) 0;
+}
+:where(.inkwell-renderer h5) {
+  font-size: var(--inkwell-h5-size);
+  font-weight: var(--inkwell-heading-weight);
+  line-height: var(--inkwell-heading-line-height);
+  margin: var(--inkwell-space-heading) 0;
+}
+:where(.inkwell-renderer h6) {
+  font-size: var(--inkwell-h6-size);
+  font-weight: var(--inkwell-heading-weight);
+  line-height: var(--inkwell-heading-line-height);
+  margin: var(--inkwell-space-heading) 0;
 }
 :where(.inkwell-renderer p) {
-  margin: 0.5em 0;
+  margin: var(--inkwell-space-paragraph) 0;
 }
 :where(.inkwell-renderer blockquote) {
   border-left: 3px solid var(--inkwell-border-strong);
   padding-left: 0.85em;
-  margin: 1em 0;
+  margin: var(--inkwell-space-blockquote) 0;
   color: var(--inkwell-text-muted);
 }
 :where(.inkwell-renderer ul),
 :where(.inkwell-renderer ol) {
-  padding-left: 1.5em;
-  margin: 1em 0;
+  padding-left: var(--inkwell-list-indent);
+  margin: var(--inkwell-space-list) 0;
 }
 :where(.inkwell-renderer ul) {
   list-style: disc;
@@ -484,7 +546,7 @@
   list-style: decimal;
 }
 :where(.inkwell-renderer li) {
-  margin: 0.25em 0;
+  margin: var(--inkwell-space-list-item) 0;
 }
 :where(.inkwell-renderer code) {
   background: var(--inkwell-code-bg);
@@ -492,7 +554,7 @@
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-family: var(--inkwell-font-mono);
-  font-size: 0.85em;
+  font-size: var(--inkwell-code-font-size);
 }
 /* Code-block wrapper position is structural — the copy button absolutely
    positions inside it. */
@@ -533,7 +595,7 @@
   color: var(--inkwell-text);
 }
 :where(.inkwell-renderer pre) {
-  margin: 1em 0;
+  margin: var(--inkwell-space-code-block) 0;
   border-radius: var(--inkwell-radius);
   overflow: auto;
   border: 1px solid var(--inkwell-border);
@@ -544,7 +606,6 @@
   padding: 0.85em 1em;
   background: transparent;
   color: var(--inkwell-text);
-  font-size: 0.82em;
 }
 :where(.inkwell-renderer a) {
   color: var(--inkwell-accent);
@@ -554,7 +615,7 @@
 :where(.inkwell-renderer hr) {
   border: none;
   border-top: 1px solid var(--inkwell-border);
-  margin: 2em 0;
+  margin: var(--inkwell-space-hr) 0;
 }
 :where(.inkwell-renderer strong) {
   font-weight: 600;
@@ -569,5 +630,5 @@
   max-width: 100%;
   height: auto;
   border-radius: var(--inkwell-radius);
-  margin: 1em 0;
+  margin: var(--inkwell-space-image) 0;
 }

@@ -83,6 +83,65 @@ custom properties on the wrapper instead:
 }
 ```
 
+### Typography & spacing tokens
+
+Font sizes, line heights, heading weights, paragraph margins, list
+spacing, and so on are defined once and consumed by both the editor and
+the renderer. Override one token and both surfaces follow — the editor
+stays WYSIWYG with the rendered output.
+
+| Token | Default | What it controls |
+|-------|---------|------------------|
+| `--inkwell-font-size` | `0.95rem` | Body text size on both surfaces |
+| `--inkwell-line-height` | `1.6` | Body line-height on both surfaces |
+| `--inkwell-heading-weight` | `600` | Heading font-weight |
+| `--inkwell-heading-line-height` | `1.3` | Heading line-height |
+| `--inkwell-h1-size` | `1.75em` | `h1` font-size |
+| `--inkwell-h2-size` | `1.4em` | `h2` font-size |
+| `--inkwell-h3-size` | `1.2em` | `h3` font-size |
+| `--inkwell-h4-size` | `1em` | `h4` font-size |
+| `--inkwell-h5-size` | `0.9em` | `h5` font-size |
+| `--inkwell-h6-size` | `0.8em` | `h6` font-size |
+| `--inkwell-code-font-size` | `0.85em` | Inline and block code font-size |
+| `--inkwell-space-paragraph` | `0.5em` | Top/bottom margin on renderer paragraphs. The editor's paragraph margin stays at `0` regardless — see the note below. |
+| `--inkwell-space-heading` | `0.75em` | Top/bottom margin on headings |
+| `--inkwell-space-blockquote` | `1em` | Top/bottom margin on blockquotes |
+| `--inkwell-space-list` | `1em` | Top/bottom margin on `ul` / `ol` |
+| `--inkwell-space-list-item` | `0.25em` | Top/bottom margin on `li` |
+| `--inkwell-list-indent` | `1.5em` | Left padding on `ul` / `ol` |
+| `--inkwell-space-code-block` | `1em` | Top/bottom margin on code blocks |
+| `--inkwell-space-image` | `1em` | Top/bottom margin on images |
+| `--inkwell-space-hr` | `2em` | Top/bottom margin on `hr` |
+
+Apply tokens on either the editor wrapper, the renderer wrapper, or
+both — the surfaces share the token namespace:
+
+```css
+/* Retune everywhere */
+.inkwell-editor,
+.inkwell-renderer {
+  --inkwell-font-size: 1rem;
+  --inkwell-line-height: 1.7;
+  --inkwell-h1-size: 2em;
+}
+```
+
+#### Why editor paragraphs ship with `margin: 0`
+
+The editor's content model stores one `<p>` node per source line, so a
+blank line in the Markdown source becomes an empty `<p>` between two
+paragraphs — a cursor target that keeps the source round-trip lossless.
+If the editor honored `--inkwell-space-paragraph` by default, those
+empty paragraphs would add their own top/bottom margin on top of the
+real paragraphs', visually multiplying the gap and breaking WYSIWYG in
+the opposite direction. The editor opts out of the token and keeps
+paragraph margins at `0`. If you want non-zero spacing in the editor,
+set it explicitly with a higher-specificity rule:
+
+```css
+.my-editor.inkwell-editor p { margin: 0.5em 0; }
+```
+
 ### Class-driven theming
 
 The token defaults themselves — including the dark-mode set inside

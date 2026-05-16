@@ -281,6 +281,101 @@ describe("bundled stylesheet contract", () => {
     expect(mediaMatch?.[1] ?? "").toMatch(TOKEN_BLOCK_SELECTOR);
   });
 
+  // Typography and spacing tokens are the single source of truth shared
+  // between the editor and renderer surfaces. The contract:
+  //   1. Each token is declared in the light-mode token block.
+  //   2. Both `.inkwell-editor` rules and `.inkwell-renderer` rules
+  //      reference the token via `var(--inkwell-...)`.
+  // Without this, the two surfaces drift on font-size / line-height /
+  // heading sizes / paragraph spacing and the editor stops being WYSIWYG.
+  const TYPOGRAPHY_TOKENS = [
+    "--inkwell-font-size",
+    "--inkwell-line-height",
+    "--inkwell-heading-weight",
+    "--inkwell-heading-line-height",
+    "--inkwell-h1-size",
+    "--inkwell-h2-size",
+    "--inkwell-h3-size",
+    "--inkwell-h4-size",
+    "--inkwell-h5-size",
+    "--inkwell-h6-size",
+    "--inkwell-code-font-size",
+    "--inkwell-space-paragraph",
+    "--inkwell-space-heading",
+    "--inkwell-space-blockquote",
+    "--inkwell-space-list",
+    "--inkwell-space-list-item",
+    "--inkwell-list-indent",
+    "--inkwell-space-code-block",
+    "--inkwell-space-image",
+    "--inkwell-space-hr",
+  ];
+
+  it.each(TYPOGRAPHY_TOKENS)("declares %s in the token block", token => {
+    // The token block uses the 5-selector `:where()` list (see
+    // `TOKEN_BLOCK_SELECTOR` above) which already has its own contract
+    // test. Here we only need to assert the declaration is present.
+    const escaped = token.replace(/-/g, "\\-");
+    expect(STYLES_CSS).toMatch(new RegExp(`${escaped}\\s*:`));
+  });
+
+  // Tokens that appear in both editor and renderer rules. If a future
+  // change tokenizes a value on only one surface, the WYSIWYG promise
+  // breaks — call that out by making the missing reference a test
+  // failure.
+  //
+  // `--inkwell-space-paragraph` is intentionally NOT in this list. The
+  // editor model emits one `<p>` per source line (blank lines become
+  // empty paragraph nodes that serve as cursor targets), so a non-zero
+  // paragraph margin in the editor would compound with those empty
+  // paragraphs and visually multiply the gap between blocks. The
+  // editor's paragraph margin stays at `0` until the empty-paragraph
+  // encoding is reworked; the renderer keeps the token as its source
+  // of truth.
+  const SHARED_TOKENS = [
+    "--inkwell-font-size",
+    "--inkwell-line-height",
+    "--inkwell-h1-size",
+    "--inkwell-h2-size",
+    "--inkwell-h3-size",
+    "--inkwell-heading-weight",
+    "--inkwell-heading-line-height",
+    "--inkwell-space-heading",
+    "--inkwell-space-blockquote",
+    "--inkwell-space-image",
+    "--inkwell-code-font-size",
+  ];
+
+  it.each(SHARED_TOKENS)("references %s in both editor and renderer", token => {
+    // Strip the token-definition block so we only count *references*,
+    // not the declaration line.
+    const declStripped = STYLES_CSS.replace(/--inkwell-[a-z-]+\s*:[^;]+;/g, "");
+    const escaped = token.replace(/-/g, "\\-");
+    const usage = new RegExp(`var\\(${escaped}\\)`, "g");
+    const declMatches = declStripped.match(usage) ?? [];
+    expect(declMatches.length).toBeGreaterThan(0);
+
+    // Walk each top-level rule body that targets the editor or renderer
+    // surface (or one of its descendant selectors) and check the token
+    // is referenced in at least one rule per surface.
+    const ruleMatches = STYLES_CSS.matchAll(/([^{}]*)\{([^}]*)\}/g);
+    let editorRefs = 0;
+    let rendererRefs = 0;
+    for (const m of ruleMatches) {
+      const selector = m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim();
+      const body = m[2];
+      if (!body.includes(`var(${token})`)) continue;
+      if (/\.inkwell-editor(?![\w-])|\.inkwell-editor-/.test(selector)) {
+        editorRefs++;
+      }
+      if (/\.inkwell-renderer(?![\w-])|\.inkwell-renderer /.test(selector)) {
+        rendererRefs++;
+      }
+    }
+    expect(editorRefs).toBeGreaterThan(0);
+    expect(rendererRefs).toBeGreaterThan(0);
+  });
+
   // The character-count overlay splits positioning (unwrapped) from chrome
   // (wrapped). The contract: the bare selector keeps `position` / `top` /
   // `right`, while color / background / typography moved into `:where()`

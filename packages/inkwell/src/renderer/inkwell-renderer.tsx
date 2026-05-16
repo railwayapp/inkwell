@@ -9,6 +9,7 @@ export function InkwellRenderer({
   components,
   rehypePlugins,
   mentions,
+  softBreak,
 }: InkwellRendererProps): ReactNode {
   const mergedComponents = useMemo(
     () => ({ pre: CopyCodeBlock, ...components }),
@@ -21,8 +22,9 @@ export function InkwellRenderer({
         components: mergedComponents,
         rehypePlugins,
         mentions,
+        softBreak,
       }),
-    [content, mergedComponents, rehypePlugins, mentions],
+    [content, mergedComponents, rehypePlugins, mentions, softBreak],
   );
 
   return (

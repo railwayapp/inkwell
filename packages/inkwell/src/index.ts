@@ -57,6 +57,7 @@ export type {
   InkwellPluginEditor,
   InkwellPluginPlaceholder,
   InkwellRendererProps,
+  InkwellSoftBreakBehavior,
   MentionRenderer,
   ParseMarkdownOptions,
   PluginInsertDataContext,

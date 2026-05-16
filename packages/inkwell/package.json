@@ -1,6 +1,6 @@
 {
   "name": "@railway/inkwell",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Inkwell is a Markdown editor and renderer for React with an extensible plugin system.",
   "type": "module",
   "main": "./dist/index.cjs",

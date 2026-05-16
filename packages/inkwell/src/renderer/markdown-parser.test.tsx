@@ -265,6 +265,132 @@ describe("parseMarkdown", () => {
     });
   });
 
+  describe("softBreak", () => {
+    const source = "Best Regards,\nThe Railway Team";
+
+    it("splits a soft break into sibling paragraphs by default", () => {
+      const { container } = render(<>{parseMarkdown(source)}</>);
+      const paragraphs = container.querySelectorAll("p");
+      expect(paragraphs).toHaveLength(2);
+      expect(container.querySelector("br")).toBeNull();
+      expect(paragraphs[0].textContent).toBe("Best Regards,");
+      expect(paragraphs[1].textContent).toBe("The Railway Team");
+    });
+
+    it("preserves the literal newline when softBreak is 'preserve'", () => {
+      const { container } = render(
+        <>{parseMarkdown(source, { softBreak: "preserve" })}</>,
+      );
+      const paragraphs = container.querySelectorAll("p");
+      expect(paragraphs).toHaveLength(1);
+      expect(container.querySelector("br")).toBeNull();
+    });
+
+    it("emits <br /> when softBreak is 'br'", () => {
+      const { container } = render(
+        <>{parseMarkdown(source, { softBreak: "br" })}</>,
+      );
+      const paragraphs = container.querySelectorAll("p");
+      expect(paragraphs).toHaveLength(1);
+      // The browser renders the <br> as a visible line break; the textContent
+      // around it (incidental `\n` from the default break handler) doesn't
+      // affect that.
+      const html = paragraphs[0].innerHTML;
+      expect(html).toMatch(/Best Regards,\s*<br\s*\/?>\s*The Railway Team/);
+    });
+
+    it("splits into sibling paragraphs when softBreak is 'paragraph'", () => {
+      const { container } = render(
+        <>{parseMarkdown(source, { softBreak: "paragraph" })}</>,
+      );
+      const paragraphs = container.querySelectorAll("p");
+      expect(paragraphs).toHaveLength(2);
+      expect(container.querySelector("br")).toBeNull();
+      expect(paragraphs[0].textContent).toBe("Best Regards,");
+      expect(paragraphs[1].textContent).toBe("The Railway Team");
+    });
+
+    it("handles three-line paragraphs under 'br'", () => {
+      const { container } = render(
+        <>{parseMarkdown("a\nb\nc", { softBreak: "br" })}</>,
+      );
+      const paragraphs = container.querySelectorAll("p");
+      expect(paragraphs).toHaveLength(1);
+      expect(paragraphs[0].querySelectorAll("br")).toHaveLength(2);
+    });
+
+    it("handles three-line paragraphs under 'paragraph'", () => {
+      const { container } = render(
+        <>{parseMarkdown("a\nb\nc", { softBreak: "paragraph" })}</>,
+      );
+      const paragraphs = container.querySelectorAll("p");
+      expect(paragraphs).toHaveLength(3);
+      expect(paragraphs[0].textContent).toBe("a");
+      expect(paragraphs[1].textContent).toBe("b");
+      expect(paragraphs[2].textContent).toBe("c");
+    });
+
+    it("keeps inline marks intact when splitting under 'paragraph'", () => {
+      const { container } = render(
+        <>
+          {parseMarkdown("First **bold** line\nSecond _italic_ line", {
+            softBreak: "paragraph",
+          })}
+        </>,
+      );
+      const paragraphs = container.querySelectorAll("p");
+      expect(paragraphs).toHaveLength(2);
+      expect(paragraphs[0].querySelector("strong")?.textContent).toBe("bold");
+      expect(paragraphs[1].querySelector("em")?.textContent).toBe("italic");
+    });
+
+    it("does not split fenced code blocks under 'paragraph'", () => {
+      const md = "```\nline one\nline two\nline three\n```";
+      const { container } = render(
+        <>{parseMarkdown(md, { softBreak: "paragraph" })}</>,
+      );
+      const pres = container.querySelectorAll("pre");
+      expect(pres).toHaveLength(1);
+      expect(pres[0].textContent).toContain("line one");
+      expect(pres[0].textContent).toContain("line two");
+      expect(pres[0].textContent).toContain("line three");
+    });
+
+    it("keeps a list item as one item when its paragraph has a soft break under 'paragraph'", () => {
+      const md = "- first line\n  second line\n- next item";
+      const { container } = render(
+        <>{parseMarkdown(md, { softBreak: "paragraph" })}</>,
+      );
+      const items = container.querySelectorAll("li");
+      expect(items).toHaveLength(2);
+      // First item still has its full content (split into two <p> inside the
+      // same <li>, but the <li> itself didn't split).
+      expect(items[0].textContent).toContain("first line");
+      expect(items[0].textContent).toContain("second line");
+      expect(items[1].textContent).toContain("next item");
+    });
+
+    it("keeps a blockquote as one block when its paragraph has a soft break under 'paragraph'", () => {
+      const md = "> Best Regards,\n> The Railway Team";
+      const { container } = render(
+        <>{parseMarkdown(md, { softBreak: "paragraph" })}</>,
+      );
+      const quotes = container.querySelectorAll("blockquote");
+      expect(quotes).toHaveLength(1);
+      expect(quotes[0].textContent).toContain("Best Regards,");
+      expect(quotes[0].textContent).toContain("The Railway Team");
+    });
+
+    it("hard breaks (two trailing spaces) become <br /> regardless of softBreak", () => {
+      // Hard break is two spaces + newline at end of line.
+      const md = "first line  \nsecond line";
+      const { container } = render(
+        <>{parseMarkdown(md, { softBreak: "preserve" })}</>,
+      );
+      expect(container.querySelectorAll("br")).toHaveLength(1);
+    });
+  });
+
   describe("mentions", () => {
     it("replaces matching text with the resolved node", () => {
       const { container } = render(

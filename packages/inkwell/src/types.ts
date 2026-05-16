@@ -143,6 +143,17 @@ export interface InkwellEditorProps {
   onSubmit?: (content: string) => void;
 }
 
+/**
+ * How `InkwellRenderer` handles single-newline soft breaks in source markdown.
+ * - `"paragraph"` (default): split the enclosing paragraph at the soft break,
+ *   producing two `<p>` elements with normal paragraph margins.
+ * - `"br"`: emit a `<br />`. Matches GFM-style behavior (and Showdown with
+ *   `simpleLineBreaks: true`).
+ * - `"preserve"`: keep as a literal `\n` text node. The browser collapses it
+ *   to whitespace per CSS. Matches strict CommonMark.
+ */
+export type InkwellSoftBreakBehavior = "preserve" | "br" | "paragraph";
+
 export interface InkwellRendererProps {
   /** Markdown source content string. */
   content: string;
@@ -154,12 +165,16 @@ export interface InkwellRendererProps {
   rehypePlugins?: RehypePluginConfig[];
   /** Mention patterns to expand in rendered text. */
   mentions?: MentionRenderer[];
+  /** How to render single-newline soft breaks. Defaults to `"paragraph"`. */
+  softBreak?: InkwellSoftBreakBehavior;
 }
 
 export interface ParseMarkdownOptions {
   components?: InkwellComponents;
   rehypePlugins?: RehypePluginConfig[];
   mentions?: MentionRenderer[];
+  /** How to render single-newline soft breaks. Defaults to `"paragraph"`. */
+  softBreak?: InkwellSoftBreakBehavior;
 }
 
 export interface MentionRenderer {

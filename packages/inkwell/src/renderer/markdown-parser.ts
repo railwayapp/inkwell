@@ -11,8 +11,13 @@ import { unified } from "unified";
 import { SKIP, visit } from "unist-util-visit";
 import remarkFlattenBlockquotes from "../lib/remark-flatten-blockquotes";
 import remarkNoTables from "../lib/remark-no-tables";
+import {
+  remarkSoftBreakAsBreak,
+  remarkSoftBreakAsParagraph,
+} from "../lib/remark-soft-break";
 import type {
   InkwellComponents,
+  InkwellSoftBreakBehavior,
   MentionRenderer,
   ParseMarkdownOptions,
   RehypePluginConfig,
@@ -25,6 +30,7 @@ interface ProcessorOptions {
   components?: InkwellComponents;
   rehypePlugins?: RehypePluginConfig[];
   mentions?: MentionRenderer[];
+  softBreak?: InkwellSoftBreakBehavior;
 }
 
 /**
@@ -127,8 +133,16 @@ function createProcessor(options: ProcessorOptions = {}) {
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkNoTables)
-    .use(remarkFlattenBlockquotes)
-    .use(remarkRehype);
+    .use(remarkFlattenBlockquotes);
+
+  const softBreak: InkwellSoftBreakBehavior = options.softBreak ?? "paragraph";
+  if (softBreak === "br") {
+    proc.use(remarkSoftBreakAsBreak);
+  } else if (softBreak === "paragraph") {
+    proc.use(remarkSoftBreakAsParagraph);
+  }
+
+  proc.use(remarkRehype);
 
   const plugins = options.rehypePlugins ?? [
     [rehypeHighlight, { detect: true }],

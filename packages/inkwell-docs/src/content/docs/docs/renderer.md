@@ -100,6 +100,43 @@ plugin function or a tuple such as `[plugin, ...options]`.
 
 Fenced code blocks include a copy button. Hover over a code block to reveal the button.
 
+### `softBreak`
+
+**Type:** `"preserve" | "br" | "paragraph"`
+**Default:** `"paragraph"`
+
+How single-newline soft breaks in source markdown render.
+
+CommonMark treats a single newline inside a paragraph as a "soft break". Strict
+CommonMark output keeps that as a literal `\n` text node, which the browser
+collapses to a space — most users find this surprising. Inkwell defaults to
+`"paragraph"`, which splits the source at the soft break so each line becomes
+its own paragraph. For this source:
+
+```md
+Best Regards,
+Your Name
+```
+
+| Value | Output | Visual |
+| --- | --- | --- |
+| `"paragraph"` (default) | `<p>Best Regards,</p><p>Your Name</p>` | two paragraphs with normal margins |
+| `"br"` | `<p>Best Regards,<br />Your Name</p>` | two adjacent lines |
+| `"preserve"` | `<p>Best Regards,\nYour Name</p>` | one line (strict CommonMark) |
+
+```tsx
+<InkwellRenderer content={md} softBreak="br" />
+```
+
+The transformation happens at the markdown AST level, so the rendered output
+contains real `<p>` (or `<br />`) elements you can style normally. Only
+paragraph nodes are touched: code fences keep their internal newlines intact,
+and list items and blockquotes don't split — a list item whose paragraph has
+a soft break ends up as one `<li>` containing two `<p>` siblings.
+
+Hard breaks (two trailing spaces, the standard CommonMark hard-break syntax)
+always render as `<br />` regardless of this setting.
+
 ### `mentions`
 
 **Type:** `MentionRenderer[]`

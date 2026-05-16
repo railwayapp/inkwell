@@ -9,6 +9,7 @@ import remarkRehype from "remark-rehype";
 import type { Plugin } from "unified";
 import { unified } from "unified";
 import { SKIP, visit } from "unist-util-visit";
+import rehypeTrimCodeBlockTrailingNewline from "../lib/rehype-trim-code-block-newline";
 import remarkFlattenBlockquotes from "../lib/remark-flatten-blockquotes";
 import remarkNoTables from "../lib/remark-no-tables";
 import {
@@ -155,6 +156,11 @@ function createProcessor(options: ProcessorOptions = {}) {
       proc.use(plugin);
     }
   }
+
+  // Strip the structural trailing "\n" remark-parse keeps inside
+  // <pre><code>; runs after highlight so the spine walk lands on the last
+  // highlighted text node, before sanitize so output stays tidy.
+  proc.use(rehypeTrimCodeBlockTrailingNewline);
 
   proc.use(rehypeSanitize, {
     ...defaultSchema,

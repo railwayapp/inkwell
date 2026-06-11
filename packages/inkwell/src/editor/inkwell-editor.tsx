@@ -1206,7 +1206,15 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
                               movedLi.children.length - 1
                             ] as InkwellElement | undefined;
                             let nestedPath: Path;
-                            if (lastChild?.type === "list") {
+                            // Reuse the moved item's trailing nested list
+                            // only when its ordered-ness matches (same
+                            // guard as the Tab handler) — appending
+                            // unordered followers into an ordered list
+                            // silently renumbers them.
+                            if (
+                              lastChild?.type === "list" &&
+                              lastChild.ordered === list.ordered
+                            ) {
                               nestedPath = [
                                 ...targetPath,
                                 movedLi.children.length - 1,

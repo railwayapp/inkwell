@@ -1,3 +1,4 @@
+import { Node } from "slate";
 import { canonicalize } from "./canonicalize";
 import type { BlockLineRange } from "./deserialize";
 import type { InkwellElement } from "./types";
@@ -32,6 +33,14 @@ import type { InkwellElement } from "./types";
 export interface SourceCacheEntry {
   source: string;
   canonical: string;
+  /**
+   * Plain text of the node at populate time. Guards the canonical
+   * comparison against lossy collisions: canonicalization strips
+   * trailing whitespace, so a clipboard fragment clipped to `"hello"`
+   * shares a canonical with the full `"hello "` block — without the
+   * text check, copy would emit the unselected trailing space.
+   */
+  text: string;
 }
 
 export type SourceCache = Map<string, SourceCacheEntry>;
@@ -54,6 +63,7 @@ export function getCachedSource(
   const entry = cache.get(node.id);
   if (!entry) return undefined;
   if (entry.canonical !== currentCanonical) return undefined;
+  if (entry.text !== Node.string(node)) return undefined;
   return entry.source;
 }
 
@@ -69,7 +79,7 @@ export function setCacheEntry(
   source: string,
   canonical: string,
 ): void {
-  cache.set(node.id, { source, canonical });
+  cache.set(node.id, { source, canonical, text: Node.string(node) });
 }
 
 /**

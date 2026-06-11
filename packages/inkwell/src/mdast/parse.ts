@@ -44,30 +44,49 @@ interface EscapeResult {
  */
 function escapeBareBlockquote(content: string): EscapeResult {
   const originalOffsets: number[] = [];
-  // Walk line by line, tracking top-level fenced-code state so `>` lines
-  // inside fences are never escaped — code content is verbatim, so an
-  // injected `\` would land in `code.value` and show up on both surfaces
+  // Walk line by line, tracking fenced-code state so `>` lines inside
+  // fences are never escaped — code content is verbatim, so an injected
+  // `\` would land in `code.value` and show up on both surfaces
   // (`>>> doctest`, diff/email quotes, shell `2>err` heredocs).
-  // The scanner only models column-0..3 fences; fences carrying a
-  // blockquote prefix (`> ```) can't contain column-0 `>` lines anyway.
-  // Known limitation: an inline code span that wraps a newline followed
-  // by a bare-`>` line still gets escaped — code spans are not visible
-  // at this line-based layer.
+  //
+  // Only COLUMN-0 fence openers are modeled, deliberately. An indented
+  // opener is ambiguous at this line-based layer: `  ```' can be a
+  // top-level fence (1-3 space indent) or a list-item fence whose
+  // closer/extent CommonMark resolves by container context the scanner
+  // can't see. Treating indented openers as fences mis-tracked both
+  // directions (a column-0 line after a list fence is a NEW top-level
+  // fence, not a closer; a bare-`>` line after an unclosed list fence
+  // must still be escaped). Column-0-only matches CommonMark exactly
+  // for unindented documents and degrades to the pre-scanner behavior
+  // (escape applies) for container-indented fences.
+  //
+  // Known limitations: a 1-3-space-indented TOP-LEVEL fence containing
+  // bare-`>` lines still gets escaped; a column-0 ``` line inside an
+  // HTML block is misread as an opener; an inline code span wrapping a
+  // newline followed by a bare-`>` line still gets escaped; a `>x`
+  // lazy-continuation line inside a `> `-prefixed fence is escaped
+  // (structure-changing, pre-existing).
   let inFence = false;
   let fenceChar = "";
   let fenceLen = 0;
   let lineStart = 0;
   while (lineStart <= content.length) {
-    const nl = content.indexOf("\n", lineStart);
-    const lineEnd = nl === -1 ? content.length : nl;
+    // Lone `\r` is a CommonMark line ending too — treat it as a line
+    // boundary so a candidate after it is still seen.
+    const nlN = content.indexOf("\n", lineStart);
+    const nlR = content.indexOf("\r", lineStart);
+    const lineEnd = Math.min(
+      nlN === -1 ? content.length : nlN,
+      nlR === -1 ? content.length : nlR,
+    );
     const line = content.slice(lineStart, lineEnd);
     if (inFence) {
-      const close = /^ {0,3}(`{3,}|~{3,})[ \t]*\r?$/.exec(line);
+      const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
       if (close && close[1][0] === fenceChar && close[1].length >= fenceLen) {
         inFence = false;
       }
     } else {
-      const open = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      const open = /^(`{3,}|~{3,})/.exec(line);
       // A backtick fence's info string cannot contain backticks — a line
       // like ``` `code` ``` is a code span, not a fence opener.
       const isOpener =
@@ -81,8 +100,12 @@ function escapeBareBlockquote(content: string): EscapeResult {
         originalOffsets.push(lineStart);
       }
     }
-    if (nl === -1) break;
-    lineStart = nl + 1;
+    if (lineEnd >= content.length) break;
+    // Skip the line ending: `\r\n` counts as one.
+    lineStart =
+      content[lineEnd] === "\r" && content[lineEnd + 1] === "\n"
+        ? lineEnd + 2
+        : lineEnd + 1;
   }
 
   if (originalOffsets.length === 0) {

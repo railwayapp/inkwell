@@ -183,3 +183,35 @@ describe("parseMarkdownToMdast — bare-`>` escape is code-aware", () => {
     ).toBe("**b**");
   });
 });
+
+describe("parseMarkdownToMdast — bare-`>` escape container semantics (column-0 fences)", () => {
+  it("treats a column-0 fence after a list-nested fence as a new opener", () => {
+    // "- a\n  ```\ncode\n```\n>x": CommonMark ends the list item's
+    // indented fence at the dedent; the column-0 ``` OPENS a new
+    // top-level fence, so the `>x` line is code and must not be
+    // escaped. The scanner models only column-0 fences, which agrees
+    // with CommonMark here.
+    const tree = parseMarkdownToMdast("- a\n  ```\ncode\n```\n>x");
+    const last = tree.children[tree.children.length - 1];
+    expect(last.type).toBe("code");
+    if (last.type === "code") {
+      expect(last.value).toBe(">x");
+    }
+  });
+
+  it("still escapes a bare-`>` line after a container-indented fence opener", () => {
+    // The 2-space-indented opener belongs to the list item; the
+    // column-0 `>note` line is OUTSIDE that fence in CommonMark terms
+    // and must be escaped to a paragraph, not parsed as a blockquote.
+    const tree = parseMarkdownToMdast("- a\n  ```js\n  code\n\n>note");
+    const last = tree.children[tree.children.length - 1];
+    expect(last.type).toBe("paragraph");
+  });
+
+  it("escapes a bare-`>` line after a lone-CR line ending", () => {
+    // `\r` is a CommonMark line ending; the scanner must treat it as a
+    // line boundary so the candidate after it is still escaped.
+    const tree = parseMarkdownToMdast("a\r>x");
+    expect(tree.children.every(n => n.type !== "blockquote")).toBe(true);
+  });
+});

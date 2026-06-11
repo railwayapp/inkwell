@@ -323,3 +323,112 @@ describe("stringifyMdast — post-process is code-aware", () => {
     expect(out.trimEnd()).toBe(">\n> x");
   });
 });
+
+describe("stringifyMdast — post-process fence tracking over toMarkdown shapes", () => {
+  it("keeps content of a fence opening on a list-marker line", () => {
+    // toMarkdown emits a list item whose first child is a code block as
+    // `- ```` ` + indented content + indented closer. The fence walker
+    // must recognize that opener or the strips run inside the code.
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "list",
+          ordered: false,
+          spread: false,
+          children: [
+            {
+              type: "listItem",
+              spread: false,
+              children: [
+                {
+                  type: "code",
+                  lang: null,
+                  meta: null,
+                  value: "const re = \\[a-z];",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(out).toContain("const re = \\[a-z];");
+  });
+
+  it("does not let an indented list-fence closer poison later blocks", () => {
+    // Regression: the indented closer used to be misread as a new
+    // opener, leaving the walker in fence state so every later line
+    // skipped post-processing (escapes never stripped).
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "list",
+          ordered: false,
+          spread: false,
+          children: [
+            {
+              type: "listItem",
+              spread: false,
+              children: [{ type: "code", lang: null, meta: null, value: "x" }],
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          children: [{ type: "text", value: "see [section] here" }],
+        },
+      ],
+    });
+    expect(out).toContain("see [section] here");
+    expect(out).not.toContain("\\[section]");
+  });
+
+  it("does not unescape mixed-marker lines (`*-*` is not a thematic break)", () => {
+    // Regression: the unescape regex admitted mixed marker characters;
+    // stripping `\*-\*` to `*-*` re-parses as emphasis, corrupting the
+    // paragraph.
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        { type: "paragraph", children: [{ type: "text", value: "*-*" }] },
+      ],
+    });
+    expect(out.trimEnd()).toBe("\\*-\\*");
+  });
+
+  it("does not treat an escaped backtick as a code-span opener", () => {
+    // Regression: `a \` b` + a real span — the escaped backtick was
+    // paired with the span's opener, so the bracket strip ran INSIDE
+    // the span content.
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "paragraph",
+          children: [
+            { type: "text", value: "a ` b " },
+            { type: "inlineCode", value: "\\[x]" },
+          ],
+        },
+      ],
+    });
+    expect(out.trimEnd()).toBe("a \\` b `\\[x]`");
+  });
+
+  it("keeps a user-escaped `\\&#x20;` at end of line", () => {
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "paragraph",
+          children: [{ type: "text", value: "foo \\&#x20;" }],
+        },
+      ],
+    });
+    // toMarkdown escapes the `&`; the strip must not fire on it (the
+    // user typed a literal escaped entity, not whitespace protection).
+    expect(out).toContain("#x20");
+  });
+});

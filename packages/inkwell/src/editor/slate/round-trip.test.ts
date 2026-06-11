@@ -241,3 +241,27 @@ describe("Round-trip — soft-wrapped (split-block) shapes normalize without cor
     expect(out).not.toContain("intro\n\nintro");
   });
 });
+
+describe("Round-trip — container soft-wraps and CRLF code values", () => {
+  it("keeps inline markers visible inside soft-wrapped blockquote paragraphs", () => {
+    // Container-nested split paragraphs are always positionless (the
+    // source slice carries `> ` prefixes the value lacks), so they hit
+    // the to-slate fallback. The fallback must re-stringify inline
+    // structure — the old mdast-util-to-string path dropped `**` and
+    // link URLs from the model.
+    const nodes = deserialize("> **b** a\n> c");
+    expect(Node.string(nodes[0])).toContain("**b**");
+  });
+
+  it("keeps link URLs visible inside soft-wrapped list-item paragraphs", () => {
+    const nodes = deserialize("- see [docs](https://d.com)\n  next line");
+    expect(Node.string(nodes[0])).toContain("[docs](https://d.com)");
+  });
+
+  it("normalizes CRLF line endings inside code-block values", () => {
+    const nodes = deserialize("```js\r\nfoo\r\nbar\r\n```");
+    expect(nodes[0].type).toBe("code-block");
+    expect(Node.string(nodes[0])).toBe("foo\nbar");
+    expect(Node.string(nodes[0])).not.toContain("\r");
+  });
+});

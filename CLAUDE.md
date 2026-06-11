@@ -215,8 +215,15 @@ edited.
 Soft-wrapped paragraphs (`a\nb`) split into sibling blocks — that IS
 the editor model — so the single-newline gap normalizes to a blank
 line on serialize: the per-block cache cannot express "no blank line
-between blocks". Inline markers survive the split (positioned parts →
-verbatim slices); only the inter-block gap normalizes.
+between blocks". At top level, inline markers survive the split via
+verbatim slices (positioned parts). Inside containers (blockquote /
+list-item), the text-node value never byte-matches its source slice
+(the slice carries `> `/indent prefixes), so split parts stay
+positionless there — `mdastToSlate` falls back to re-stringifying the
+inline children (`inlineFallback` in to-slate.ts), which preserves
+`**`/link structure at the cost of canonical escape normalization.
+Don't swap that fallback back to `mdast-util-to-string` — the flat
+text dropped markers and link URLs from the model entirely.
 
 ## Editor Rendering Model
 

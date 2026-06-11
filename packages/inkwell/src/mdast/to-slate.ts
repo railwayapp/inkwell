@@ -12,6 +12,7 @@ import type {
 import { toString as mdastToString } from "mdast-util-to-string";
 import type { InkwellElement } from "../editor/slate/types";
 import { generateId } from "../editor/slate/with-node-id";
+import { stringifyMdast } from "./stringify";
 
 /**
  * Convert an mdast tree into a Slate `InkwellElement[]`.
@@ -77,12 +78,26 @@ function convertParagraph(node: Paragraph, content: string): InkwellElement {
     return convertImageBlock(onlyChild);
   }
 
-  const text = sourceSlice(node, content) ?? mdastToString(node);
+  const text = sourceSlice(node, content) ?? inlineFallback(node);
   return {
     type: "paragraph",
     id: generateId(),
     children: [{ text }],
   };
+}
+
+/**
+ * Fallback text for a positionless paragraph (split parts whose value
+ * desynced from the source slice — container `> `/indent prefixes,
+ * entity decoding). Re-stringify the inline children instead of
+ * flattening with mdast-util-to-string: the flat fallback stripped
+ * `**bold**` / `[label](url)` markers from the model, silently
+ * destroying formatting (and link URLs) on the first edit. The
+ * canonical re-stringify keeps the structure; escape normalization
+ * (e.g. `&` → `\&`) is the accepted cost.
+ */
+function inlineFallback(node: Paragraph): string {
+  return stringifyMdast({ type: "root", children: [node] }).replace(/\n+$/, "");
 }
 
 function convertHeading(node: Heading, content: string): InkwellElement {
@@ -163,10 +178,14 @@ function convertListItem(node: ListItem, content: string): InkwellElement {
 }
 
 function convertCode(node: Code): InkwellElement {
+  // micromark does NOT normalize line endings inside code values, so a
+  // CRLF document would put literal `\r` characters into the editor
+  // leaf (and serialize would emit mixed endings). Normalize to LF —
+  // `\r`-containing documents skip the source cache anyway.
   const out: InkwellElement = {
     type: "code-block",
     id: generateId(),
-    children: [{ text: node.value }],
+    children: [{ text: node.value.replace(/\r\n/g, "\n") }],
   };
   if (node.lang) out.lang = node.lang;
   return out;

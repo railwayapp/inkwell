@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { canonicalize } from "./canonicalize";
 import { deserializeWithRanges } from "./deserialize";
 import { serialize } from "./serialize";
 import {
   createSourceCache,
+  getCachedSource,
   invalidateCacheEntry,
   populateSourceCacheFromParse,
+  setCacheEntry,
 } from "./source-cache";
+import type { InkwellElement } from "./types";
 
 function roundTrip(content: string): string {
   const cache = createSourceCache();
@@ -70,5 +74,31 @@ describe("source-cache — no cache argument", () => {
     const source = "> a\n> b";
     const { nodes } = deserializeWithRanges(source);
     expect(serialize(nodes)).toBe("> a\n>\n> b");
+  });
+});
+
+describe("getCachedSource — text-equality guard", () => {
+  it("rejects a clipped node whose canonical collides with the cached block", () => {
+    // Canonicalization strips trailing whitespace, so a clipboard
+    // fragment clipped to "hello" shares a canonical with the cached
+    // "hello " block. Without the text guard, copy emitted the
+    // unselected trailing space.
+    const cache = createSourceCache();
+    const full: InkwellElement = {
+      type: "paragraph",
+      id: "p1",
+      children: [{ text: "hello " }],
+    };
+    setCacheEntry(cache, full, "hello ", canonicalize(full));
+
+    const clipped: InkwellElement = {
+      type: "paragraph",
+      id: "p1",
+      children: [{ text: "hello" }],
+    };
+    expect(getCachedSource(cache, clipped, canonicalize(clipped))).toBe(
+      undefined,
+    );
+    expect(getCachedSource(cache, full, canonicalize(full))).toBe("hello ");
   });
 });

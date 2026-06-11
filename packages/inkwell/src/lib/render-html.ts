@@ -1,25 +1,25 @@
+import type { Nodes as HastNodes } from "hast";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeStringify from "rehype-stringify";
-import remarkGfm from "remark-gfm";
-import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
+import { parseMarkdownToMdast } from "../mdast/parse";
 import type { RehypePluginConfig } from "../types";
-import remarkFlattenBlockquotes from "./remark-flatten-blockquotes";
-import remarkNoTables from "./remark-no-tables";
 
 /** Cache the default processor; custom plugin arrays get fresh processors. */
 // biome-ignore lint/suspicious/noExplicitAny: unified processor chain types are incompatible across plugins
 const processorCache = new Map<string, any>();
 
+/**
+ * Build the mdast → hast → HTML-string processor. Front-end mdast
+ * parsing lives in `parseMarkdownToMdast` so both the editor surface
+ * and this HTML utility see the same tree — keeping the bare-`>`
+ * escape, GFM, table/thematic-break filtering, and soft-break shaping
+ * in exactly one place.
+ */
 function createProcessor(rehypePlugins?: RehypePluginConfig[]) {
-  const processor = unified()
-    .use(remarkParse)
-    .use(remarkGfm)
-    .use(remarkNoTables)
-    .use(remarkFlattenBlockquotes)
-    .use(remarkRehype);
+  const processor = unified().use(remarkRehype);
 
   const plugins = rehypePlugins ?? [[rehypeHighlight, { detect: true }]];
   for (const plugin of plugins) {
@@ -57,20 +57,16 @@ function getProcessor(rehypePlugins?: RehypePluginConfig[]) {
 }
 
 /**
- * Escape ">" at start of line when not followed by a space.
- * Prevents ">text" from being parsed as a blockquote — only "> text" is valid.
- */
-function escapeBareBq(markdown: string): string {
-  return markdown.replace(/^>(?=\S)/gm, "\\>");
-}
-
-/**
- * Parse markdown to an HTML string.
+ * Parse markdown to an HTML string. The mdast tree comes from the
+ * shared `parseMarkdownToMdast`; rehype plugins + sanitize + stringify
+ * run here.
  */
 export function renderMarkdownToHtml(
   markdown: string,
   rehypePlugins?: RehypePluginConfig[],
 ): string {
+  const mdast = parseMarkdownToMdast(markdown);
   const processor = getProcessor(rehypePlugins);
-  return String(processor.processSync(escapeBareBq(markdown)));
+  const hast = processor.runSync(mdast) as HastNodes;
+  return String(processor.stringify(hast));
 }

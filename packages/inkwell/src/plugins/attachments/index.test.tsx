@@ -74,6 +74,8 @@ function createPluginEditor(
     wrapSelection: () => {},
     insertImage: image => {
       const id = image.id ?? generateId();
+      // Top-level void block. Mirrors the real plugin-editor's
+      // `insertImage`.
       Transforms.insertNodes(editor, {
         type: "image",
         id,
@@ -123,8 +125,24 @@ function insertData(
   if (!handled) baseInsertData(data);
 }
 
-const images = (editor: ReturnType<typeof createTestEditor>) =>
-  (editor.children as InkwellElement[]).filter(el => el.type === "image");
+// Images can sit inside a paragraph (inline) or at the top level
+// (standalone). Walk the whole tree and surface every `image` element
+// regardless of nesting.
+function images(editor: ReturnType<typeof createTestEditor>): InkwellElement[] {
+  const found: InkwellElement[] = [];
+  function walk(node: unknown) {
+    if (typeof node !== "object" || node === null) return;
+    if ("type" in node && (node as { type: unknown }).type === "image") {
+      found.push(node as InkwellElement);
+    }
+    const children = (node as { children?: unknown }).children;
+    if (Array.isArray(children)) {
+      for (const child of children) walk(child);
+    }
+  }
+  walk(editor);
+  return found;
+}
 
 describe("createAttachmentsPlugin", () => {
   it("returns a headless plugin with an insert-data hook", () => {

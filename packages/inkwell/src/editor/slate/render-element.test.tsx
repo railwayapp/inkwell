@@ -15,59 +15,83 @@ function renderElement(type: string, props?: Record<string, unknown>) {
 }
 
 describe("RenderElement — heading", () => {
-  it("renders heading with inkwell-editor-heading class", () => {
+  it("renders heading as the matching hN tag with editor classes", () => {
     const { container } = renderElement("heading", { level: 2 });
-    const p = container.querySelector("p");
-    expect(p).toHaveClass("inkwell-editor-heading");
-    expect(p).toHaveClass("inkwell-editor-heading-2");
+    const h2 = container.querySelector("h2");
+    expect(h2).toBeInTheDocument();
+    expect(h2).toHaveClass("inkwell-editor-heading");
+    expect(h2).toHaveClass("inkwell-editor-heading-2");
   });
 
   it("renders heading level 1 by default when level is undefined", () => {
     const { container } = renderElement("heading");
-    const p = container.querySelector("p");
-    expect(p).toHaveClass("inkwell-editor-heading-1");
+    const h1 = container.querySelector("h1");
+    expect(h1).toBeInTheDocument();
+    expect(h1).toHaveClass("inkwell-editor-heading-1");
   });
 
   it("renders heading level 6", () => {
     const { container } = renderElement("heading", { level: 6 });
-    const p = container.querySelector("p");
-    expect(p).toHaveClass("inkwell-editor-heading-6");
+    const h6 = container.querySelector("h6");
+    expect(h6).toBeInTheDocument();
+    expect(h6).toHaveClass("inkwell-editor-heading-6");
   });
 });
 
-describe("RenderElement — list-item", () => {
-  it("renders legacy list-item elements as plain paragraphs", () => {
-    const { container } = renderElement("list-item", {
-      children: [{ text: "- item" }],
+describe("RenderElement — lists", () => {
+  it("renders an unordered list as a <ul>", () => {
+    const { container } = renderElement("list", {});
+    expect(container.querySelector("ul")).toBeInTheDocument();
+    expect(container.querySelector("ol")).not.toBeInTheDocument();
+  });
+
+  it("renders an ordered list as an <ol>", () => {
+    const { container } = renderElement("list", { ordered: true });
+    expect(container.querySelector("ol")).toBeInTheDocument();
+  });
+
+  it("forwards a non-1 start as the `start` attribute on <ol>", () => {
+    const { container } = renderElement("list", {
+      ordered: true,
+      start: 3,
     });
-    const p = container.querySelector("p");
-    expect(p).not.toHaveAttribute("data-list");
-    expect(p).not.toHaveClass("inkwell-editor-list-item");
+    expect(container.querySelector("ol")?.getAttribute("start")).toBe("3");
+  });
+
+  it("renders list-item as <li>", () => {
+    const { container } = renderElement("list-item", {});
+    expect(container.querySelector("li")).toBeInTheDocument();
   });
 });
 
 describe("RenderElement — code blocks", () => {
-  it("renders code-fence with inkwell-editor-code-fence class", () => {
-    const { container } = renderElement("code-fence");
-    expect(
-      container.querySelector(".inkwell-editor-code-fence"),
-    ).toBeInTheDocument();
+  it("renders code-block as a <pre> with the editor class", () => {
+    const { container } = renderElement("code-block");
+    const pre = container.querySelector(".inkwell-editor-code-block");
+    expect(pre).toBeInTheDocument();
+    expect(pre?.tagName.toLowerCase()).toBe("pre");
   });
 
-  it("renders code-line with inkwell-editor-code-line class", () => {
-    const { container } = renderElement("code-line");
+  it("surfaces the language tag as data-lang", () => {
+    const { container } = renderElement("code-block", { lang: "ts" });
+    const pre = container.querySelector(".inkwell-editor-code-block");
+    expect(pre).toHaveAttribute("data-lang", "ts");
+  });
+
+  it("nests the code text inside a <code> element", () => {
+    const { container } = renderElement("code-block");
     expect(
-      container.querySelector(".inkwell-editor-code-line"),
+      container.querySelector(".inkwell-editor-code-block > code"),
     ).toBeInTheDocument();
   });
 });
 
 describe("RenderElement — blockquote", () => {
-  it("renders blockquote with inkwell-editor-blockquote class", () => {
+  it("renders blockquote as a <blockquote> with editor class", () => {
     const { container } = renderElement("blockquote");
-    expect(
-      container.querySelector(".inkwell-editor-blockquote"),
-    ).toBeInTheDocument();
+    const blockquote = container.querySelector("blockquote");
+    expect(blockquote).toBeInTheDocument();
+    expect(blockquote).toHaveClass("inkwell-editor-blockquote");
   });
 });
 

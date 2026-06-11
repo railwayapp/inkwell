@@ -102,8 +102,8 @@ stays WYSIWYG with the rendered output.
 | `--inkwell-h4-size` | `1em` | `h4` font-size |
 | `--inkwell-h5-size` | `0.9em` | `h5` font-size |
 | `--inkwell-h6-size` | `0.8em` | `h6` font-size |
-| `--inkwell-code-font-size` | `0.85em` | Inline and block code font-size |
-| `--inkwell-space-paragraph` | `0.5em` | Top/bottom margin on renderer paragraphs. The editor's paragraph margin stays at `0` regardless — see the note below. |
+| `--inkwell-code-font-size` | `0.8rem` | Inline and block code font-size (rem-anchored so overriding the body font doesn't drag code size with it) |
+| `--inkwell-space-paragraph` | `0.5em` | Top/bottom margin on paragraphs (both surfaces). |
 | `--inkwell-space-heading` | `0.75em` | Top/bottom margin on headings |
 | `--inkwell-space-blockquote` | `1em` | Top/bottom margin on blockquotes |
 | `--inkwell-space-list` | `1em` | Top/bottom margin on `ul` / `ol` |
@@ -111,7 +111,6 @@ stays WYSIWYG with the rendered output.
 | `--inkwell-list-indent` | `1.5em` | Left padding on `ul` / `ol` |
 | `--inkwell-space-code-block` | `1em` | Top/bottom margin on code blocks |
 | `--inkwell-space-image` | `1em` | Top/bottom margin on images |
-| `--inkwell-space-hr` | `2em` | Top/bottom margin on `hr` |
 
 Apply tokens on either the editor wrapper, the renderer wrapper, or
 both — the surfaces share the token namespace:
@@ -126,20 +125,17 @@ both — the surfaces share the token namespace:
 }
 ```
 
-#### Why editor paragraphs ship with `margin: 0`
+#### Editor paragraph spacing
 
-The editor's content model stores one `<p>` node per source line, so a
-blank line in the Markdown source becomes an empty `<p>` between two
-paragraphs — a cursor target that keeps the source round-trip lossless.
-If the editor honored `--inkwell-space-paragraph` by default, those
-empty paragraphs would add their own top/bottom margin on top of the
-real paragraphs', visually multiplying the gap and breaking WYSIWYG in
-the opposite direction. The editor opts out of the token and keeps
-paragraph margins at `0`. If you want non-zero spacing in the editor,
-set it explicitly with a higher-specificity rule:
+Editor paragraphs consume the shared `--inkwell-space-paragraph` token
+just like renderer paragraphs do. Blank lines in source flush the
+current paragraph run rather than producing an empty `<p>` node, so the
+visual gap between sibling blocks comes from the margin (no
+double-counting from phantom empty nodes). Tighten the spacing per
+editor instance by overriding the token on a wrapper class:
 
 ```css
-.my-editor.inkwell-editor p { margin: 0.5em 0; }
+.my-editor { --inkwell-space-paragraph: 0.25em; }
 ```
 
 ### Class-driven theming
@@ -221,14 +217,21 @@ There is no top-level `style` prop — use `styles.root` or `styles.editor` to b
 
 Each block-level element renders with a CSS class:
 
-| Selector | Element |
-|----------|---------|
-| `.inkwell-editor-heading` | All headings (always combined with a level class below) |
-| `.inkwell-editor-heading-1` through `-heading-6` | Specific heading level |
-| `.inkwell-editor-blockquote` | Blockquotes |
-| `.inkwell-editor-image` | Block image wrapper (`data-selected` when selected) |
-| `.inkwell-editor-code-fence` | Code fence delimiter lines |
-| `.inkwell-editor-code-line` | Lines inside a fenced code block |
+| Selector | Tag | Element |
+|----------|-----|---------|
+| `.inkwell-editor-heading` | `h1`–`h6` | All headings (always combined with a level class below) |
+| `.inkwell-editor-heading-1` through `-heading-6` | `h1`–`h6` | Specific heading level |
+| `.inkwell-editor-blockquote` | `blockquote` | Blockquotes (nestable — inner blocks live as `blockquote` / `p` children) |
+| `.inkwell-editor-image` | `div` | Top-level void image block (`data-selected` when selected) |
+| `.inkwell-editor-code-block` | `pre` | Fenced code block (carries `data-lang` from the source fence) |
+| _no class_ | `ul` / `ol` | Lists. `ol` carries the standard `start` attribute when non-1 |
+| _no class_ | `li` | List item (holds a paragraph + optional nested list) |
+
+The editor emits the same semantic tag (`h1`–`h6`, `blockquote`, `pre`,
+`ul`/`ol`, `li`) the renderer does so block markup stays parity-checked
+across both surfaces. Block markers — `> `, `\`\`\``, `-`/`*`/`+`/`<n>.` —
+are structural: the editor stores them as schema (nesting / element
+type + metadata) rather than as text, and re-emits them on serialize.
 
 ### Inline formatting
 
@@ -416,8 +419,7 @@ your design system.
 .inkwell-editor-image[data-selected] { outline: 2px solid #6366f1; }
 .inkwell-editor-image img { display: block; max-width: 100%; height: auto; }
 
-.inkwell-editor-code-fence { color: #9ca3af; }
-.inkwell-editor-code-line {
+.inkwell-editor-code-block {
   font-family: ui-monospace, monospace;
   font-size: 14px;
   white-space: pre-wrap;

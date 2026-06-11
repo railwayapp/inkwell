@@ -1,4 +1,4 @@
-import { Editor, Element, Node, type NodeEntry, Range } from "slate";
+import { Element, Node, type NodeEntry, type Range } from "slate";
 import { renderMarkdownToHtml } from "../../lib/render-html";
 import type { RehypePluginConfig } from "../../types";
 import type { InkwellElement, InkwellText } from "./types";
@@ -7,14 +7,16 @@ import type { InkwellElement, InkwellText } from "./types";
  * Compute decoration ranges for a Slate node entry.
  *
  * Two decoration modes:
- * 1. Inline markdown marks (paragraph, blockquote, heading):
- *    Scans for **bold**, *italic*, _italic_, ~~strike~~, `code`
- * 2. Code syntax highlighting (code-line):
- *    Runs highlight.js via the remark pipeline
+ * 1. Inline markdown marks (paragraph, heading):
+ *    Scans for **bold**, *italic*, _italic_, ~~strike~~, `code`, links.
+ * 2. Code syntax highlighting (code-block):
+ *    Runs highlight.js over the block's entire text leaf in a single
+ *    pass; offsets map directly to the flat text since the block holds
+ *    one multi-line text leaf (no per-line splitting needed).
  */
 export function computeDecorations(
   entry: NodeEntry,
-  editor: Editor,
+  _editor: unknown,
   rehypePlugins?: RehypePluginConfig[],
 ): Range[] {
   const [node, _path] = entry;
@@ -23,22 +25,20 @@ export function computeDecorations(
 
   const element = node as InkwellElement;
 
-  if (element.type === "code-line") {
-    return computeCodeDecorations(entry, editor, rehypePlugins);
+  if (element.type === "code-block") {
+    return computeCodeBlockDecorations(entry, rehypePlugins);
   }
 
-  if (
-    element.type === "paragraph" ||
-    element.type === "blockquote" ||
-    element.type === "heading"
-  ) {
+  if (element.type === "paragraph" || element.type === "heading") {
     return computeInlineDecorations(entry);
   }
 
-  if (element.type === "code-fence") {
-    return computeFenceDecorations(entry);
-  }
-
+  // Blockquote holds block children under the nestable schema — its
+  // direct `Node.string` walks all descendants, but the decoration
+  // ranges are computed against text-leaf offsets inside the *inner*
+  // paragraphs (Slate calls `decorate` for each descendant separately).
+  // Returning `[]` here avoids producing invalid ranges that target
+  // path positions where no text node exists.
   return [];
 }
 
@@ -241,7 +241,7 @@ function computeInlineDecorations(entry: NodeEntry): Range[] {
     if (isInCode(match.index)) continue;
     if (isInLink(match.index)) continue;
     let matched = match[0];
-    let start = match.index;
+    const start = match.index;
     let end = start + matched.length;
     while (matched.length > 0 && /[.,;:!?]/.test(matched[matched.length - 1])) {
       matched = matched.slice(0, -1);
@@ -259,124 +259,39 @@ function computeInlineDecorations(entry: NodeEntry): Range[] {
 }
 
 /**
- * Code fence decorations: dim the entire fence line.
+ * Run highlight.js over the entire code-block text in one pass and map
+ * the resulting `<span class="hljs-*">` ranges onto Slate decoration
+ * ranges. The block carries a single multi-line text leaf, so offsets
+ * align directly with `Node.string(block)` — no per-line splitting or
+ * span re-opening across line boundaries is needed.
  */
-function computeFenceDecorations(entry: NodeEntry): Range[] {
-  const [node, _path] = entry;
-  const text = Node.string(node);
-  if (!text) return [];
-  return [];
-}
-
-/**
- * Code block syntax highlighting via highlight.js.
- * Collects all code-line siblings, runs the full code through hljs,
- * and maps highlighted spans back to decoration ranges for this line.
- */
-function computeCodeDecorations(
+function computeCodeBlockDecorations(
   entry: NodeEntry,
-  editor: Editor,
   rehypePlugins?: RehypePluginConfig[],
 ): Range[] {
   const [node, path] = entry;
-  const lineText = Node.string(node);
-  if (!lineText) return [];
+  const code = Node.string(node);
+  if (!code.trim()) return [];
 
-  // Find the opening fence to get language
-  const lineIndex = path[0];
-  let lang = "";
-  for (let i = lineIndex - 1; i >= 0; i--) {
-    const sibling = editor.children[i] as InkwellElement;
-    if (sibling.type === "code-fence") {
-      lang = Node.string(sibling).replace(/^`+/, "").trim();
-      break;
-    }
-  }
+  const element = node as InkwellElement;
+  const lang = element.lang ?? "";
 
-  // Collect all code lines in this block for context
-  const codeLines: string[] = [];
-  let blockStartIdx = -1;
-  for (let i = lineIndex - 1; i >= 0; i--) {
-    const sibling = editor.children[i] as InkwellElement;
-    if (sibling.type === "code-fence") {
-      blockStartIdx = i + 1;
-      break;
-    }
-    if (sibling.type !== "code-line") break;
-  }
-  if (blockStartIdx === -1) blockStartIdx = lineIndex;
-
-  for (let i = blockStartIdx; i < editor.children.length; i++) {
-    const sibling = editor.children[i] as InkwellElement;
-    if (sibling.type === "code-fence") break;
-    if (sibling.type !== "code-line") break;
-    codeLines.push(Node.string(sibling));
-  }
-
-  const thisLineIdx = lineIndex - blockStartIdx;
-  const fullCode = codeLines.join("\n");
-  if (!fullCode.trim()) return [];
-
-  // Run through highlight.js via the pipeline
-  const highlighted = highlightAndSplit(fullCode, lang, rehypePlugins);
-  const lineHtml = highlighted[thisLineIdx];
-  if (!lineHtml) return [];
-
-  // Parse the highlighted HTML into ranges
-  return parseHljsRanges(lineHtml, path);
-}
-
-/**
- * Highlight code and split into per-line HTML.
- * Handles multi-line spans by closing/reopening at line boundaries.
- */
-function highlightAndSplit(
-  code: string,
-  lang: string,
-  rehypePlugins?: RehypePluginConfig[],
-): string[] {
   const md = "```" + lang + "\n" + code + "\n```";
   const html = renderMarkdownToHtml(md, rehypePlugins);
   const match = html.match(/<code[^>]*>([\s\S]*?)<\/code>/);
   const raw = match?.[1]?.replace(/^\n|\n$/g, "") || "";
   if (!raw) return [];
 
-  const lines: string[] = [];
-  let currentLine = "";
-  const openSpans: string[] = [];
-
-  for (let i = 0; i < raw.length; i++) {
-    if (raw[i] === "\n") {
-      for (let j = openSpans.length - 1; j >= 0; j--) currentLine += "</span>";
-      lines.push(currentLine);
-      currentLine = openSpans.join("");
-    } else if (raw[i] === "<") {
-      const closeIdx = raw.indexOf(">", i);
-      if (closeIdx === -1) {
-        currentLine += raw[i];
-        continue;
-      }
-      const tag = raw.slice(i, closeIdx + 1);
-      currentLine += tag;
-      if (tag.startsWith("<span")) {
-        openSpans.push(tag);
-      } else if (tag === "</span>") {
-        openSpans.pop();
-      }
-      i = closeIdx;
-    } else {
-      currentLine += raw[i];
-    }
-  }
-  for (let j = openSpans.length - 1; j >= 0; j--) currentLine += "</span>";
-  if (currentLine) lines.push(currentLine);
-
-  return lines;
+  return parseHljsRanges(raw, path);
 }
 
 /**
- * Parse a single line of highlighted HTML (with <span class="hljs-*">)
- * into Slate decoration ranges.
+ * Walk a highlighted HTML string (containing `<span class="hljs-*">`
+ * elements over plain text) and emit Slate decoration ranges keyed to
+ * the corresponding offsets inside the code-block's text leaf.
+ *
+ * Supports nested spans via a class stack — when ranges nest, the
+ * innermost class wins (matches how the decoration mark is rendered).
  */
 function parseHljsRanges(html: string, elementPath: number[]): Range[] {
   const ranges: Range[] = [];

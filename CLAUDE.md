@@ -17,12 +17,30 @@ packages/
     src/
       index.ts                 Public exports
       types.ts                 Public TypeScript types
+      components/              Shared block components (Heading, Blockquote, …)
+                               consumed by both editor and renderer surfaces
+      mdast/                   Markdown ↔ mdast helpers (parse, stringify)
       editor/inkwell-editor.tsx
       editor/slate/            Slate model, serialize/deserialize, features
       renderer/                Read-only renderer + renderer utilities
       plugins/                 Built-in plugins and tests
   inkwell-docs/                Astro Starlight docs + React demo island
 ```
+
+### Shared block components
+
+`src/components/` holds the React components both surfaces render:
+`Heading`, `Blockquote`, `CodeBlock`, `List`, `ListItem`, `Image`.
+Each accepts `surface: "editor" | "renderer"` so the editor-only
+`inkwell-editor-*` classes are added on the editor surface and omitted
+on the renderer surface (the renderer relies on
+`.inkwell-renderer <tag>` descendant selectors).
+
+The renderer registers these via rehype-react's `components` map in
+`src/components/renderer-bindings.tsx`. The editor's
+`render-element.tsx` invokes them directly with Slate's `attributes`
+spread. The DOM-parity test (`src/dom-parity.test.tsx`) guards that
+the block markup shape stays aligned across both surfaces.
 
 ## Commands
 
@@ -80,15 +98,167 @@ types. `RehypePluginConfig` accepts plugin tuples with rest options:
 `[plugin, ...options]`. Do not export internal Slate helpers or shared plugin
 primitives from the root API.
 
+## Unified mdast pipeline
+
+Both surfaces parse the same way. `src/mdast/parse.ts` exposes
+`parseMarkdownToMdast(content)`, which runs `remark-parse` + `remark-gfm`
+with Inkwell's parse-shaping plugins (`remarkNoTables`,
+`remarkNoThematicBreak`, and one of the soft-break shapers) and returns
+a single mdast `Root` with position info on every block.
+
+`parseMarkdownToMdast` also escapes bare `>` line markers (`>foo`
+without a trailing space) to `\>` before parsing, so CommonMark doesn't
+treat them as blockquotes — Inkwell only models the space-prefixed `> `
+form as structural. The escape inserts a byte, which shifts every
+downstream mdast `position.offset`, so the tree is remapped back to
+original-source offsets after parsing. **Never slice the original
+source with raw post-parse offsets** — they index the escaped string,
+and that desync silently dropped a leading char from every block after
+a bare-`>` line (`bar` → `ar`). Documents with no bare-`>` line skip
+the remap entirely, so the common path is untouched.
+
+Two adapters consume that tree:
+
+- `src/mdast/to-slate.ts` (`mdastToSlate(tree, content)`) — used by the
+  editor's `deserialize`. Container blocks (blockquote, list, list-item)
+  convert structurally. Leaf-bearing blocks (paragraph, heading) pull
+  the verbatim source slice via mdast `position.offset` so D1=visible
+  markers (`**bold**`, `[label](url)`, `# `) stay as text in the slate
+  node. Standalone images (`![alt](url)` on their own line) promote to
+  top-level void image elements — Slate's arrow-key navigation needs a
+  block-level void to land on.
+- `src/renderer/...` (rehype-react via `parseMarkdown`) — used by
+  `<InkwellRenderer>`. Same mdast tree, projected through
+  `mdast-util-to-hast` to HTML.
+
+The reverse direction is `src/mdast/from-slate.ts`
+(`slateToMdast(nodes)`). Inline content is re-parsed through `remark`
+so `Strong` / `Emphasis` / `Link` / etc. nodes are recovered before
+`stringifyMdast` (which wraps `mdast-util-to-markdown` + the `gfm`
+extension) emits the source. Container empty-paragraph handling:
+list items drop all empty paragraphs (`"none"` policy); blockquotes
+keep leading and trailing empty paragraphs but drop **internal**
+empties (`"edges"` policy) so the natural mdast paragraph separator
+isn't doubled.
+
+`stringifyMdast` post-processes the toMarkdown output to strip a few
+defensive escapes Inkwell doesn't need:
+
+- `\---`/`\***`/`\___` (thematic-break protection — unneeded under
+  `remarkNoThematicBreak`)
+- `\[` / `\]` (link-bracket protection — Inkwell stores link source
+  verbatim in text)
+- Trailing `&#x20;` (trailing-whitespace protection)
+- `\>` after a blockquote prefix (so legacy text-leaf blockquotes
+  round-trip nested-quote markers cleanly)
+
+It also collapses runs of consecutive bare-`>` lines to a single `>`.
+
+`deserialize` for single-line plain-text input bypasses the slice path
+and keeps `content` verbatim as paragraph text. Paste paths feed text
+like `" there"` through `deserialize` and need the leading whitespace
+preserved (mdast normally strips it from paragraph source slices).
+
+The line-based regex deserialize/serialize is gone. Don't reintroduce
+a per-line scanner — when fixing a corner case, fix it inside the
+adapters or in `stringifyMdast`'s post-process.
+
+### Source cache
+
+Untouched blocks round-trip byte-for-byte through a per-block source
+cache keyed by Slate node id. `deserializeWithRanges` returns
+`BlockLineRange[]` derived from mdast position info;
+`populateSourceCacheFromParse` stores the verbatim source slice for
+each top-level block. On serialize, `slateToMdast` runs first, but a
+top-level block whose canonical re-stringification matches its cached
+canonical form short-circuits and re-emits the original slice
+verbatim. Style normalizations (`*` → `-`, `> a\n> b` → `> a\n>\n>
+b`, tight nested lists) only fire for blocks the user has actually
+edited.
+
 ## Editor Rendering Model
 
 Formatting is feature-based. The public prop is `features`.
 All features are enabled by default:
 
 - `headings` with optional `h1`–`h6` overrides
-- `blockquotes`
-- `codeBlocks`
+- `blockquotes` (nestable — `blockquote` elements hold block children;
+  the `> ` marker is structural and is not stored on any inner text
+  leaf, the editor re-emits it on serialize)
+- `codeBlocks` — each fenced block becomes a single `code-block` element
+  with a multi-line text leaf and an optional `lang` property. The
+  fences themselves are structural; serialize wraps the text back in
+  ` ```lang ` / ` ``` `. Editor renders as `<pre data-lang="…"><code>…</code></pre>`;
+  `white-space: pre-wrap` on `.inkwell-editor-code-block` keeps caret
+  placement aligned with the visual line breaks.
 - `images`
+
+Lists are not a feature-flag (they're always recognized). A run of
+`<marker> content` lines (unordered `-`/`*`/`+` or ordered `<n>.`)
+deserializes to a `list` element with `list-item` children. Each item
+holds a paragraph + an optional nested list. The marker is structural —
+serialize re-emits it. Editor renders as `<ul>`/`<ol>` + `<li>`. `Tab`
+inside a list-item nests it under its previous sibling (creating or
+reusing a nested list); `Shift+Tab` un-nests one level. Ordered lists
+remember a non-default starting number on the list element's `start`
+property and emit `<ol start="…">` accordingly.
+
+Images are top-level void blocks. A standalone `![alt](url)` line
+deserializes to a top-level `image` element (rather than the mdast-
+native `paragraph > image` shape) so Slate's arrow-key navigation has
+a block-level stop to land on. The editor renders the image inside a
+`<div class="inkwell-editor-image"><img/></div>` for selection chrome.
+`insertImage` / `updateImage` / `removeImage` on the plugin editor
+walk the tree to find images by id.
+
+## Source cache
+
+The editor maintains a per-instance `SourceCache` (see
+`src/editor/slate/source-cache.ts`) so untouched top-level blocks
+round-trip byte-for-byte through deserialize → serialize. Without it,
+`> a\n> b` would normalize to `> a\n>\n> b`; `***` would normalize to
+`\*\*\*`; `* one\n* two` would normalize to `- one\n- two` — all valid
+mdast canonical forms but stylistically jarring to a user who didn't
+touch the block.
+
+The cache is keyed by Slate node id and stores
+`{ source, canonical }` per top-level block. Populated at parse time
+(deserialize tracks line ranges; the orchestrator slices the original
+`content` accordingly). On serialize, each top-level block recomputes
+its canonical form and compares; matches emit the cached source slice,
+misses fall back to canonical.
+
+**Every** serialize path threads the cache — `getState`, the character
+count, `onSubmit`, and the `onChange` emission in `handleChange`. They
+must stay aligned: if `onChange` serialized without the cache it would
+emit normalized untouched siblings (`*` → `-`, expanded blockquotes)
+while `getState` kept them verbatim, silently diverging a controlled
+`onChange={setContent}` consumer's stored string from the editor. The
+cache-faithful `onChange` is also what lets the `handleChange` echo
+guard suppress the `onChange` that imperative `setContent`/`clear`
+would otherwise leak (the prior dead `suppressImperativeOnChange` ref
+never gated anything).
+
+Invalidation rides on `editor.apply`: any op whose path touches a
+top-level block (and `move_node`'s `newPath` as well) drops that
+block's entry. This is broad — some edits that preserve canonical
+shape still invalidate — but the fallback is just the canonical
+form, which is correct. The cache lives outside Slate state, so
+undo/redo doesn't have to thread through it; the canonical-equality
+check naturally re-uses cache entries when the structure returns to
+its previous shape.
+
+Thematic breaks (`---` / `***` / `___` / `* * *` / `- - -`) are not
+modeled. `remarkNoThematicBreak` rewrites every `thematicBreak` node
+back to a paragraph in the parse pipeline, so these markers stay as
+plain paragraph text in both surfaces (no `<hr>` rendering, no
+decoration). A standard mdast `thematicBreak` carries no value, so the
+plugin slices the **verbatim** marker from the parsed source by
+`position.offset` (it takes the source string as a `source` option) —
+otherwise the renderer would collapse every marker to `---` while the
+editor's source slice kept the typed one, breaking WYSIWYG parity. The
+`\---` / `\***` / `\___` defensive escapes mdast-util-to-markdown would
+emit are stripped by `stringifyMdast`'s post-process.
 
 List markers (`-`, `*`, `+`, `1.`) stay plain text in the editor and are not
 part of configurable editor features.
@@ -155,29 +325,23 @@ color tokens in the 5-selector `:where()` block: `--inkwell-font-size`,
 `--inkwell-space-heading`, `--inkwell-space-blockquote`,
 `--inkwell-space-list`, `--inkwell-space-list-item`,
 `--inkwell-list-indent`, `--inkwell-space-code-block`,
-`--inkwell-space-image`, `--inkwell-space-hr`. Editor rules
-(`.inkwell-editor`, `.inkwell-editor-blockquote`,
-`.inkwell-editor-heading-*`, `.inkwell-editor-image`,
-`.inkwell-editor code`) and renderer rules (`.inkwell-renderer`,
-`.inkwell-renderer h1`-`h6`, `.inkwell-renderer p`,
+`--inkwell-space-image`. Editor rules (`.inkwell-editor`,
+`.inkwell-editor-blockquote`, `.inkwell-editor-heading-*`,
+`.inkwell-editor-image`, `.inkwell-editor code`) and renderer rules
+(`.inkwell-renderer`, `.inkwell-renderer h1`-`h6`, `.inkwell-renderer p`,
 `.inkwell-renderer blockquote`, `.inkwell-renderer ul/ol/li`,
-`.inkwell-renderer code/pre`, `.inkwell-renderer hr`,
-`.inkwell-renderer img`) consume the tokens — the
-`styles.test.ts > references … in both editor and renderer` cases
-enforce that the shared tokens stay referenced on both surfaces. When
-adding a new typography or spacing rule, route it through a token
+`.inkwell-renderer code/pre`, `.inkwell-renderer img`) consume the
+tokens — the `styles.test.ts > references … in both editor and renderer`
+cases enforce that the shared tokens stay referenced on both surfaces.
+When adding a new typography or spacing rule, route it through a token
 rather than a literal so both surfaces stay aligned.
 
-Editor paragraphs are the deliberate exception: `.inkwell-editor p`
-keeps `margin: 0` and does not consume `--inkwell-space-paragraph`. The
-editor's content model emits one `<p>` per source line and represents
-blank lines as empty `<p>` nodes (cursor targets needed for source
-round-trip fidelity). A non-zero paragraph margin in the editor would
-compound with those empty paragraphs and visually multiply the gap
-between blocks — the opposite of WYSIWYG. Don't reintroduce a non-zero
-default until the empty-paragraph encoding is reworked; the test in
-`styles.test.ts` deliberately excludes `--inkwell-space-paragraph`
-from the shared-token list.
+Blank source lines do not produce empty-paragraph nodes. They flush
+the current paragraph run; paragraph margins
+(`--inkwell-space-paragraph`, shared with the renderer) handle the
+visual gap between sibling blocks. Source round-trip fidelity comes
+from the source cache; collapsed blank runs (3+ newlines between
+blocks) normalize to one blank line.
 
 What stays at normal specificity — and MUST stay there — is layout-critical
 geometry: `.inkwell-editor-wrapper` (position relative anchors plugins),
@@ -299,4 +463,4 @@ positioned inside the editor wrapper.
 
 - `parseHljsRanges` must handle hex/decimal HTML entities (`&#x3C;`)
 - `parseHljsRanges` uses a class stack for nested hljs spans
-- `computeInlineFeatures` assumes a single text node per element
+- `computeDecorations` assumes a single text node per element

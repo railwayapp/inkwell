@@ -87,10 +87,24 @@ export function remarkSoftBreakAsParagraph() {
       let start = 0;
       for (const breakIdx of [...breakIndices, expanded.length]) {
         if (breakIdx > start) {
-          newParagraphs.push({
+          const slice = expanded.slice(start, breakIdx);
+          const paragraph: Paragraph = {
             type: "paragraph",
-            children: expanded.slice(start, breakIdx),
-          });
+            children: slice,
+          };
+          // Preserve mdast position info on the split paragraph. The
+          // source-faithful adapter (`mdastToSlate`) reads
+          // `position.offset` to slice the original source — without
+          // this the split paragraphs come through with empty text.
+          const firstPos = slice[0]?.position;
+          const lastPos = slice[slice.length - 1]?.position;
+          if (firstPos && lastPos) {
+            paragraph.position = {
+              start: firstPos.start,
+              end: lastPos.end,
+            };
+          }
+          newParagraphs.push(paragraph);
         }
         start = breakIdx + 1;
       }

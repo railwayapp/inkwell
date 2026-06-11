@@ -182,7 +182,6 @@ describe("bundled stylesheet contract", () => {
     ".inkwell-renderer code",
     ".inkwell-renderer pre",
     ".inkwell-renderer pre code",
-    ".inkwell-renderer hr",
     ".inkwell-renderer strong",
     ".inkwell-renderer em",
     ".inkwell-renderer del",
@@ -310,7 +309,6 @@ describe("bundled stylesheet contract", () => {
     "--inkwell-list-indent",
     "--inkwell-space-code-block",
     "--inkwell-space-image",
-    "--inkwell-space-hr",
   ];
 
   it.each(TYPOGRAPHY_TOKENS)("declares %s in the token block", token => {
@@ -325,15 +323,6 @@ describe("bundled stylesheet contract", () => {
   // change tokenizes a value on only one surface, the WYSIWYG promise
   // breaks — call that out by making the missing reference a test
   // failure.
-  //
-  // `--inkwell-space-paragraph` is intentionally NOT in this list. The
-  // editor model emits one `<p>` per source line (blank lines become
-  // empty paragraph nodes that serve as cursor targets), so a non-zero
-  // paragraph margin in the editor would compound with those empty
-  // paragraphs and visually multiply the gap between blocks. The
-  // editor's paragraph margin stays at `0` until the empty-paragraph
-  // encoding is reworked; the renderer keeps the token as its source
-  // of truth.
   const SHARED_TOKENS = [
     "--inkwell-font-size",
     "--inkwell-line-height",
@@ -342,9 +331,14 @@ describe("bundled stylesheet contract", () => {
     "--inkwell-h3-size",
     "--inkwell-heading-weight",
     "--inkwell-heading-line-height",
+    "--inkwell-space-paragraph",
     "--inkwell-space-heading",
     "--inkwell-space-blockquote",
     "--inkwell-space-image",
+    "--inkwell-space-code-block",
+    "--inkwell-space-list",
+    "--inkwell-space-list-item",
+    "--inkwell-list-indent",
     "--inkwell-code-font-size",
   ];
 

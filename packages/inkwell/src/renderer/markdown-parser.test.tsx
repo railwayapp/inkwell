@@ -198,10 +198,20 @@ describe("parseMarkdown", () => {
     expect(extractText(bq)).toContain("quoted text");
   });
 
-  it("parses horizontal rules", () => {
+  it("does not parse `---` as a horizontal rule (thematic-break disabled)", () => {
     const result = parseMarkdown("---");
     const hr = findElementByType(result, "hr");
-    expect(hr).not.toBeNull();
+    expect(hr).toBeNull();
+  });
+
+  it("keeps the verbatim marker for non-dash thematic breaks", () => {
+    // Regression: markers other than `---` used to collapse to `---`,
+    // breaking parity with the editor's verbatim source slice.
+    for (const marker of ["***", "___", "* * *"]) {
+      const result = parseMarkdown(marker);
+      expect(findElementByType(result, "hr")).toBeNull();
+      expect(extractText(result)).toContain(marker);
+    }
   });
 
   it("does not parse GFM tables", () => {

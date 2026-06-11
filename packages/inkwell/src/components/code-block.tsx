@@ -1,9 +1,40 @@
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import {
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
+import type { InkwellSurface } from "./types";
 
-export function CopyCodeBlock({
+interface CodeBlockProps
+  extends Omit<ComponentPropsWithoutRef<"pre">, "children"> {
+  surface: InkwellSurface;
+  children?: ReactNode;
+}
+
+/**
+ * Fenced code block shared by both surfaces. The renderer wraps the
+ * `<pre>` in a container with a copy button; the editor surface is a
+ * plain pass-through (the editor's own render-element wraps the
+ * `code-block` element directly with selection chrome).
+ *
+ * Hooked into the renderer pipeline as the `pre` component on
+ * rehype-react's components map — when a consumer overrides
+ * `components.pre`, the renderer falls back to that override and skips
+ * this entirely.
+ */
+export function CodeBlock({ surface, children, ...rest }: CodeBlockProps) {
+  if (surface === "editor") {
+    return <pre {...rest}>{children}</pre>;
+  }
+  return <CodeBlockWithCopy {...rest}>{children}</CodeBlockWithCopy>;
+}
+
+function CodeBlockWithCopy({
   children,
-  ...props
-}: { children?: ReactNode } & React.HTMLAttributes<HTMLPreElement>) {
+  ...rest
+}: ComponentPropsWithoutRef<"pre"> & { children?: ReactNode }) {
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -53,7 +84,7 @@ export function CopyCodeBlock({
           </svg>
         )}
       </button>
-      <pre ref={preRef} {...props}>
+      <pre ref={preRef} {...rest}>
         {children}
       </pre>
     </div>

@@ -74,9 +74,20 @@ describe("renderMarkdownToHtml", () => {
     expect(html).toContain("quote");
   });
 
-  it("renders horizontal rules", () => {
+  it("keeps `---` as plain paragraph text (thematic-break removed)", () => {
     const html = renderMarkdownToHtml("---");
-    expect(html).toContain("<hr>");
+    expect(html).not.toContain("<hr>");
+    expect(html).toContain("---");
+  });
+
+  it("keeps the verbatim marker for non-dash thematic breaks", () => {
+    // Regression: every thematic-break marker used to render as `---`,
+    // diverging from the editor (which keeps the typed marker).
+    for (const marker of ["***", "___", "* * *", "- - -"]) {
+      const html = renderMarkdownToHtml(marker);
+      expect(html).not.toContain("<hr>");
+      expect(html).toContain(marker);
+    }
   });
 
   it("strips GFM tables", () => {
@@ -108,13 +119,14 @@ describe("renderMarkdownToHtml", () => {
     expect(html).toContain("with space");
   });
 
-  it("flattens nested blockquotes to single level", () => {
+  it("renders nested blockquotes as a real blockquote tree", () => {
+    // The renderer mirrors what mdast (and the editor schema) produce
+    // for `> > nested`: an outer blockquote containing an inner
+    // blockquote containing the paragraph.
     const html = renderMarkdownToHtml("> > nested");
-    // Should be a single blockquote, not nested
     const blockquoteCount = (html.match(/<blockquote>/g) || []).length;
-    expect(blockquoteCount).toBe(1);
-    // Inner > should appear as text
-    expect(html).toContain("> nested");
+    expect(blockquoteCount).toBe(2);
+    expect(html).toContain("<p>nested</p>");
   });
 
   it("renders blockquote lines as separate paragraphs", () => {

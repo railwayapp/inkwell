@@ -1,68 +1,65 @@
-import { Node } from "slate";
+import { canonicalize } from "./canonicalize";
+import { getCachedSource, type SourceCache } from "./source-cache";
 import type { InkwellElement } from "./types";
 
-/**
- * A Markdown list-like line — unordered (`-`, `*`, `+`) or ordered (`1.`),
- * with optional leading indent. Used to detect paragraph runs that should
- * serialize without blank-line separators.
- */
-const LIST_LIKE_PARAGRAPH_RE = /^\s*(?:[-*+]|\d+\.)(?:\s|$)/;
-
-const isListLikeParagraph = (entry: { text: string; type: string }) =>
-  entry.type === "paragraph" && LIST_LIKE_PARAGRAPH_RE.test(entry.text);
+export interface SerializeOptions {
+  /**
+   * Optional per-block source cache (see `source-cache.ts`). When
+   * provided, each top-level block is emitted as the cached source
+   * slice if its current canonical form matches the cached one,
+   * preserving byte-for-byte fidelity for untouched blocks. Edited
+   * blocks fall back to the canonical form produced by
+   * `slateToMdast → stringifyMdast`.
+   */
+  cache?: SourceCache;
+}
 
 /**
  * Serialize Slate elements back to a markdown string.
  *
- * Consecutive code elements (fence + lines), consecutive blockquotes, and
- * consecutive list-like paragraphs are joined with single newlines.
- * Everything else uses double newlines (paragraph breaks).
+ * Single pass: `slateToMdast` adapts the Slate tree into an mdast
+ * tree (re-parsing inline content from paragraph text so the markers
+ * become structural inline nodes), then `stringifyMdast` emits
+ * canonical markdown via `mdast-util-to-markdown`. The bespoke
+ * blockquote/list source-emission logic that used to live here is
+ * gone — both Inkwell surfaces produce markdown through the same
+ * stringifier now.
+ *
+ * Source-cache short-circuit: for each top-level block, recompute the
+ * canonical form and compare against the cached one. On match, emit
+ * the cached source slice verbatim — that's how `> a\n> b` survives
+ * round-trip even though mdast would canonicalize it to
+ * `> a\n>\n> b`.
  */
-export function serialize(nodes: InkwellElement[]): string {
-  const entries: { text: string; type: string }[] = [];
+export function serialize(
+  nodes: InkwellElement[],
+  options: SerializeOptions = {},
+): string {
+  const cache = options.cache;
+  const pieces: string[] = [];
 
   for (const node of nodes) {
-    const text = Node.string(node);
-    const type = node.type;
-
-    // Markdown source markers are stored as text. Element metadata only drives
-    // rendering and editing behavior; serialization returns the source content.
-    // Image nodes created by plugins may not have source text yet, so synthesize
-    // their source form from node metadata at the content boundary.
-    if (type === "image" && !text) {
-      const url = node.url ?? "";
-      const alt = node.alt ?? "";
-      entries.push({ text: `![${alt}](${url})`, type });
+    if (cache) {
+      const canonical = canonicalize(node);
+      const cached = getCachedSource(cache, node, canonical);
+      if (cached !== undefined) {
+        pieces.push(cached);
+        continue;
+      }
+      pieces.push(canonical);
       continue;
     }
-
-    // Skip empty paragraphs that are just separators
-    if (type === "paragraph" && !text.trim()) {
-      entries.push({ text: "", type });
-      continue;
-    }
-
-    entries.push({ text, type });
+    pieces.push(canonicalize(node));
   }
 
-  // Join: consecutive code/blockquote/list-like-paragraph elements use \n,
-  // everything else uses \n\n.
-  const codeTypes = new Set(["code-fence", "code-line"]);
-  let result = "";
-  for (let i = 0; i < entries.length; i++) {
-    if (i > 0) {
-      const prev = entries[i - 1];
-      const curr = entries[i];
-      const sameGroup =
-        (prev.type === "blockquote" && curr.type === "blockquote") ||
-        (codeTypes.has(prev.type) && codeTypes.has(curr.type)) ||
-        (isListLikeParagraph(prev) && isListLikeParagraph(curr));
-      result += sameGroup ? "\n" : "\n\n";
-    }
-    result += entries[i].text;
-  }
-
-  // Trim leading/trailing blank lines and collapse runs of 3+ blanks to 2,
-  // but preserve leading whitespace on individual lines (Markdown list indent).
-  return result.replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
+  // mdast-util-to-markdown emits a trailing newline per block; we
+  // joined the blocks already, so trim leading/trailing whitespace.
+  // Multiple blank lines between blocks collapse to one blank line.
+  return pieces
+    .filter(p => p.length > 0)
+    .join("\n\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\n+|\n+$/g, "");
 }
+
+export { canonicalize } from "./canonicalize";

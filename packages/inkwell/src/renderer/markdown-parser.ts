@@ -1,24 +1,17 @@
+import type { Nodes as HastNodes } from "hast";
 import { createElement, Fragment, type ReactNode } from "react";
 import { jsx, jsxs } from "react/jsx-runtime";
 import rehypeHighlight from "rehype-highlight";
 import rehypeReact from "rehype-react";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import remarkGfm from "remark-gfm";
-import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import type { Plugin } from "unified";
 import { unified } from "unified";
 import { SKIP, visit } from "unist-util-visit";
 import rehypeTrimCodeBlockTrailingNewline from "../lib/rehype-trim-code-block-newline";
-import remarkFlattenBlockquotes from "../lib/remark-flatten-blockquotes";
-import remarkNoTables from "../lib/remark-no-tables";
-import {
-  remarkSoftBreakAsBreak,
-  remarkSoftBreakAsParagraph,
-} from "../lib/remark-soft-break";
+import { parseMarkdownToMdast } from "../mdast/parse";
 import type {
   InkwellComponents,
-  InkwellSoftBreakBehavior,
   MentionRenderer,
   ParseMarkdownOptions,
   RehypePluginConfig,
@@ -31,7 +24,6 @@ interface ProcessorOptions {
   components?: InkwellComponents;
   rehypePlugins?: RehypePluginConfig[];
   mentions?: MentionRenderer[];
-  softBreak?: InkwellSoftBreakBehavior;
 }
 
 /**
@@ -129,21 +121,16 @@ function rehypeMentions(mentions: MentionRenderer[]): RehypePlugin {
   };
 }
 
+/**
+ * Build the mdast → hast → React processor. Starts at `remarkRehype`
+ * because the front of the pipeline (remark-parse + GFM + the
+ * project-specific shaping plugins + bare-blockquote escape) lives in
+ * `mdast/parse.ts` so both surfaces share it. Anything that mutates
+ * mdast belongs upstream; anything that mutates hast or compiles the
+ * tree to React belongs here.
+ */
 function createProcessor(options: ProcessorOptions = {}) {
-  const proc = unified()
-    .use(remarkParse)
-    .use(remarkGfm)
-    .use(remarkNoTables)
-    .use(remarkFlattenBlockquotes);
-
-  const softBreak: InkwellSoftBreakBehavior = options.softBreak ?? "paragraph";
-  if (softBreak === "br") {
-    proc.use(remarkSoftBreakAsBreak);
-  } else if (softBreak === "paragraph") {
-    proc.use(remarkSoftBreakAsParagraph);
-  }
-
-  proc.use(remarkRehype);
+  const proc = unified().use(remarkRehype);
 
   const plugins = options.rehypePlugins ?? [
     [rehypeHighlight, { detect: true }],
@@ -206,20 +193,19 @@ function createProcessor(options: ProcessorOptions = {}) {
 }
 
 /**
- * Escape ">" at start of line when not followed by a space.
- */
-function escapeBareBq(markdown: string): string {
-  return markdown.replace(/^>(?=\S)/gm, "\\>");
-}
-
-/**
- * Parse a markdown string into React elements synchronously
+ * Parse a markdown string into React elements synchronously.
+ *
+ * Front-end mdast parsing (remark-parse + GFM + project plugins +
+ * bare-blockquote escape) goes through `parseMarkdownToMdast` — the
+ * same function the editor uses — then the resulting tree flows
+ * through the rehype/React processor.
  */
 export function parseMarkdown(
   content: string,
   options: ParseMarkdownOptions = {},
 ): ReactNode {
+  const mdast = parseMarkdownToMdast(content, { softBreak: options.softBreak });
   const processor = createProcessor(options);
-  const file = processor.processSync(escapeBareBq(content));
-  return file.result;
+  const hast = processor.runSync(mdast) as HastNodes;
+  return processor.stringify(hast) as ReactNode;
 }

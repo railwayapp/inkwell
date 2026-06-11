@@ -226,7 +226,13 @@ export function withMarkdown(
     //   split, which inserts a sibling paragraph inside the blockquote.
     if (element.type === "paragraph") {
       const bqPath = nearestBlockquotePath(editor, path);
-      if (bqPath !== null && text === "") {
+      // Only handle paragraphs that are DIRECT children of the
+      // blockquote. An empty paragraph nested deeper (inside a list in
+      // the quote) belongs to the list-exit branch below — handling it
+      // here used to count the blockquote's direct children (just the
+      // list), conclude "only child", and delete the entire blockquote
+      // with all its content.
+      if (bqPath !== null && text === "" && Path.isParent(bqPath, path)) {
         const blockquote = Node.get(editor, bqPath) as InkwellElement;
         const isOnlyChild = blockquote.children.length === 1;
         const newParagraph: InkwellElement = {
@@ -334,19 +340,38 @@ export function withMarkdown(
         if (text === "") {
           const listPath = Path.parent(liPath);
           const list = Node.get(editor, listPath) as InkwellElement;
-          const isOnlyItem = list.children.length === 1;
+          const li = Node.get(editor, liPath) as InkwellElement;
+          // Decide how much structure the exit removes. Never remove a
+          // node that still holds other content — "remove the whole
+          // list" used to fire on `list.children.length === 1` alone,
+          // destroying sibling paragraphs/nested lists via plain Enter
+          // presses.
+          const liHasOtherContent = li.children.length > 1;
+          const listHasOtherItems = list.children.length > 1;
           const newParagraph: InkwellElement = {
             type: "paragraph",
             id: generateId(),
             children: [{ text: "" }],
           };
-          const insertAt = isOnlyItem ? listPath : Path.next(listPath);
+          let removeAt: Path;
+          let insertAt: Path;
+          if (liHasOtherContent) {
+            // Only the empty paragraph goes; the item keeps its other
+            // children. The fresh paragraph exits past the list.
+            removeAt = path;
+            insertAt = Path.next(listPath);
+          } else if (listHasOtherItems) {
+            // The item held nothing but the empty paragraph — drop it.
+            removeAt = liPath;
+            insertAt = Path.next(listPath);
+          } else {
+            // The whole list is just this one empty item — replace the
+            // list with the paragraph in place.
+            removeAt = listPath;
+            insertAt = listPath;
+          }
           Editor.withoutNormalizing(editor, () => {
-            if (isOnlyItem) {
-              Transforms.removeNodes(editor, { at: listPath });
-            } else {
-              Transforms.removeNodes(editor, { at: liPath });
-            }
+            Transforms.removeNodes(editor, { at: removeAt });
             Transforms.insertNodes(editor, newParagraph, { at: insertAt });
           });
           Transforms.select(editor, Editor.start(editor, insertAt));
@@ -362,6 +387,21 @@ export function withMarkdown(
         });
         return;
       }
+    }
+
+    // Enter on image → insert paragraph after the image (void elements
+    // can't hold a cursor internally). Without this branch the default
+    // path below retypes the void element itself into a paragraph,
+    // deleting the image.
+    if (element.type === "image") {
+      const newParagraph: InkwellElement = {
+        type: "paragraph",
+        id: generateId(),
+        children: [{ text: "" }],
+      };
+      Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
+      Transforms.select(editor, Editor.start(editor, Path.next(path)));
+      return;
     }
 
     // Default: insert new paragraph
@@ -581,7 +621,14 @@ export function withMarkdown(
     }
     const fragment = editor.getFragment() as InkwellElement[];
     if (fragment.length > 0) {
-      data.setData("text/plain", serialize(fragment));
+      // Thread the editor's source cache so fully-selected untouched
+      // blocks hit the same byte-faithful short-circuit as getState /
+      // onChange. Partially-selected blocks miss the canonical-equality
+      // gate and fall back to canonical, which is correct.
+      data.setData(
+        "text/plain",
+        serialize(fragment, { cache: editor.sourceCache }),
+      );
     }
   };
 

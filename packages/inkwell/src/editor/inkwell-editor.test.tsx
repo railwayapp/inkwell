@@ -1479,6 +1479,48 @@ describe("InkwellEditor — imperative API and state", () => {
     expect(ref.current?.getState().content).toBe("- one\n  - two");
   });
 
+  it("Shift+Tab un-nests the last nested item and removes the emptied nested list", async () => {
+    // Regression: the emptied nested list used to linger; Slate's
+    // normalizer filled it with a bare text leaf, producing an invalid
+    // `list > text` tree and a phantom blank line in the output
+    // (`- one\n\n- two` instead of `- one\n- two`).
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const { container } = render(
+      <InkwellEditor ref={ref} content={"- one\n  - two"} onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      ref.current?.focus({ at: "end" });
+    });
+
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    fireEvent.keyDown(editor, { key: "Tab", shiftKey: true });
+
+    expect(ref.current?.getState().content).toBe("- one\n- two");
+  });
+
+  it("Shift+Tab on the last of several nested items leaves its former siblings in place", async () => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const { container } = render(
+      <InkwellEditor
+        ref={ref}
+        content={"- a\n  - b\n  - c"}
+        onChange={vi.fn()}
+      />,
+    );
+    await flushEffects();
+
+    await act(async () => {
+      ref.current?.focus({ at: "end" });
+    });
+
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    fireEvent.keyDown(editor, { key: "Tab", shiftKey: true });
+
+    expect(ref.current?.getState().content).toBe("- a\n  - b\n- c");
+  });
+
   it("Tab on a top-level paragraph is a no-op (no list to nest)", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const { container } = render(

@@ -39,6 +39,10 @@ export default function remarkNoTables() {
       const paragraph: Paragraph = {
         type: "paragraph",
         children: [{ type: "text", value: lines.join("\n") } as Text],
+        // Preserve the table's position (cf. remark-no-thematic-break) so
+        // downstream offset/line consumers keep real source provenance —
+        // a positionless block can't be source-cached.
+        position: node.position,
       };
       return paragraph;
     });

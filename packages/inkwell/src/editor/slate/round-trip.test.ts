@@ -1,3 +1,4 @@
+import { Node } from "slate";
 import { describe, expect, it } from "vitest";
 import { deserialize, deserializeWithRanges } from "./deserialize";
 import { serialize } from "./serialize";
@@ -55,13 +56,13 @@ const CASES: Array<{
     source: "before\n\n---\n\nafter",
   },
   {
-    // `***` parsed inside a paragraph is 3 literal asterisks (no
-    // emphasis content to wrap). mdast-util-to-markdown defensively
-    // escapes them to `\*\*\*` so a re-parse can't reinterpret them
-    // as emphasis. The source-cache path preserves the original.
-    name: "`***` stays as paragraph text (canonical escapes)",
+    // `***` parsed inside a paragraph is 3 literal asterisks.
+    // mdast-util-to-markdown defensively escapes them per character
+    // (`\*\*\*`); the post-process unescapes whole marker-only lines
+    // because they re-parse as thematic breaks, which
+    // `remarkNoThematicBreak` maps back to verbatim paragraphs.
+    name: "`***` stays as paragraph text (escapes stripped)",
     source: "***",
-    canonical: "\\*\\*\\*",
   },
   {
     name: "heading + blockquote + paragraph mix",
@@ -107,6 +108,37 @@ const CASES: Array<{
     name: "image with empty alt",
     source: "![](https://img/cat.png)",
   },
+  {
+    // Regression: a document-wide `\n{3,}` collapse in serialize used to
+    // eat the double blank line INSIDE the fence — even via the cache.
+    name: "code block with consecutive blank lines",
+    source: "```py\ndef a():\n    pass\n\n\ndef b():\n    pass\n```",
+  },
+  {
+    // Regression: the bare-`>` escape used to apply inside fences,
+    // baking a literal `\` into code on both surfaces.
+    name: "code block with bare-`>` lines (doctest)",
+    source: "```\n>>> print(1)\n```",
+  },
+  {
+    // Regression: the stringify bare-`>`-run collapse used to delete
+    // one of these lines from edited blocks.
+    name: "code block with consecutive `>` lines",
+    source: "```\n>\n>\n```",
+  },
+  {
+    // Regression: the `\[`/`\]` escape strip used to run inside fence
+    // content.
+    name: "code block with literal backslash-bracket",
+    source: "```\nmatch \\[a-z]\n```",
+  },
+  {
+    // Regression: ContainerChild omitted Heading — `> # title` used to
+    // serialize as a bare `>`.
+    name: "heading inside blockquote",
+    source: "> # title\n> body",
+    canonical: "> # title\n>\n> body",
+  },
 ];
 
 describe("Round-trip corpus — canonical pass (no cache)", () => {
@@ -123,5 +155,89 @@ describe("Round-trip corpus — source-cache pass (byte-perfect)", () => {
     populateSourceCacheFromParse(cache, source, nodes, ranges);
     const out = serialize(nodes, { cache });
     expect(out).toBe(source);
+  });
+});
+
+/**
+ * Soft-wrapped paragraphs split into sibling blocks (the editor's
+ * documented model), so a single-newline gap normalizes to a blank
+ * line — the per-block source cache cannot express "no blank line
+ * between blocks". These cases pin the NON-CORRUPTING normalization;
+ * the regression they guard: positionless split paragraphs used to
+ * cache the document's FIRST LINE as every block's source, so
+ * "hello\nworld" serialized as "hello\n\nhello" and inline markers
+ * vanished via the mdastToString fallback.
+ */
+describe("Round-trip — soft-wrapped (split-block) shapes normalize without corruption", () => {
+  const SPLIT_CASES: Array<{ name: string; source: string; out: string }> = [
+    {
+      name: "two soft-wrapped lines",
+      source: "hello\nworld",
+      out: "hello\n\nworld",
+    },
+    {
+      name: "three soft-wrapped lines",
+      source: "first line\nsecond line\nthird line",
+      out: "first line\n\nsecond line\n\nthird line",
+    },
+    {
+      name: "inline markers survive the split",
+      source: "**bold** tail\nnext line",
+      out: "**bold** tail\n\nnext line",
+    },
+    {
+      name: "heading then soft-wrapped paragraph",
+      source: "# title\n\nfoo\nbar",
+      out: "# title\n\nfoo\n\nbar",
+    },
+    {
+      name: "CRLF soft breaks leave no stray carriage return",
+      source: "hello\r\nworld",
+      out: "hello\n\nworld",
+    },
+  ];
+
+  it.each(SPLIT_CASES)("$name (canonical pass)", ({ source, out }) => {
+    expect(serialize(deserialize(source))).toBe(out);
+  });
+
+  it.each(SPLIT_CASES)("$name (cache pass)", ({ source, out }) => {
+    const cache = createSourceCache();
+    const { nodes, ranges } = deserializeWithRanges(source);
+    populateSourceCacheFromParse(cache, source, nodes, ranges);
+    expect(serialize(nodes, { cache })).toBe(out);
+  });
+
+  it("split paragraphs carry real line ranges, not fabricated {0,0}", () => {
+    const { nodes, ranges } = deserializeWithRanges("hello\nworld");
+    expect(nodes.map(n => Node.string(n))).toEqual(["hello", "world"]);
+    expect(ranges).toEqual([
+      { startLine: 0, endLine: 0 },
+      { startLine: 1, endLine: 1 },
+    ]);
+  });
+
+  it("bare-`>` line plus soft-wrapped markers slice correctly (offset remap aliasing)", () => {
+    // Regression: the offset remap used to double-subtract on Point
+    // objects the paragraph splitter aliased into split paragraphs,
+    // shifting every slice left and garbling editor text.
+    const source = ">x\n\n**a**\n**b**";
+    const nodes = deserialize(source);
+    expect(nodes.map(n => Node.string(n))).toEqual([">x", "**a**", "**b**"]);
+  });
+
+  it("GFM tables degrade to row paragraphs without duplicating line 0", () => {
+    // Regression: the positionless paragraph remark-no-tables
+    // synthesizes used to poison the cache the same way — every table
+    // row serialized as a copy of the document's first line.
+    const source = "intro\n\n| a | b |\n| --- | --- |\n| 1 | 2 |";
+    const cache = createSourceCache();
+    const { nodes, ranges } = deserializeWithRanges(source);
+    populateSourceCacheFromParse(cache, source, nodes, ranges);
+    const out = serialize(nodes, { cache });
+    expect(out).toContain("intro");
+    expect(out).toContain("| a | b |");
+    expect(out).toContain("| 1 | 2 |");
+    expect(out).not.toContain("intro\n\nintro");
   });
 });

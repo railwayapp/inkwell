@@ -101,7 +101,19 @@ export interface InkwellText extends BaseText {
 /**
  * The composed Inkwell editor type
  */
-export type InkwellEditor = BaseEditor & ReactEditor & HistoryEditor;
+export type InkwellEditor = BaseEditor &
+  ReactEditor &
+  HistoryEditor & {
+    /**
+     * Per-editor source cache (internal — wired at editor creation by
+     * `<InkwellEditor />`). Lets the copy/cut serialization in
+     * `withMarkdown` thread the same cache as getState/onChange/onSubmit;
+     * without it the clipboard would carry normalized markdown for
+     * blocks the user never touched, diverging from every other
+     * serialize path.
+     */
+    sourceCache?: import("./source-cache").SourceCache;
+  };
 
 // Module augmentation so Slate's generic types use our custom types
 declare module "slate" {

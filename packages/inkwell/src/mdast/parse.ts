@@ -44,13 +44,60 @@ interface EscapeResult {
  */
 function escapeBareBlockquote(content: string): EscapeResult {
   const originalOffsets: number[] = [];
-  const escaped = content.replace(/^>(?=\S)/gm, (_match, offset: number) => {
-    originalOffsets.push(offset);
-    return "\\>";
-  });
-  // The k-th inserted `\` (0-indexed, matches run left-to-right) lands at
-  // escaped index `originalOffset + k`, since each earlier insertion
-  // shifted the remainder of the string by one.
+  // Walk line by line, tracking top-level fenced-code state so `>` lines
+  // inside fences are never escaped — code content is verbatim, so an
+  // injected `\` would land in `code.value` and show up on both surfaces
+  // (`>>> doctest`, diff/email quotes, shell `2>err` heredocs).
+  // The scanner only models column-0..3 fences; fences carrying a
+  // blockquote prefix (`> ```) can't contain column-0 `>` lines anyway.
+  // Known limitation: an inline code span that wraps a newline followed
+  // by a bare-`>` line still gets escaped — code spans are not visible
+  // at this line-based layer.
+  let inFence = false;
+  let fenceChar = "";
+  let fenceLen = 0;
+  let lineStart = 0;
+  while (lineStart <= content.length) {
+    const nl = content.indexOf("\n", lineStart);
+    const lineEnd = nl === -1 ? content.length : nl;
+    const line = content.slice(lineStart, lineEnd);
+    if (inFence) {
+      const close = /^ {0,3}(`{3,}|~{3,})[ \t]*\r?$/.exec(line);
+      if (close && close[1][0] === fenceChar && close[1].length >= fenceLen) {
+        inFence = false;
+      }
+    } else {
+      const open = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+      // A backtick fence's info string cannot contain backticks — a line
+      // like ``` `code` ``` is a code span, not a fence opener.
+      const isOpener =
+        open &&
+        !(open[1][0] === "`" && line.slice(open[0].length).includes("`"));
+      if (isOpener) {
+        inFence = true;
+        fenceChar = open[1][0];
+        fenceLen = open[1].length;
+      } else if (/^>(?=\S)/.test(line)) {
+        originalOffsets.push(lineStart);
+      }
+    }
+    if (nl === -1) break;
+    lineStart = nl + 1;
+  }
+
+  if (originalOffsets.length === 0) {
+    return { escaped: content, insertions: [] };
+  }
+  let escaped = "";
+  let prev = 0;
+  for (const offset of originalOffsets) {
+    escaped += content.slice(prev, offset) + "\\";
+    prev = offset;
+  }
+  escaped += content.slice(prev);
+  // The k-th inserted `\` (0-indexed, offsets ascend) lands at escaped
+  // index `originalOffset + k`, since each earlier insertion shifted the
+  // remainder of the string by one.
   const insertions = originalOffsets.map((offset, k) => offset + k);
   return { escaped, insertions };
 }
@@ -75,14 +122,21 @@ function toOriginalOffset(escapedOffset: number, insertions: number[]): number {
  */
 function remapTreeOffsets(tree: Root, insertions: number[]): void {
   if (insertions.length === 0) return;
+  // Plugins may alias the same Point object into multiple nodes'
+  // positions (the soft-break paragraph splitter reuses boundary
+  // children's points for the split paragraph). Track visited Points by
+  // identity so an aliased Point is never remapped twice — a double
+  // subtraction would shift the offset one byte left per bare-`>` line.
+  const seen = new Set<object>();
   visit(tree, node => {
     const pos = node.position;
     if (!pos) return;
-    if (typeof pos.start.offset === "number") {
-      pos.start.offset = toOriginalOffset(pos.start.offset, insertions);
-    }
-    if (typeof pos.end.offset === "number") {
-      pos.end.offset = toOriginalOffset(pos.end.offset, insertions);
+    for (const point of [pos.start, pos.end]) {
+      if (seen.has(point)) continue;
+      seen.add(point);
+      if (typeof point.offset === "number") {
+        point.offset = toOriginalOffset(point.offset, insertions);
+      }
     }
   });
 }
@@ -111,10 +165,13 @@ export function parseMarkdownToMdast(
     .use(remarkNoTables)
     .use(remarkNoThematicBreak, { source: escaped });
 
+  // The shapers take the (escaped) source so split text parts can carry
+  // real positions — the editor's verbatim slicing and the source cache
+  // both depend on split paragraphs staying positioned.
   if (softBreak === "br") {
-    proc.use(remarkSoftBreakAsBreak);
+    proc.use(remarkSoftBreakAsBreak, { source: escaped });
   } else if (softBreak === "paragraph") {
-    proc.use(remarkSoftBreakAsParagraph);
+    proc.use(remarkSoftBreakAsParagraph, { source: escaped });
   }
 
   const tree = proc.runSync(proc.parse(escaped)) as Root;

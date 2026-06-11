@@ -43,7 +43,7 @@ export function deserialize(
 export function deserializeWithRanges(
   content: string,
   features?: InkwellFeatures | Partial<ResolvedInkwellFeatures>,
-): { nodes: InkwellElement[]; ranges: BlockLineRange[] } {
+): { nodes: InkwellElement[]; ranges: (BlockLineRange | null)[] } {
   if (!content) {
     return {
       nodes: [
@@ -143,9 +143,15 @@ function paragraphFromSlice(node: RootContent, content: string): RootContent {
   };
 }
 
-function toRange(node: RootContent): BlockLineRange {
+function toRange(node: RootContent): BlockLineRange | null {
   const pos = node.position;
-  if (!pos) return { startLine: 0, endLine: 0 };
+  // No position (synthetic node from a remark plugin) → no range. The
+  // source-cache layer must SKIP such blocks, not cache a guess: a
+  // fabricated {0,0} here once cached the document's first line as the
+  // verbatim source of every positionless block, and the self-derived
+  // canonical always matched — so every serialize emitted line 0 in
+  // place of the block's real content.
+  if (!pos) return null;
   // mdast lines are 1-based; convert to the 0-based lines the source
   // cache expects (matches `content.split("\n")` indexing).
   return {

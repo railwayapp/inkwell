@@ -125,3 +125,61 @@ describe("parseMarkdownToMdast", () => {
     }
   });
 });
+
+describe("parseMarkdownToMdast — bare-`>` escape is code-aware", () => {
+  it("leaves `>` lines inside fenced code untouched", () => {
+    // Regression: the escape used to apply line-blind across the whole
+    // source, baking a literal `\` into code content on both surfaces.
+    const tree = parseMarkdownToMdast("```\n>>> print(1)\n```");
+    expect(tree.children[0].type).toBe("code");
+    if (tree.children[0].type === "code") {
+      expect(tree.children[0].value).toBe(">>> print(1)");
+    }
+  });
+
+  it("leaves `>` lines inside tilde fences untouched", () => {
+    const tree = parseMarkdownToMdast("~~~\n>x\n~~~");
+    expect(tree.children[0].type).toBe("code");
+    if (tree.children[0].type === "code") {
+      expect(tree.children[0].value).toBe(">x");
+    }
+  });
+
+  it("leaves `>` lines after an unclosed fence untouched", () => {
+    const tree = parseMarkdownToMdast("```\n>x");
+    expect(tree.children[0].type).toBe("code");
+    if (tree.children[0].type === "code") {
+      expect(tree.children[0].value).toBe(">x");
+    }
+  });
+
+  it("resumes escaping after a closed fence", () => {
+    const tree = parseMarkdownToMdast("```\ncode\n```\n\n>foo");
+    expect(tree.children[1]?.type).toBe("paragraph");
+  });
+
+  it("does not treat an inline code span as a fence opener", () => {
+    // ``` `x` ``` on one line is a code span, not a fence — the
+    // following bare-`>` line must still be escaped to a paragraph.
+    const tree = parseMarkdownToMdast("``` `x` ```\n\n>foo");
+    expect(tree.children[1]?.type).toBe("paragraph");
+  });
+
+  it("remaps offsets exactly once for positions aliased by the paragraph splitter", () => {
+    // Regression: the splitter reused boundary children's Point objects
+    // for split paragraphs; the remap visited them twice and
+    // double-subtracted, garbling every downstream source slice.
+    const content = ">x\n\n**a**\n**b**";
+    const tree = parseMarkdownToMdast(content);
+    const [, second, third] = tree.children;
+    expect(
+      content.slice(
+        second?.position?.start.offset,
+        second?.position?.end.offset,
+      ),
+    ).toBe("**a**");
+    expect(
+      content.slice(third?.position?.start.offset, third?.position?.end.offset),
+    ).toBe("**b**");
+  });
+});

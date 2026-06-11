@@ -1006,3 +1006,228 @@ describe("withMarkdown — paste (insertData)", () => {
     expect(Node.string(editor)).toBe("hello [world](https://example.com)");
   });
 });
+
+describe("withMarkdown — structural Enter never destroys sibling content", () => {
+  // Regression battery: the list-exit and blockquote-exit branches used
+  // to decide "remove the whole container" from child COUNTS alone,
+  // deleting sibling content reachable via plain Enter presses.
+
+  it("Enter on an empty nested item exits without deleting the parent item's text", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list",
+        id: generateId(),
+        children: [
+          {
+            type: "list-item",
+            id: generateId(),
+            children: [
+              {
+                type: "paragraph",
+                id: generateId(),
+                children: [{ text: "a" }],
+              },
+              {
+                type: "list",
+                id: generateId(),
+                children: [
+                  {
+                    type: "list-item",
+                    id: generateId(),
+                    children: [
+                      {
+                        type: "paragraph",
+                        id: generateId(),
+                        children: [{ text: "" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    editor.onChange();
+    // Caret in the empty nested paragraph.
+    Transforms.select(editor, Editor.start(editor, [0, 0, 1, 0, 0]));
+
+    editor.insertBreak();
+    expect(serialize(getElements(editor))).toContain("a");
+
+    editor.insertBreak();
+    // Second Enter exits the list entirely — "a" must survive.
+    const out = serialize(getElements(editor));
+    expect(out).toContain("- a");
+  });
+
+  it("Enter on an empty paragraph beside content in the same item removes only the paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list",
+        id: generateId(),
+        children: [
+          {
+            type: "list-item",
+            id: generateId(),
+            children: [
+              {
+                type: "paragraph",
+                id: generateId(),
+                children: [{ text: "x" }],
+              },
+              { type: "paragraph", id: generateId(), children: [{ text: "" }] },
+            ],
+          },
+        ],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0, 0, 1]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("list");
+    expect(Node.string(elements[0])).toBe("x");
+    expect(elements[1]?.type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("");
+  });
+
+  it("Enter on a lone empty item still replaces the list with a paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list",
+        id: generateId(),
+        children: [
+          {
+            type: "list-item",
+            id: generateId(),
+            children: [
+              { type: "paragraph", id: generateId(), children: [{ text: "" }] },
+            ],
+          },
+        ],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0, 0, 0]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+  });
+
+  it("Enter on an empty item of a list inside a blockquote keeps the blockquote and its other items", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "blockquote",
+        id: generateId(),
+        children: [
+          {
+            type: "list",
+            id: generateId(),
+            children: [
+              {
+                type: "list-item",
+                id: generateId(),
+                children: [
+                  {
+                    type: "paragraph",
+                    id: generateId(),
+                    children: [{ text: "one" }],
+                  },
+                ],
+              },
+              {
+                type: "list-item",
+                id: generateId(),
+                children: [
+                  {
+                    type: "paragraph",
+                    id: generateId(),
+                    children: [{ text: "" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0, 0, 1, 0]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    // The blockquote survives with the list ("one") plus the exit
+    // paragraph inside it; nothing was deleted.
+    expect(elements[0].type).toBe("blockquote");
+    expect(Node.string(elements[0])).toContain("one");
+    const bqChildren = elements[0].children as InkwellElement[];
+    expect(bqChildren).toHaveLength(2);
+    expect(bqChildren[0].type).toBe("list");
+    expect(bqChildren[1].type).toBe("paragraph");
+    expect(Node.string(bqChildren[1])).toBe("");
+  });
+
+  it("Enter on an empty paragraph directly inside a blockquote still exits the quote", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "blockquote",
+        id: generateId(),
+        children: [
+          { type: "paragraph", id: generateId(), children: [{ text: "q" }] },
+          { type: "paragraph", id: generateId(), children: [{ text: "" }] },
+        ],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0, 1]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("blockquote");
+    expect(Node.string(elements[0])).toBe("q");
+    expect(elements[1]?.type).toBe("paragraph");
+  });
+
+  it("Enter on a selected void image inserts a paragraph after it instead of retyping it", () => {
+    // Regression vs main: the rewrite dropped the explicit image branch
+    // and the default path converted the image element itself into an
+    // empty paragraph, deleting the image.
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "image",
+        id: generateId(),
+        url: "https://img/cat.png",
+        alt: "cat",
+        children: [{ text: "" }],
+      },
+      { type: "paragraph", id: generateId(), children: [{ text: "after" }] },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("image");
+    expect(elements[0].url).toBe("https://img/cat.png");
+    expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("");
+    expect(elements[2].type).toBe("paragraph");
+    expect(Node.string(elements[2])).toBe("after");
+  });
+});

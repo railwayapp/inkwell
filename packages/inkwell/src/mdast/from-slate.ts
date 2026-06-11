@@ -115,6 +115,7 @@ function convertBlockquoteBlock(node: InkwellElement): Blockquote {
     const children = subTree.children.filter(
       (c): c is ContainerChild =>
         c.type === "paragraph" ||
+        c.type === "heading" ||
         c.type === "blockquote" ||
         c.type === "list" ||
         c.type === "code",
@@ -164,7 +165,7 @@ function convertListItemNode(node: InkwellElement): ListItem {
 
 type EmptyParagraphPolicy = "none" | "edges";
 
-type ContainerChild = Paragraph | Blockquote | List | Code;
+type ContainerChild = Paragraph | Heading | Blockquote | List | Code;
 
 function isEmptyParagraph(node: ContainerChild): boolean {
   return node.type === "paragraph" && node.children.length === 0;
@@ -203,8 +204,14 @@ function convertContainerChildren(
     if ("text" in child) continue;
     const c = convertBlock(child);
     if (!c) continue;
+    // Admit every block type a container can hold. Headings used to be
+    // missing here and were silently dropped — `> # title` serialized
+    // to a bare `>`. Keep this list in sync with the ContainerChild
+    // union; anything convertBlock can produce inside a container must
+    // be admitted or content is lost.
     if (
       c.type === "paragraph" ||
+      c.type === "heading" ||
       c.type === "blockquote" ||
       c.type === "list" ||
       c.type === "code"

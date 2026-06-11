@@ -58,18 +58,19 @@ describe("stringifyMdast — post-process escape stripping", () => {
     expect(out.trimEnd()).toBe("---");
   });
 
-  it("strips leading `\\***` thematic-break protection", () => {
+  it("strips `\\*\\*\\*` thematic-break protection (per-char escapes)", () => {
     const out = stringifyMdast({
       type: "root",
       children: [
         { type: "paragraph", children: [{ type: "text", value: "***" }] },
       ],
     });
-    // `***` parses as ambiguous emphasis; mdast escapes each asterisk.
-    // Our post-process strips the leading `\` (the thematic-break
-    // protection) but the inline emphasis escapes survive — they
-    // would otherwise re-parse as emphasis.
-    expect(out.trimEnd()).toBe("\\*\\*\\*");
+    // mdast escapes `***` per character (`\*\*\*`), unlike `---` which
+    // gets a single leading escape. A line consisting only of marker
+    // characters always re-parses as a thematic break — which
+    // `remarkNoThematicBreak` maps back to a verbatim paragraph — so
+    // unescaping the whole line is safe and round-trips cleanly.
+    expect(out.trimEnd()).toBe("***");
   });
 
   it("strips `\\[` / `\\]` link-bracket protection in plain text", () => {
@@ -241,5 +242,84 @@ describe("stringifyMdast — accepted round-trip fidelity gaps", () => {
       ],
     });
     expect(out.trimEnd()).toBe(">\n> first");
+  });
+});
+
+describe("stringifyMdast — post-process is code-aware", () => {
+  // Regression battery: every escape strip and the bare-`>` collapse
+  // used to run blindly over the whole output, corrupting code content
+  // (fenced and inline) that legitimately contains the same byte
+  // patterns toMarkdown emits as defensive escapes elsewhere.
+
+  it("keeps `\\[` inside an inline code span", () => {
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "paragraph",
+          children: [
+            { type: "text", value: "see " },
+            { type: "inlineCode", value: "\\[a-z]" },
+          ],
+        },
+      ],
+    });
+    expect(out.trimEnd()).toBe("see `\\[a-z]`");
+  });
+
+  it("still strips `\\[` outside the code span on the same line", () => {
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "paragraph",
+          children: [
+            { type: "text", value: "[x " },
+            { type: "inlineCode", value: "\\[y]" },
+            { type: "text", value: " z]" },
+          ],
+        },
+      ],
+    });
+    expect(out.trimEnd()).toBe("[x `\\[y]` z]");
+  });
+
+  it("keeps fence content verbatim: brackets, marker lines, entities, `>` runs", () => {
+    const value = "match \\[a-z]\n---\nuse &#x20;\n>\n>";
+    const out = stringifyMdast({
+      type: "root",
+      children: [{ type: "code", lang: null, meta: null, value }],
+    });
+    expect(out.trimEnd()).toBe("```\n" + value + "\n```");
+  });
+
+  it("keeps content of a blockquote-wrapped fence verbatim", () => {
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "blockquote",
+          children: [{ type: "code", lang: null, meta: null, value: ">\n>" }],
+        },
+      ],
+    });
+    expect(out.trimEnd()).toBe("> ```\n> >\n> >\n> ```");
+  });
+
+  it("still collapses bare-`>` runs outside fences", () => {
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "blockquote",
+          children: [
+            { type: "paragraph", children: [] },
+            { type: "paragraph", children: [] },
+            { type: "paragraph", children: [{ type: "text", value: "x" }] },
+          ],
+        },
+      ],
+    });
+    expect(out.trimEnd()).toBe(">\n> x");
   });
 });

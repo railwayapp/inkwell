@@ -219,6 +219,10 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         }
         apply(op);
       };
+      // Expose the cache on the editor instance so withMarkdown's
+      // copy/cut serialization threads it like every other serialize
+      // path (see InkwellEditor.sourceCache in slate/types.ts).
+      composed.sourceCache = sourceCacheRef.current;
       return composed;
     }, []);
 
@@ -1182,9 +1186,70 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
                         const targetIdx =
                           parentLiPath[parentLiPath.length - 1] + 1;
                         const targetPath: Path = [...grandListPath, targetIdx];
-                        Transforms.moveNodes(editor, {
-                          at: liPath,
-                          to: targetPath,
+                        const liIdx = liPath[liPath.length - 1];
+                        const followerCount = list.children.length - liIdx - 1;
+                        Editor.withoutNormalizing(editor, () => {
+                          Transforms.moveNodes(editor, {
+                            at: liPath,
+                            to: targetPath,
+                          });
+                          // Trailing siblings of the un-nested item stay
+                          // logically beneath it: move them into a nested
+                          // list on the moved item, otherwise they'd jump
+                          // above it in document order.
+                          if (followerCount > 0) {
+                            const movedLi = Node.get(
+                              editor,
+                              targetPath,
+                            ) as InkwellElement;
+                            const lastChild = movedLi.children[
+                              movedLi.children.length - 1
+                            ] as InkwellElement | undefined;
+                            let nestedPath: Path;
+                            if (lastChild?.type === "list") {
+                              nestedPath = [
+                                ...targetPath,
+                                movedLi.children.length - 1,
+                              ];
+                            } else {
+                              nestedPath = [
+                                ...targetPath,
+                                movedLi.children.length,
+                              ];
+                              Transforms.insertNodes(
+                                editor,
+                                {
+                                  type: "list",
+                                  id: generateId(),
+                                  ordered: list.ordered,
+                                  children: [],
+                                } as InkwellElement,
+                                { at: nestedPath },
+                              );
+                            }
+                            for (let n = 0; n < followerCount; n++) {
+                              const nested = Node.get(
+                                editor,
+                                nestedPath,
+                              ) as InkwellElement;
+                              Transforms.moveNodes(editor, {
+                                at: [...listPath, liIdx],
+                                to: [...nestedPath, nested.children.length],
+                              });
+                            }
+                          }
+                          // Remove the source nested list if it's now
+                          // empty — Slate's normalizer would otherwise
+                          // fill the invalid empty list with a bare text
+                          // leaf, corrupting the tree and the serialized
+                          // output.
+                          const sourceList = Node.get(
+                            editor,
+                            listPath,
+                          ) as InkwellElement;
+                          if (sourceList.children.length === 0) {
+                            Transforms.removeNodes(editor, { at: listPath });
+                          }
                         });
                       }
                     }
@@ -1231,10 +1296,10 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
                       editor,
                       {
                         type: "list",
-                        id: crypto.randomUUID(),
+                        id: generateId(),
                         ordered: list.ordered,
                         children: [],
-                      } as unknown as Element,
+                      } as InkwellElement,
                       { at: nestedListPath },
                     );
                     Transforms.moveNodes(editor, {

@@ -90,13 +90,24 @@ export function populateSourceCacheFromParse(
   cache: SourceCache,
   content: string,
   nodes: InkwellElement[],
-  ranges: BlockLineRange[],
+  ranges: (BlockLineRange | null)[],
 ): void {
   if (nodes.length !== ranges.length) return;
+  // Carriage returns defeat the `\n`-based slicing below: lone CRs
+  // (classic-Mac) desync it from micromark's line accounting entirely,
+  // and CRLF slices keep their `\r`, splicing mixed line endings into
+  // serialized output. Skip caching and let every block fall back to
+  // its canonical (LF-normalized) form.
+  if (content.includes("\r")) return;
   const lines = content.split("\n");
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
-    const { startLine, endLine } = ranges[i];
+    const range = ranges[i];
+    // A null range means the block has no source provenance (synthetic
+    // mdast node). Caching a guessed slice corrupts serialization —
+    // skipping just costs the canonical fallback.
+    if (!range) continue;
+    const { startLine, endLine } = range;
     if (startLine < 0 || endLine >= lines.length) continue;
     const source = lines.slice(startLine, endLine + 1).join("\n");
     setCacheEntry(cache, node, source, canonicalize(node));

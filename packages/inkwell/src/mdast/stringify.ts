@@ -36,16 +36,16 @@ export interface StringifyOptions {
  * Post-processing strips a few defensive escapes that `mdast-util-to-markdown`
  * inserts but Inkwell's parse pipeline doesn't need:
  *
- * - Leading `\---`/`\***`/`\___` (thematic-break protection) —
- *   `remarkNoThematicBreak` upstream means `---` re-parses as a paragraph,
- *   so the escape just shows as a stray backslash in the editor. Anchored
- *   to start-of-line because that's the only context mdast inserts the
- *   defensive escape.
+ * - Escaped thematic-break lines (`\---`, `\*\*\*`, `\* \* \*`, `\_\_\_`) —
+ *   `remarkNoThematicBreak` upstream means the unescaped marker re-parses
+ *   as a paragraph, so the escapes just show as stray backslashes in the
+ *   editor. Only lines consisting entirely of (escaped) marker characters
+ *   are unescaped.
  * - `\[` / `\]` (link-bracket protection) — Inkwell stores link source
  *   verbatim in text and never emits the literal `\[` escape, so any
- *   `\[`/`\]` in the output is always the to-markdown defensive escape
+ *   `\[`/`\]` outside code is always the to-markdown defensive escape
  *   for literal brackets in plain text. Real `[label](url)` links emit
- *   their brackets unescaped, so this strip is safe globally.
+ *   their brackets unescaped.
  * - Trailing `&#x20;` (trailing-whitespace protection) — mdast inserts
  *   this entity only at end-of-line to preserve trailing whitespace
  *   (which is otherwise stripped on re-parse). The editor doesn't
@@ -57,10 +57,17 @@ export interface StringifyOptions {
  *   `>` is meant as a nested blockquote marker, not a literal `>`.
  *   Anchored to start-of-line.
  *
- * Finally, runs of consecutive bare-`>` lines collapse to a single `>`.
- * These come up when a trailing or leading empty paragraph is paired
- * with the natural mdast paragraph separator — both contribute a blank
- * quoted line, doubling up.
+ * Runs of consecutive bare-`>` lines collapse to a single `>`. These
+ * come up when a trailing or leading empty paragraph is paired with the
+ * natural mdast paragraph separator — both contribute a blank quoted
+ * line, doubling up.
+ *
+ * Every transformation above is CODE-AWARE: fenced-code content lines
+ * and inline code spans are emitted verbatim by `toMarkdown`, so any
+ * backslash, entity, or `>` line inside them is the user's actual code
+ * — stripping or collapsing there corrupts content. The line walker
+ * below tracks fence state (including blockquote-prefixed fences) and
+ * the in-line pass skips backtick spans.
  */
 export function stringifyMdast(
   tree: Nodes,
@@ -71,21 +78,131 @@ export function stringifyMdast(
     extensions: [gfmToMarkdown()],
     ...options.toMarkdown,
   });
-  return collapseConsecutiveBareQuoteLines(
-    raw
-      .replace(/^\\(?=-{3,}|\*{3,}|_{3,})/gm, "")
-      .replace(/\\([[\]])/g, "$1")
-      .replace(/ ?&#x20;(?=\n|$)/g, "")
-      .replace(/^(>+ )\\>/gm, "$1>"),
-  );
+  return postProcess(raw);
 }
 
-function collapseConsecutiveBareQuoteLines(input: string): string {
-  let prev = "";
-  let next = input;
-  while (prev !== next) {
-    prev = next;
-    next = next.replace(/(^|\n)>\n>(?=\n|$)/g, "$1>");
+interface WalkedLine {
+  text: string;
+  /** True for fence delimiter + fence content lines — never transformed. */
+  protectedLine: boolean;
+}
+
+function postProcess(output: string): string {
+  const lines = output.split("\n");
+  const walked: WalkedLine[] = [];
+  let inFence = false;
+  let fenceChar = "";
+  let fenceLen = 0;
+  let fencePrefix = "";
+
+  for (const line of lines) {
+    if (inFence) {
+      const m = /^((?:> ?)*)( {0,3})(`{3,}|~{3,})[ \t]*$/.exec(line);
+      if (
+        m &&
+        m[1] === fencePrefix &&
+        m[3][0] === fenceChar &&
+        m[3].length >= fenceLen
+      ) {
+        inFence = false;
+      }
+      walked.push({ text: line, protectedLine: true });
+      continue;
+    }
+    const open = /^((?:> ?)*)( {0,3})(`{3,}|~{3,})/.exec(line);
+    const isOpener =
+      open && !(open[3][0] === "`" && line.slice(open[0].length).includes("`"));
+    if (isOpener && open) {
+      inFence = true;
+      fencePrefix = open[1];
+      fenceChar = open[3][0];
+      fenceLen = open[3].length;
+      walked.push({ text: line, protectedLine: true });
+      continue;
+    }
+    walked.push({ text: transformLine(line), protectedLine: false });
   }
-  return next;
+
+  // Collapse runs of consecutive bare-`>` lines to a single `>` —
+  // skipping protected (fence content) lines, where a `>` line is code.
+  const result: string[] = [];
+  let prevWasBareQuote = false;
+  for (const entry of walked) {
+    const isBareQuote = !entry.protectedLine && entry.text === ">";
+    if (isBareQuote && prevWasBareQuote) continue;
+    prevWasBareQuote = isBareQuote;
+    result.push(entry.text);
+  }
+  return result.join("\n");
+}
+
+/** Apply the escape strips to a single non-code line. */
+function transformLine(line: string): string {
+  let out = line;
+  // Escaped thematic-break line → unescape. toMarkdown escapes `---` as
+  // `\---` but `***`/`___`/`* * *` per character (`\*\*\*`), so match a
+  // whole line of marker characters where at least some are escaped.
+  if (
+    out.includes("\\") &&
+    /^(?:\\?[*_-])(?:[ \t]*\\?[*_-]){2,}[ \t]*$/.test(out)
+  ) {
+    out = out.replace(/\\/g, "");
+  }
+  // Link-bracket unescape, skipping inline code spans.
+  out = mapOutsideCodeSpans(out, seg => seg.replace(/\\([[\]])/g, "$1"));
+  // Trailing-whitespace entity at end-of-line. A code span's content
+  // can't sit at end-of-line (its closing backtick follows it), so no
+  // span check is needed.
+  out = out.replace(/ ?&#x20;$/, "");
+  // Legacy text-leaf blockquote nested-marker unescape.
+  out = out.replace(/^(>+ )\\>/, "$1>");
+  return out;
+}
+
+/**
+ * Apply `fn` to the segments of `line` that sit outside inline code
+ * spans. A code span is delimited by backtick runs of equal length
+ * (CommonMark); unmatched runs are treated as plain text.
+ */
+function mapOutsideCodeSpans(
+  line: string,
+  fn: (segment: string) => string,
+): string {
+  if (!line.includes("`")) return fn(line);
+  let out = "";
+  let i = 0;
+  while (i < line.length) {
+    const open = line.indexOf("`", i);
+    if (open === -1) {
+      out += fn(line.slice(i));
+      return out;
+    }
+    let openEnd = open;
+    while (line[openEnd] === "`") openEnd++;
+    const runLen = openEnd - open;
+    // Find the next backtick run of exactly the same length.
+    let close = -1;
+    let j = openEnd;
+    while (j < line.length) {
+      const k = line.indexOf("`", j);
+      if (k === -1) break;
+      let kEnd = k;
+      while (line[kEnd] === "`") kEnd++;
+      if (kEnd - k === runLen) {
+        close = k;
+        break;
+      }
+      j = kEnd;
+    }
+    if (close === -1) {
+      // Unmatched run: the backticks are literal text.
+      out += fn(line.slice(i, openEnd));
+      i = openEnd;
+      continue;
+    }
+    out += fn(line.slice(i, open));
+    out += line.slice(open, close + runLen);
+    i = close + runLen;
+  }
+  return out;
 }

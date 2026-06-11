@@ -109,13 +109,30 @@ a single mdast `Root` with position info on every block.
 `parseMarkdownToMdast` also escapes bare `>` line markers (`>foo`
 without a trailing space) to `\>` before parsing, so CommonMark doesn't
 treat them as blockquotes — Inkwell only models the space-prefixed `> `
-form as structural. The escape inserts a byte, which shifts every
+form as structural. The escape is **fence-aware**: a line scanner skips
+lines inside fenced code blocks (``` ` ``` and `~`, including unclosed
+fences), because code content is verbatim — a blind escape baked a
+literal `\` into `code.value` on both surfaces (`>>> doctest` →
+`\>>> doctest`). The escape inserts a byte, which shifts every
 downstream mdast `position.offset`, so the tree is remapped back to
 original-source offsets after parsing. **Never slice the original
 source with raw post-parse offsets** — they index the escaped string,
 and that desync silently dropped a leading char from every block after
-a bare-`>` line (`bar` → `ar`). Documents with no bare-`>` line skip
-the remap entirely, so the common path is untouched.
+a bare-`>` line (`bar` → `ar`). The remap tracks visited `Point`
+objects by identity because plugins (the soft-break paragraph splitter)
+may alias one Point into several nodes' positions — remapping an
+aliased Point twice double-subtracts. Documents with no bare-`>` line
+skip the remap entirely, so the common path is untouched.
+
+The soft-break shapers receive the (escaped) source via their `source`
+option and derive real `position` info for split text parts by offset
+arithmetic — **split paragraphs must stay positioned**. A positionless
+split paragraph falls back to `mdastToString` in the editor adapter
+(inline markers vanish from the model) and gets no source-cache entry.
+When a text node's source slice doesn't byte-match its value (entity or
+escape decoding), the splitter deliberately leaves parts positionless
+and the cache skips those blocks — canonical fallback, never a guessed
+slice.
 
 Two adapters consume that tree:
 
@@ -144,8 +161,10 @@ isn't doubled.
 `stringifyMdast` post-processes the toMarkdown output to strip a few
 defensive escapes Inkwell doesn't need:
 
-- `\---`/`\***`/`\___` (thematic-break protection — unneeded under
-  `remarkNoThematicBreak`)
+- Escaped thematic-break lines (`\---` and the per-character forms
+  `\*\*\*` / `\_\_\_` / `\* \* \*` — unneeded under
+  `remarkNoThematicBreak`; only lines consisting entirely of marker
+  characters are unescaped)
 - `\[` / `\]` (link-bracket protection — Inkwell stores link source
   verbatim in text)
 - Trailing `&#x20;` (trailing-whitespace protection)
@@ -153,6 +172,16 @@ defensive escapes Inkwell doesn't need:
   round-trip nested-quote markers cleanly)
 
 It also collapses runs of consecutive bare-`>` lines to a single `>`.
+
+The whole post-process is **code-aware**: a line walker tracks fenced
+code (including blockquote-prefixed fences) and leaves fence content
+untouched, and the bracket strip skips inline code spans. toMarkdown
+emits code verbatim, so any backslash, entity, or `>` line inside code
+is the user's actual content — a blind strip corrupted edited code
+blocks (`` `\[a-z]` `` lost its backslash; `>`-only code lines were
+collapsed). Likewise `serialize()` trims newlines only at block-piece
+*edges* before joining — a document-wide `\n{3,}` collapse used to eat
+blank-line runs inside fenced code even for untouched cached blocks.
 
 `deserialize` for single-line plain-text input bypasses the slice path
 and keeps `content` verbatim as paragraph text. Paste paths feed text
@@ -167,14 +196,27 @@ adapters or in `stringifyMdast`'s post-process.
 
 Untouched blocks round-trip byte-for-byte through a per-block source
 cache keyed by Slate node id. `deserializeWithRanges` returns
-`BlockLineRange[]` derived from mdast position info;
-`populateSourceCacheFromParse` stores the verbatim source slice for
-each top-level block. On serialize, `slateToMdast` runs first, but a
+`(BlockLineRange | null)[]` derived from mdast position info — `null`
+for blocks with no position (synthetic plugin nodes), which
+`populateSourceCacheFromParse` **skips** rather than guessing a slice
+(a fabricated `{0,0}` range once cached the document's first line as
+every positionless block's source, and the self-derived canonical
+always matched — soft-wrapped docs serialized as line 0 repeated).
+Documents containing `\r` skip caching entirely: lone CRs desync the
+`\n`-based line slicing, and CRLF slices would splice mixed line
+endings into output — both degrade to the canonical (LF-normalized)
+form instead. On serialize, `slateToMdast` runs first, but a
 top-level block whose canonical re-stringification matches its cached
 canonical form short-circuits and re-emits the original slice
 verbatim. Style normalizations (`*` → `-`, `> a\n> b` → `> a\n>\n>
 b`, tight nested lists) only fire for blocks the user has actually
 edited.
+
+Soft-wrapped paragraphs (`a\nb`) split into sibling blocks — that IS
+the editor model — so the single-newline gap normalizes to a blank
+line on serialize: the per-block cache cannot express "no blank line
+between blocks". Inline markers survive the split (positioned parts →
+verbatim slices); only the inter-block gap normalizes.
 
 ## Editor Rendering Model
 
@@ -229,7 +271,9 @@ its canonical form and compares; matches emit the cached source slice,
 misses fall back to canonical.
 
 **Every** serialize path threads the cache — `getState`, the character
-count, `onSubmit`, and the `onChange` emission in `handleChange`. They
+count, `onSubmit`, the `onChange` emission in `handleChange`, and the
+copy/cut `text/plain` payload (`setFragmentData` reads the cache via
+the internal `editor.sourceCache` field wired at editor creation). They
 must stay aligned: if `onChange` serialized without the cache it would
 emit normalized untouched siblings (`*` → `-`, expanded blockquotes)
 while `getState` kept them verbatim, silently diverging a controlled
@@ -260,7 +304,8 @@ editor's source slice kept the typed one, breaking WYSIWYG parity. The
 `\---` / `\***` / `\___` defensive escapes mdast-util-to-markdown would
 emit are stripped by `stringifyMdast`'s post-process.
 
-List markers (`-`, `*`, `+`, `1.`) stay plain text in the editor and are not
+List markers (`-`, `*`, `+`, `1.`) are structural (see the Lists
+paragraph above — the editor re-emits them on serialize) and are not
 part of configurable editor features.
 
 Inline Markdown styling is still implemented internally with Slate decoration

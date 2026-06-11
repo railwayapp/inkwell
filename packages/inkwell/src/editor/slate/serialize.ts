@@ -52,14 +52,16 @@ export function serialize(
     pieces.push(canonicalize(node));
   }
 
-  // mdast-util-to-markdown emits a trailing newline per block; we
-  // joined the blocks already, so trim leading/trailing whitespace.
-  // Multiple blank lines between blocks collapse to one blank line.
+  // mdast-util-to-markdown emits a trailing newline per block. Trim
+  // newlines at each piece's EDGES only, then join with one blank line —
+  // blank-run collapsing must never reach inside a piece, where a cached
+  // code-block slice can legitimately contain consecutive blank lines
+  // (a document-wide `\n{3,}` collapse here used to corrupt those even
+  // for untouched, cache-faithful blocks).
   return pieces
+    .map(p => p.replace(/^\n+|\n+$/g, ""))
     .filter(p => p.length > 0)
-    .join("\n\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/^\n+|\n+$/g, "");
+    .join("\n\n");
 }
 
 export { canonicalize } from "./canonicalize";

@@ -1011,3 +1011,51 @@ describe("withMarkdown — paste (insertData)", () => {
     expect(Node.string(editor)).toBe("hello [world](https://example.com)");
   });
 });
+
+describe("withMarkdown — editing preserves newline structure", () => {
+  // Regression: content with single-newline line breaks (from inbound email,
+  // the API, AI replies, snippets, pre-Inkwell content) used to inflate to
+  // double newlines the moment it was edited, because serialize joined every
+  // paragraph with `\n\n`. Editing must not mutate newlines it didn't touch.
+
+  it("editing a line does not inflate single newlines to double", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("the quick\nlittle brown\nfox jumps");
+    editor.onChange();
+
+    const lastIdx = getElements(editor).length - 1;
+    Transforms.select(editor, Editor.end(editor, [lastIdx]));
+    editor.insertText("!");
+
+    expect(serialize(getElements(editor))).toBe(
+      "the quick\nlittle brown\nfox jumps!",
+    );
+  });
+
+  it("editing preserves the distinction between single and double newlines", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("intro line\nsecond line\n\nnew paragraph");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertText(" edited");
+
+    expect(serialize(getElements(editor))).toBe(
+      "intro line edited\nsecond line\n\nnew paragraph",
+    );
+  });
+
+  it("pressing Enter mid-document adds a single newline, not a blank line", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("first line\nsecond line");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+    editor.insertText("inserted");
+
+    expect(serialize(getElements(editor))).toBe(
+      "first line\ninserted\nsecond line",
+    );
+  });
+});

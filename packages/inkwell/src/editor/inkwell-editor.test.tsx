@@ -1210,7 +1210,7 @@ describe("InkwellEditor — plugin integration", () => {
         });
       });
       await waitFor(() => {
-        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
+        expect(ref.current?.getState().content).toBe("Intro\nMiddle");
       });
     });
 
@@ -1235,7 +1235,7 @@ describe("InkwellEditor — plugin integration", () => {
 
       expect(onExecute).not.toHaveBeenCalled();
       await waitFor(() => {
-        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
+        expect(ref.current?.getState().content).toBe("Intro\nMiddle");
       });
     });
 
@@ -1250,7 +1250,7 @@ describe("InkwellEditor — plugin integration", () => {
       });
 
       expect(screen.queryByText("/status")).not.toBeInTheDocument();
-      expect(ref.current?.getState().content).toBe("Intro\n\n/");
+      expect(ref.current?.getState().content).toBe("Intro\n/");
     });
 
     it("does not open before existing text on the same line", async () => {
@@ -3478,7 +3478,7 @@ describe("InkwellEditor — plugin integration", () => {
         });
       });
       await waitFor(() => {
-        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
+        expect(ref.current?.getState().content).toBe("Intro\nMiddle");
       });
     });
 
@@ -3503,7 +3503,7 @@ describe("InkwellEditor — plugin integration", () => {
 
       expect(onExecute).not.toHaveBeenCalled();
       await waitFor(() => {
-        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
+        expect(ref.current?.getState().content).toBe("Intro\nMiddle");
       });
     });
 
@@ -3518,7 +3518,7 @@ describe("InkwellEditor — plugin integration", () => {
       });
 
       expect(screen.queryByText("/status")).not.toBeInTheDocument();
-      expect(ref.current?.getState().content).toBe("Intro\n\n/");
+      expect(ref.current?.getState().content).toBe("Intro\n/");
     });
 
     it("does not open before existing text on the same line", async () => {

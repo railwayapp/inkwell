@@ -72,6 +72,15 @@ describe("serialize", () => {
     expect(serialize(nodes)).toBe("```\na\nb\n```");
   });
 
+  it("joins consecutive plain paragraphs with single newline", () => {
+    const nodes = [
+      el("paragraph", "the quick"),
+      el("paragraph", "little brown"),
+      el("paragraph", "fox jumps"),
+    ];
+    expect(serialize(nodes)).toBe("the quick\nlittle brown\nfox jumps");
+  });
+
   it("joins consecutive blockquotes with single newline", () => {
     const nodes = [el("blockquote", "> a"), el("blockquote", "> b")];
     expect(serialize(nodes)).toBe("> a\n> b");

@@ -170,7 +170,7 @@ const markdown = htmlToMarkdown(html);
 `RehypePluginConfig` accepts a plugin function or `[plugin, ...options]`.
 
 `InkwellRenderer` accepts `softBreak?: "preserve" | "br" | "paragraph"`
-(default `"preserve"`). Controls how single-newline soft breaks render:
+(default `"paragraph"`). Controls how single-newline soft breaks render:
 `"preserve"` keeps a literal `\n` text node (strict CommonMark — browser
 collapses to a space), `"br"` emits `<br />` (matches GFM / Showdown
 `simpleLineBreaks`), `"paragraph"` splits the enclosing `<p>` so each line

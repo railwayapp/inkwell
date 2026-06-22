@@ -1013,11 +1013,6 @@ describe("withMarkdown — paste (insertData)", () => {
 });
 
 describe("withMarkdown — editing preserves newline structure", () => {
-  // Regression: content with single-newline line breaks (from inbound email,
-  // the API, AI replies, snippets, pre-Inkwell content) used to inflate to
-  // double newlines the moment it was edited, because serialize joined every
-  // paragraph with `\n\n`. Editing must not mutate newlines it didn't touch.
-
   it("editing a line does not inflate single newlines to double", () => {
     const editor = createTestEditor();
     editor.children = deserialize("the quick\nlittle brown\nfox jumps");

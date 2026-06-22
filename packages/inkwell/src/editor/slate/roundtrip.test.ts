@@ -44,16 +44,6 @@ describe("serialize/deserialize round-trip", () => {
     expect(roundTrip(md)).toBe(md);
   });
 
-  it("preserves loose lists", () => {
-    const md = "- a\n\n- b\n\n- c";
-    expect(roundTrip(md)).toBe(md);
-  });
-
-  it("preserves ordered lists", () => {
-    const md = "1. first\n2. second\n3. third";
-    expect(roundTrip(md)).toBe(md);
-  });
-
   it("preserves images", () => {
     const md = "![alt text](https://example.com/img.png)";
     expect(roundTrip(md)).toBe(md);

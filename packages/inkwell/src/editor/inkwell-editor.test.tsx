@@ -1442,6 +1442,75 @@ describe("InkwellEditor — imperative API and state", () => {
     expect(ref.current?.getState().content).toContain("world");
   });
 
+  it("lands the caret where the click occurs on first focus, not at the end", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello world" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    const editable = container.querySelector(".inkwell-editor") as HTMLElement;
+    const stringNode = editable.querySelector(
+      "[data-slate-string]",
+    ) as HTMLElement;
+    const textNode = stringNode.firstChild as Text;
+
+    // jsdom has no layout, so stub the caret-from-point lookup to report the
+    // browser dropping the caret mid-word ("hello| world") under the pointer.
+    const domRange = document.createRange();
+    domRange.setStart(textNode, 5);
+    domRange.collapse(true);
+    const originalCaretFromPoint = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => domRange;
+    const selectSpy = vi.spyOn(Transforms, "select");
+
+    try {
+      fireEvent.pointerDown(editable, { button: 0, clientX: 5, clientY: 5 });
+      await act(async () => {
+        fireEvent.focus(editable);
+      });
+    } finally {
+      document.caretRangeFromPoint = originalCaretFromPoint;
+    }
+
+    const committed = selectSpy.mock.calls
+      .map(call => call[1])
+      .filter((range): range is Range => Range.isRange(range))
+      .at(-1);
+
+    expect(committed).toBeDefined();
+    expect(committed && Range.isCollapsed(committed)).toBe(true);
+    // The clicked offset (5), not the document end (11) or start (0).
+    expect(committed?.anchor.offset).toBe(5);
+    selectSpy.mockRestore();
+  });
+
+  it("falls back to the document end when the click can't be hit-tested", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello world" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    const editable = container.querySelector(".inkwell-editor") as HTMLElement;
+    const selectSpy = vi.spyOn(Transforms, "select");
+
+    // jsdom implements no caret hit-testing, so the pointer-down maps to no
+    // position — the same as clicking the empty space below the text. The
+    // commit should fall back to the document end instead of doing nothing.
+    fireEvent.pointerDown(editable, { button: 0, clientX: 5, clientY: 999 });
+    await act(async () => {
+      fireEvent.focus(editable);
+    });
+
+    const committed = selectSpy.mock.calls
+      .map(call => call[1])
+      .filter((range): range is Range => Range.isRange(range))
+      .at(-1);
+
+    // End of "hello world".
+    expect(committed?.anchor.offset).toBe(11);
+    selectSpy.mockRestore();
+  });
+
   it("does not change ordered list markers on Tab", async () => {
     const ref = createRef<import("../types").InkwellEditorHandle>();
     const { container } = render(

@@ -3,6 +3,7 @@
 import {
   Fragment,
   forwardRef,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -113,6 +114,44 @@ function replaceEditorChildren(
 }
 
 /**
+ * Resolve the collapsed DOM caret range under a viewport coordinate, bridging
+ * the two browser APIs — `caretRangeFromPoint` (WebKit/Blink) and
+ * `caretPositionFromPoint` (Firefox). Returns null when neither exists (e.g.
+ * jsdom) or the point lands on no node.
+ */
+function caretRangeFromClientPoint(
+  x: number,
+  y: number,
+): globalThis.Range | null {
+  if (typeof document.caretRangeFromPoint === "function") {
+    return document.caretRangeFromPoint(x, y);
+  }
+  if (typeof document.caretPositionFromPoint === "function") {
+    const position = document.caretPositionFromPoint(x, y);
+    if (!position) return null;
+    const range = document.createRange();
+    range.setStart(position.offsetNode, position.offset);
+    range.collapse(true);
+    return range;
+  }
+  return null;
+}
+
+/**
+ * Collapsed range at the end of the document, or null if the (possibly
+ * transient) tree can't resolve an end point yet. Used as the caret fallback
+ * for clicks the hit-test can't place — e.g. the empty space below the text.
+ */
+function endOfDocumentRange(editor: InkwellSlateEditor): Range | null {
+  try {
+    const end = Editor.end(editor, []);
+    return { anchor: end, focus: end };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Public wrapper. Returns `null` during SSR so all hooks in the client
  * component below are always called in the same order on the client.
  */
@@ -209,6 +248,68 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       },
       [],
     );
+
+    // Caret captured on pointer-down, committed on the focus it triggers.
+    // See handleEditableFocus for why first focus needs an explicit selection.
+    const pendingClickRangeRef = useRef<Range | null>(null);
+
+    const handleEditablePointerDown = useCallback(
+      (event: ReactPointerEvent<HTMLDivElement>) => {
+        // Capture the caret here, on pointer-down, because by the time the
+        // editable's focus event fires the browser hasn't reliably committed
+        // the click's DOM selection yet — so the focus handler can't read it
+        // back. Covers mouse, touch, and pen via pointer events. Read-only
+        // editors take no caret, and shift- or secondary-clicks (range-extend,
+        // context menu) fall through to the browser / Slate's native handling.
+        if (!editable || event.button !== 0 || event.shiftKey) {
+          pendingClickRangeRef.current = null;
+          return;
+        }
+        const domRange = caretRangeFromClientPoint(
+          event.clientX,
+          event.clientY,
+        );
+        const mapped = domRange
+          ? ReactEditor.toSlateRange(editor, domRange, {
+              exactMatch: false,
+              suppressThrow: true,
+            })
+          : null;
+        // Clicking the empty space below the text hit-tests to no caret
+        // position; fall back to the document end (where the browser drops the
+        // caret anyway) so the click still lands and the focus sync can't wipe
+        // it.
+        pendingClickRangeRef.current = mapped ?? endOfDocumentRange(editor);
+      },
+      [editable, editor],
+    );
+
+    const handleEditableFocus = useCallback(() => {
+      scheduleFocusedState(true);
+
+      // Commit the clicked caret as the Slate selection the moment the editable
+      // takes focus. This fixes two things:
+      // - First focus inside a modal: an outside-driven re-render can run
+      //   slate-react's selection sync while the editor is focused but
+      //   editor.selection is still null, wiping the freshly placed DOM caret
+      //   (removeAllRanges) so it looks focused but ignores typing. A non-null
+      //   selection keeps the sync from clearing it.
+      // - Re-focusing by click: Slate retains the previous selection across
+      //   blur, so without this the caret snaps back to where it last was
+      //   instead of where the user just clicked.
+      // A fresh pointer click therefore always wins; keyboard or programmatic
+      // focus (no pending click) falls through to Slate's own handling.
+      const clickRange = pendingClickRangeRef.current;
+      pendingClickRangeRef.current = null;
+      if (clickRange) {
+        try {
+          Transforms.select(editor, clickRange);
+        } catch {
+          // The captured point may not map onto the live tree; let Slate's own
+          // selection handling recover.
+        }
+      }
+    }, [editor, scheduleFocusedState]);
 
     const updateCharacterCount = useCallback(() => {
       const length = serialize(editor.children as InkwellElement[]).length;
@@ -1200,8 +1301,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
             aria-placeholder={resolvedPlaceholder}
             data-placeholder={resolvedPlaceholder}
             readOnly={!editable}
-            onFocus={() => scheduleFocusedState(true)}
-            onBlur={() => scheduleFocusedState(false)}
+            onPointerDown={handleEditablePointerDown}
+            onFocus={handleEditableFocus}
+            onBlur={() => {
+              // Drop any captured click so it can't leak into a later
+              // keyboard/programmatic focus that should restore the selection.
+              pendingClickRangeRef.current = null;
+              scheduleFocusedState(false);
+            }}
             onKeyDown={handleKeyDown}
           />
         </Slate>

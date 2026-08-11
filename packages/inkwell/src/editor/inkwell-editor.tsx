@@ -3,6 +3,7 @@
 import {
   Fragment,
   forwardRef,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -19,6 +20,7 @@ import {
   Node,
   type NodeEntry,
   Path,
+  type Point,
   Range,
   Transforms,
 } from "slate";
@@ -107,6 +109,26 @@ function nearestListItemPath(
   return null;
 }
 
+/**
+ * Find the plugin activated by typing a single character (e.g. `[` for
+ * snippets, `@` for mentions). Modifier combos (`Meta+j`) are keyboard-only
+ * and never come through typed input, so they're skipped here. Used by the
+ * content-driven mobile/IME activation path (see syncMobilePluginState).
+ */
+function findCharTriggerPlugin(
+  plugins: InkwellPlugin[],
+  char: string,
+): InkwellPlugin | null {
+  const lower = char.toLowerCase();
+  for (const plugin of plugins) {
+    const activation = plugin.activation;
+    if (activation?.type !== "trigger") continue;
+    if (activation.key.includes("+")) continue;
+    if (activation.key.toLowerCase() === lower) return plugin;
+  }
+  return null;
+}
+
 function replaceEditorChildren(
   editor: InkwellSlateEditor,
   nodes: Descendant[],
@@ -127,6 +149,44 @@ function replaceEditorChildren(
   }
 
   replace();
+}
+
+/**
+ * Resolve the collapsed DOM caret range under a viewport coordinate, bridging
+ * the two browser APIs — `caretRangeFromPoint` (WebKit/Blink) and
+ * `caretPositionFromPoint` (Firefox). Returns null when neither exists (e.g.
+ * jsdom) or the point lands on no node.
+ */
+function caretRangeFromClientPoint(
+  x: number,
+  y: number,
+): globalThis.Range | null {
+  if (typeof document.caretRangeFromPoint === "function") {
+    return document.caretRangeFromPoint(x, y);
+  }
+  if (typeof document.caretPositionFromPoint === "function") {
+    const position = document.caretPositionFromPoint(x, y);
+    if (!position) return null;
+    const range = document.createRange();
+    range.setStart(position.offsetNode, position.offset);
+    range.collapse(true);
+    return range;
+  }
+  return null;
+}
+
+/**
+ * Collapsed range at the end of the document, or null if the (possibly
+ * transient) tree can't resolve an end point yet. Used as the caret fallback
+ * for clicks the hit-test can't place — e.g. the empty space below the text.
+ */
+function endOfDocumentRange(editor: InkwellSlateEditor): Range | null {
+  try {
+    const end = Editor.end(editor, []);
+    return { anchor: end, focus: end };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -276,6 +336,68 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       [],
     );
 
+    // Caret captured on pointer-down, committed on the focus it triggers.
+    // See handleEditableFocus for why first focus needs an explicit selection.
+    const pendingClickRangeRef = useRef<Range | null>(null);
+
+    const handleEditablePointerDown = useCallback(
+      (event: ReactPointerEvent<HTMLDivElement>) => {
+        // Capture the caret here, on pointer-down, because by the time the
+        // editable's focus event fires the browser hasn't reliably committed
+        // the click's DOM selection yet — so the focus handler can't read it
+        // back. Covers mouse, touch, and pen via pointer events. Read-only
+        // editors take no caret, and shift- or secondary-clicks (range-extend,
+        // context menu) fall through to the browser / Slate's native handling.
+        if (!editable || event.button !== 0 || event.shiftKey) {
+          pendingClickRangeRef.current = null;
+          return;
+        }
+        const domRange = caretRangeFromClientPoint(
+          event.clientX,
+          event.clientY,
+        );
+        const mapped = domRange
+          ? ReactEditor.toSlateRange(editor, domRange, {
+              exactMatch: false,
+              suppressThrow: true,
+            })
+          : null;
+        // Clicking the empty space below the text hit-tests to no caret
+        // position; fall back to the document end (where the browser drops the
+        // caret anyway) so the click still lands and the focus sync can't wipe
+        // it.
+        pendingClickRangeRef.current = mapped ?? endOfDocumentRange(editor);
+      },
+      [editable, editor],
+    );
+
+    const handleEditableFocus = useCallback(() => {
+      scheduleFocusedState(true);
+
+      // Commit the clicked caret as the Slate selection the moment the editable
+      // takes focus. This fixes two things:
+      // - First focus inside a modal: an outside-driven re-render can run
+      //   slate-react's selection sync while the editor is focused but
+      //   editor.selection is still null, wiping the freshly placed DOM caret
+      //   (removeAllRanges) so it looks focused but ignores typing. A non-null
+      //   selection keeps the sync from clearing it.
+      // - Re-focusing by click: Slate retains the previous selection across
+      //   blur, so without this the caret snaps back to where it last was
+      //   instead of where the user just clicked.
+      // A fresh pointer click therefore always wins; keyboard or programmatic
+      // focus (no pending click) falls through to Slate's own handling.
+      const clickRange = pendingClickRangeRef.current;
+      pendingClickRangeRef.current = null;
+      if (clickRange) {
+        try {
+          Transforms.select(editor, clickRange);
+        } catch {
+          // The captured point may not map onto the live tree; let Slate's own
+          // selection handling recover.
+        }
+      }
+    }, [editor, scheduleFocusedState]);
+
     const updateCharacterCount = useCallback(() => {
       const length = serialize(editor.children as InkwellElement[], {
         cache: sourceCacheRef.current,
@@ -331,6 +453,18 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           setActivePluginState(null);
           activePluginQueryRef.current = "";
           setActivePluginQuery("");
+          triggerPointRef.current = null;
+        }
+
+        // Mobile/IME: the keydown never carried the character (Android soft
+        // keyboards send "Unidentified"), so drive char-trigger plugins from
+        // the committed document here. onChange fires AFTER slate-react's
+        // Android input flush, so opening the picker here can't re-render mid
+        // input and duplicate the typed character. Desktop keydowns set the
+        // flag, so this is a no-op there. Called via ref because the sync
+        // callback is defined after this one.
+        if (!keydownConsumedInputRef.current) {
+          syncMobilePluginStateRef.current();
         }
 
         // Serialize through the source cache so untouched sibling blocks
@@ -454,6 +588,20 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     const activePluginQueryRef = useRef("");
     const activePluginRef = useRef<InkwellPlugin | null>(null);
     activePluginRef.current = activePlugin;
+    // Document point of the trigger character for the active char-trigger
+    // plugin (null for modifier/manual activation). Lets selection delete the
+    // exact "<trigger><query>" span even when the typed-query mirror
+    // undercounts on mobile/IME input.
+    const triggerPointRef = useRef<Point | null>(null);
+    // True when the current keydown carried a real character/Backspace, so the
+    // content-driven mobile sync (in handleChange) skips inputs the keydown
+    // path already handled. Stays false for Android soft-keyboard keydowns
+    // (key "Unidentified"/keyCode 229), whose characters only reach the model
+    // via slate-react's Android input flush.
+    const keydownConsumedInputRef = useRef(false);
+    // Indirection so handleChange (defined above the activation helpers) can
+    // call the latest content-driven mobile sync without a dep cycle.
+    const syncMobilePluginStateRef = useRef<() => void>(() => {});
     const pluginPositionRef = useRef<{
       top: number;
       left: number;
@@ -944,6 +1092,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       setActivePluginState(null);
       activePluginQueryRef.current = "";
       setActivePluginQuery("");
+      triggerPointRef.current = null;
       ReactEditor.focus(editor);
     }, [editor]);
 
@@ -953,10 +1102,19 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         activePluginQueryRef.current = initialQuery;
         setActivePluginQuery(initialQuery);
         pluginPositionRef.current = getCursorPosition();
+        // The trigger char for a single-character trigger is inserted at the
+        // caret right after activation, so the caret here marks where it lands.
+        // Modifier and manual activations insert no trigger char.
+        const activation = plugin.activation;
+        const isCharTrigger =
+          activation?.type === "trigger" && !activation.key.includes("+");
+        triggerPointRef.current = isCharTrigger
+          ? (editor.selection?.anchor ?? null)
+          : null;
         activePluginRef.current = plugin;
         setActivePluginState(plugin);
       },
-      [getCursorPosition],
+      [editor, getCursorPosition],
     );
 
     const handlePluginSelect = useCallback(
@@ -966,12 +1124,30 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           activation?.type === "trigger" ? activation.key : undefined;
         const isCharTrigger = triggerKey && !triggerKey.includes("+");
         const queryLength = activePluginQueryRef.current.length;
+        // Captured before dismiss() clears it. On mobile/IME the query mirror
+        // can undercount (composed characters never reach the keydown or
+        // beforeinput char path), so we prefer the actual span from the
+        // trigger char to the caret when it is available and longer.
+        const triggerPoint = triggerPointRef.current;
         dismissPlugin();
         requestAnimationFrame(() => {
           ReactEditor.focus(editor);
           if (isCharTrigger) {
+            let distance = 1 + queryLength;
+            const selection = editor.selection;
+            if (triggerPoint && selection && Range.isCollapsed(selection)) {
+              try {
+                const span = Editor.string(editor, {
+                  anchor: triggerPoint,
+                  focus: selection.anchor,
+                });
+                distance = Math.max(distance, span.length);
+              } catch {
+                // Stale trigger point (tree changed) — keep the mirror count.
+              }
+            }
             Transforms.delete(editor, {
-              distance: 1 + queryLength,
+              distance,
               unit: "character",
               reverse: true,
             });
@@ -1010,8 +1186,147 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       [activatePlugin, dismissPlugin, pluginEditor, wrapSelection],
     );
 
+    // ─── Mobile / IME plugin driving ──────────────────────────────────────────
+    //
+    // Android soft keyboards (Gboard) fire `keydown` with key "Unidentified" /
+    // keyCode 229 for printable characters, so the keydown-driven trigger and
+    // query logic never sees the character and pickers like snippets (`[`)
+    // never open. slate-react commits Android input to the model on a debounced
+    // flush, then calls onChange, so we detect char triggers and track the
+    // query from the *committed document* in handleChange instead. Running
+    // post-flush (rather than in beforeinput, mid-input) is what keeps opening
+    // the picker from re-rendering the editable during reconciliation and
+    // duplicating the just-typed character. The picker still filters through
+    // its existing forwarded-key channel — we replay the query delta into it.
+
+    const emitQueryDelta = useCallback(
+      (previous: string, next: string) => {
+        const plugin = activePluginRef.current;
+        if (!plugin || previous === next) return;
+        let shared = 0;
+        while (
+          shared < previous.length &&
+          shared < next.length &&
+          previous[shared] === next[shared]
+        ) {
+          shared++;
+        }
+        for (let i = previous.length; i > shared; i--) {
+          emitForwardedKey(plugin.name, "Backspace");
+        }
+        for (let i = shared; i < next.length; i++) {
+          emitForwardedKey(plugin.name, next[i]);
+        }
+        activePluginQueryRef.current = next;
+        setActivePluginQuery(next);
+      },
+      [emitForwardedKey],
+    );
+
+    const syncMobilePluginState = useCallback(() => {
+      const selection = editor.selection;
+      const active = activePluginRef.current;
+
+      if (active) {
+        const activation = active.activation;
+        const point = triggerPointRef.current;
+        const isCharTrigger =
+          activation?.type === "trigger" && !activation.key.includes("+");
+        if (!isCharTrigger || !point || !activation) return;
+
+        // Dismiss if the caret left the trigger's block or moved to/before the
+        // trigger character (e.g. the user backspaced the `[` itself).
+        const caret = selection?.anchor;
+        if (
+          !selection ||
+          !Range.isCollapsed(selection) ||
+          !caret ||
+          !Path.equals(caret.path, point.path) ||
+          caret.offset < point.offset + 1
+        ) {
+          dismissPlugin();
+          return;
+        }
+
+        try {
+          const triggerChar = Editor.string(editor, {
+            anchor: point,
+            focus: { path: point.path, offset: point.offset + 1 },
+          });
+          if (triggerChar.toLowerCase() !== activation.key.toLowerCase()) {
+            dismissPlugin();
+            return;
+          }
+          const query = Editor.string(editor, {
+            anchor: { path: point.path, offset: point.offset + 1 },
+            focus: caret,
+          });
+          emitQueryDelta(activePluginQueryRef.current, query);
+        } catch {
+          dismissPlugin();
+        }
+        return;
+      }
+
+      // No active plugin: did a single character trigger just land before the
+      // caret? (onChange only fires on document edits, so this can't misfire on
+      // a bare cursor move.)
+      const caret = selection?.anchor;
+      if (!selection || !Range.isCollapsed(selection) || !caret) return;
+      if (caret.offset < 1) return;
+      let typed = "";
+      try {
+        typed = Editor.string(editor, {
+          anchor: { path: caret.path, offset: caret.offset - 1 },
+          focus: caret,
+        });
+      } catch {
+        return;
+      }
+      const plugin = findCharTriggerPlugin(plugins, typed);
+      if (!plugin) return;
+      if (plugin.shouldTrigger) {
+        // shouldTrigger only reads the key + modifier flags; typed characters
+        // carry no modifiers, so synthesize that minimal shape.
+        const syntheticEvent = {
+          key: typed,
+          ctrlKey: false,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+        } as unknown as React.KeyboardEvent<HTMLDivElement>;
+        if (!plugin.shouldTrigger(syntheticEvent, makeKeyDownContext(plugin))) {
+          return;
+        }
+      }
+      activatePlugin(plugin);
+      // activatePlugin recorded the post-insertion caret; the trigger char sits
+      // one position back, so correct it here.
+      triggerPointRef.current = {
+        path: caret.path,
+        offset: caret.offset - 1,
+      };
+    }, [
+      activatePlugin,
+      dismissPlugin,
+      editor,
+      emitQueryDelta,
+      makeKeyDownContext,
+      plugins,
+    ]);
+
+    syncMobilePluginStateRef.current = syncMobilePluginState;
+
     const handleKeyDown = useCallback(
       (event: React.KeyboardEvent<HTMLDivElement>) => {
+        // Record whether this keydown carried a real character so the
+        // content-driven mobile sync can skip inputs the keydown path already
+        // handles. Android soft keyboards report "Unidentified" here, leaving
+        // this false so those characters are handled from the committed
+        // document in handleChange.
+        keydownConsumedInputRef.current =
+          event.key === "Backspace" || event.key.length === 1;
+
         // If a plugin is active, keep keyboard interaction inside that plugin.
         // The plugin picker may not have focus yet (for character triggers, the
         // editor receives the trigger key first), so forward navigation, submit,
@@ -1470,8 +1785,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
             aria-placeholder={resolvedPlaceholder}
             data-placeholder={resolvedPlaceholder}
             readOnly={!editable}
-            onFocus={() => scheduleFocusedState(true)}
-            onBlur={() => scheduleFocusedState(false)}
+            onPointerDown={handleEditablePointerDown}
+            onFocus={handleEditableFocus}
+            onBlur={() => {
+              // Drop any captured click so it can't leak into a later
+              // keyboard/programmatic focus that should restore the selection.
+              pendingClickRangeRef.current = null;
+              scheduleFocusedState(false);
+            }}
             onKeyDown={handleKeyDown}
           />
         </Slate>

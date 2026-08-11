@@ -26,6 +26,7 @@ import { createBubbleMenuPlugin } from "../plugins/bubble-menu";
 import { createCompletionsPlugin } from "../plugins/completions";
 import { createMentionsPlugin } from "../plugins/mentions";
 import { createSlashCommandsPlugin } from "../plugins/slash-commands";
+import { createSnippetsPlugin } from "../plugins/snippets";
 import type { PluginRenderProps, ResolvedInkwellFeatures } from "../types";
 import { InkwellEditor } from "./inkwell-editor";
 import { computeDecorations } from "./slate/decorations";
@@ -1459,6 +1460,75 @@ describe("InkwellEditor — imperative API and state", () => {
     });
 
     expect(ref.current?.getState().content).toContain("world");
+  });
+
+  it("lands the caret where the click occurs on first focus, not at the end", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello world" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    const editable = container.querySelector(".inkwell-editor") as HTMLElement;
+    const stringNode = editable.querySelector(
+      "[data-slate-string]",
+    ) as HTMLElement;
+    const textNode = stringNode.firstChild as Text;
+
+    // jsdom has no layout, so stub the caret-from-point lookup to report the
+    // browser dropping the caret mid-word ("hello| world") under the pointer.
+    const domRange = document.createRange();
+    domRange.setStart(textNode, 5);
+    domRange.collapse(true);
+    const originalCaretFromPoint = document.caretRangeFromPoint;
+    document.caretRangeFromPoint = () => domRange;
+    const selectSpy = vi.spyOn(Transforms, "select");
+
+    try {
+      fireEvent.pointerDown(editable, { button: 0, clientX: 5, clientY: 5 });
+      await act(async () => {
+        fireEvent.focus(editable);
+      });
+    } finally {
+      document.caretRangeFromPoint = originalCaretFromPoint;
+    }
+
+    const committed = selectSpy.mock.calls
+      .map(call => call[1])
+      .filter((range): range is Range => Range.isRange(range))
+      .at(-1);
+
+    expect(committed).toBeDefined();
+    expect(committed && Range.isCollapsed(committed)).toBe(true);
+    // The clicked offset (5), not the document end (11) or start (0).
+    expect(committed?.anchor.offset).toBe(5);
+    selectSpy.mockRestore();
+  });
+
+  it("falls back to the document end when the click can't be hit-tested", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello world" onChange={vi.fn()} />,
+    );
+    await flushEffects();
+
+    const editable = container.querySelector(".inkwell-editor") as HTMLElement;
+    const selectSpy = vi.spyOn(Transforms, "select");
+
+    // jsdom implements no caret hit-testing, so the pointer-down maps to no
+    // position — the same as clicking the empty space below the text. The
+    // commit should fall back to the document end instead of doing nothing.
+    fireEvent.pointerDown(editable, { button: 0, clientX: 5, clientY: 999 });
+    await act(async () => {
+      fireEvent.focus(editable);
+    });
+
+    const committed = selectSpy.mock.calls
+      .map(call => call[1])
+      .filter((range): range is Range => Range.isRange(range))
+      .at(-1);
+
+    // End of "hello world".
+    expect(committed?.anchor.offset).toBe(11);
+    selectSpy.mockRestore();
   });
 
   it("Tab inside a list-item nests it one level deeper", async () => {
@@ -4909,5 +4979,136 @@ describe("InkwellEditor — onChange source fidelity", () => {
 
     expect(onChange).not.toHaveBeenCalled();
     expect(ref.current?.getState().content).toBe("* one\n* two");
+  });
+});
+
+describe("InkwellEditor — Android/IME (content-driven) plugin activation", () => {
+  const makeSnippets = () =>
+    createSnippetsPlugin({
+      snippets: [
+        { title: "greeting", content: "Hello there!" },
+        { title: "signoff", content: "Best regards" },
+      ],
+    });
+
+  const renderSnippetsEditor = async (content = "") => {
+    const ref = createRef<import("../types").InkwellEditorHandle>();
+    const { container } = render(
+      <InkwellEditor
+        ref={ref}
+        content={content}
+        onChange={vi.fn()}
+        plugins={[makeSnippets()]}
+      />,
+    );
+    const editor = container.querySelector(".inkwell-editor") as HTMLElement;
+    await flushEffects();
+    await act(async () => {
+      ref.current?.focus({ at: "end" });
+    });
+    return { ref, editor };
+  };
+
+  // Android soft keyboards (Gboard) fire keydown with key "Unidentified" /
+  // keyCode 229, so no usable key reaches keydown; the character only appears
+  // once slate-react's debounced Android flush commits it to the document. We
+  // reproduce that here: an "Unidentified" keydown followed by the character
+  // landing in the document (which drives handleChange, exactly as the flush
+  // does on-device).
+  const androidType = async (
+    ref: React.RefObject<import("../types").InkwellEditorHandle | null>,
+    editor: HTMLElement,
+    text: string,
+  ) => {
+    for (const char of text) {
+      await act(async () => {
+        fireEvent.keyDown(editor, { key: "Unidentified" });
+        ref.current?.insertContent(char);
+      });
+    }
+  };
+
+  it("opens a character-trigger picker from committed input when keydown lacks the key", async () => {
+    const { ref, editor } = await renderSnippetsEditor();
+
+    // Sanity: an "Unidentified" keydown with no document change does not open it.
+    act(() => {
+      fireEvent.keyDown(editor, { key: "Unidentified" });
+    });
+    expect(screen.queryByText("greeting")).not.toBeInTheDocument();
+
+    await androidType(ref, editor, "[");
+
+    expect(await screen.findByText("greeting")).toBeInTheDocument();
+    expect(screen.getByText("signoff")).toBeInTheDocument();
+  });
+
+  it("does not duplicate the trigger character when the picker opens", async () => {
+    const { ref, editor } = await renderSnippetsEditor();
+
+    await androidType(ref, editor, "[");
+    await screen.findByText("greeting");
+
+    // The trigger must appear exactly once in the document (regression: opening
+    // the picker mid-input re-rendered the editable and Slate's Android
+    // reconciliation duplicated the character).
+    expect(ref.current?.getState().content).toBe("[");
+  });
+
+  it("filters the picker as characters are committed to the document", async () => {
+    const { ref, editor } = await renderSnippetsEditor();
+
+    await androidType(ref, editor, "[");
+    await screen.findByText("greeting");
+
+    await androidType(ref, editor, "sign");
+
+    await waitFor(() => {
+      expect(screen.queryByText("greeting")).not.toBeInTheDocument();
+      expect(screen.getByText("signoff")).toBeInTheDocument();
+    });
+    // Each character lands exactly once — no doubling while filtering.
+    expect(ref.current?.getState().content).toBe("[sign");
+  });
+
+  it("deletes the whole trigger + typed query on select", async () => {
+    const { ref, editor } = await renderSnippetsEditor("Hi ");
+
+    await androidType(ref, editor, "[gr");
+    expect(ref.current?.getState().content).toBe("Hi [gr");
+    await screen.findByText("greeting");
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("greeting"));
+    });
+
+    await waitFor(() => {
+      // The "[gr" span is removed and the snippet inserted in its place — no
+      // leftover fragment.
+      expect(ref.current?.getState().content).toBe("Hi Hello there!");
+    });
+  });
+
+  it("leaves the desktop keydown path unchanged (activates, filters, no doubling)", async () => {
+    const { ref, editor } = await renderSnippetsEditor();
+
+    // Desktop: a real keydown activates via the trigger loop; the character
+    // then lands in the document. handleChange must NOT re-drive activation.
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "[" });
+      ref.current?.insertContent("[");
+    });
+    await screen.findByText("greeting");
+
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "s" });
+      ref.current?.insertContent("s");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("signoff")).toBeInTheDocument();
+      expect(screen.queryByText("greeting")).not.toBeInTheDocument();
+    });
+    expect(ref.current?.getState().content).toBe("[s");
   });
 });

@@ -73,7 +73,13 @@ describe("stringifyMdast — post-process escape stripping", () => {
     expect(out.trimEnd()).toBe("***");
   });
 
-  it("strips `\\[` / `\\]` link-bracket protection in plain text", () => {
+  it("keeps `\\[` bracket protection on the fallback inline path", () => {
+    // Hand-built TEXT nodes are the escaped fallback path (the editor's
+    // verbatim inkwellRaw path bypasses this entirely). The bracket
+    // escape must SURVIVE here: stripping it used to destroy links and
+    // images whose label/alt legitimately contains brackets —
+    // `[a\[b](url)` un-escaped to `[a[b](url)`, which no longer parses
+    // as a link.
     const out = stringifyMdast({
       type: "root",
       children: [
@@ -83,7 +89,27 @@ describe("stringifyMdast — post-process escape stripping", () => {
         },
       ],
     });
-    expect(out.trimEnd()).toBe("see [section]");
+    expect(out.trimEnd()).toBe("see \\[section]");
+  });
+
+  it("emits inkwellRaw values verbatim — no defensive escaping", () => {
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "paragraph",
+          children: [
+            {
+              type: "inkwellRaw",
+              value: "snake_case 2 * 3 [x](y) https://a.com/?b=1&c=2",
+            },
+          ],
+        },
+      ],
+    });
+    expect(out.trimEnd()).toBe(
+      "snake_case 2 * 3 [x](y) https://a.com/?b=1&c=2",
+    );
   });
 
   it("keeps real `[label](url)` link brackets (no escapes to strip)", () => {
@@ -109,21 +135,35 @@ describe("stringifyMdast — post-process escape stripping", () => {
   });
 
   it("strips trailing `&#x20;` whitespace protection at end of line", () => {
-    // `&#x20;` only gets injected at end-of-line, so the strip is
-    // anchored there. A literal `&#x20;` typed mid-content shouldn't
-    // be deleted — see the next case.
+    // toMarkdown REPLACES a text's final space with the entity, so the
+    // protection shape is always entity-attached-to-non-space. Only
+    // that shape is stripped.
     const out = stringifyMdast({
       type: "root",
       children: [
         {
-          type: "blockquote",
-          children: [
-            { type: "paragraph", children: [{ type: "text", value: " " }] },
-          ],
+          type: "paragraph",
+          children: [{ type: "text", value: "foo " }],
         },
       ],
     });
-    expect(out.trimEnd()).toBe(">");
+    expect(out.trimEnd()).toBe("foo");
+  });
+
+  it("keeps `&#x20;` preceded by a space (literally-typed entity)", () => {
+    // A user's verbatim ` &#x20;` has a space before the entity — that
+    // shape never comes from toMarkdown's protection, so stripping it
+    // deleted typed content.
+    const out = stringifyMdast({
+      type: "root",
+      children: [
+        {
+          type: "paragraph",
+          children: [{ type: "inkwellRaw", value: "keep &#x20;" }],
+        },
+      ],
+    });
+    expect(out.trimEnd()).toBe("keep &#x20;");
   });
 
   it("preserves `&#x20;` typed mid-content", () => {
@@ -145,11 +185,13 @@ describe("stringifyMdast — post-process escape stripping", () => {
     expect(out).toContain("#x20");
   });
 
-  it("strips `\\>` after a blockquote prefix at line start", () => {
-    // Hand-built mdast: outer blockquote containing a paragraph whose
-    // text starts with `>`. mdast emits `> \>foo` to protect the `>`
-    // from being read as another nesting level on re-parse; for
-    // Inkwell that's exactly the nested-quote behavior we want.
+  it("keeps `\\>` protection after a blockquote prefix", () => {
+    // Outer blockquote containing a paragraph whose text is LITERALLY
+    // `>foo`. mdast emits `> \>foo` so the inner `>` isn't read as
+    // another nesting level on re-parse — un-escaping it (the old
+    // behavior) silently upgraded the user's literal text into a
+    // nested blockquote. Structural nested quotes emit their own
+    // `> > ` prefixes and never need that rewrite.
     const out = stringifyMdast({
       type: "root",
       children: [
@@ -164,7 +206,7 @@ describe("stringifyMdast — post-process escape stripping", () => {
         },
       ],
     });
-    expect(out.trimEnd()).toBe("> >foo");
+    expect(out.trimEnd()).toBe("> \\>foo");
   });
 
   it("collapses runs of consecutive bare-`>` lines to a single `>`", () => {
@@ -267,7 +309,7 @@ describe("stringifyMdast — post-process is code-aware", () => {
     expect(out.trimEnd()).toBe("see `\\[a-z]`");
   });
 
-  it("still strips `\\[` outside the code span on the same line", () => {
+  it("keeps `\\[` escapes outside code spans on the fallback path", () => {
     const out = stringifyMdast({
       type: "root",
       children: [
@@ -281,7 +323,7 @@ describe("stringifyMdast — post-process is code-aware", () => {
         },
       ],
     });
-    expect(out.trimEnd()).toBe("[x `\\[y]` z]");
+    expect(out.trimEnd()).toBe("\\[x `\\[y]` z]");
   });
 
   it("keeps fence content verbatim: brackets, marker lines, entities, `>` runs", () => {
@@ -359,7 +401,8 @@ describe("stringifyMdast — post-process fence tracking over toMarkdown shapes"
   it("does not let an indented list-fence closer poison later blocks", () => {
     // Regression: the indented closer used to be misread as a new
     // opener, leaving the walker in fence state so every later line
-    // skipped post-processing (escapes never stripped).
+    // skipped post-processing. Observable: the thematic-break unescape
+    // (`\---` → `---`) must still fire on a paragraph AFTER the list.
     const out = stringifyMdast({
       type: "root",
       children: [
@@ -377,12 +420,12 @@ describe("stringifyMdast — post-process fence tracking over toMarkdown shapes"
         },
         {
           type: "paragraph",
-          children: [{ type: "text", value: "see [section] here" }],
+          children: [{ type: "text", value: "---" }],
         },
       ],
     });
-    expect(out).toContain("see [section] here");
-    expect(out).not.toContain("\\[section]");
+    expect(out).toContain("---");
+    expect(out).not.toContain("\\---");
   });
 
   it("does not unescape mixed-marker lines (`*-*` is not a thematic break)", () => {

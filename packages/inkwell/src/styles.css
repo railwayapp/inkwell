@@ -354,24 +354,29 @@
    chrome on the editor surface. The fence is part of the schema, not
    text — CSS-generated content keeps it visible (and uneditable) so
    the user can still see the source shape they're inside, with the
-   language tag pulled from `data-lang`. */
+   language tag pulled from `data-lang`.
+
+   Split by the layout-vs-chrome rule: `content`/`display`/`user-select`
+   are structural (removing them breaks the fence display entirely) and
+   stay at normal specificity; color and typography are visual chrome
+   and live in the sibling `:where()` rules below so a single-class
+   consumer override wins without `!important`. */
 .inkwell-editor .inkwell-editor-code-block::before {
   content: "```" attr(data-lang);
   display: block;
-  color: var(--inkwell-text-dim);
-  font-family: var(--inkwell-font-mono);
-  font-size: var(--inkwell-code-font-size);
-  line-height: 1.55;
   user-select: none;
 }
 .inkwell-editor .inkwell-editor-code-block::after {
   content: "```";
   display: block;
+  user-select: none;
+}
+:where(.inkwell-editor .inkwell-editor-code-block)::before,
+:where(.inkwell-editor .inkwell-editor-code-block)::after {
   color: var(--inkwell-text-dim);
   font-family: var(--inkwell-font-mono);
   font-size: var(--inkwell-code-font-size);
   line-height: 1.55;
-  user-select: none;
 }
 
 /* The code-block's single text leaf carries literal `\n` characters
@@ -561,9 +566,6 @@
   line-height: var(--inkwell-line-height);
   font-size: var(--inkwell-font-size);
 }
-:where(.inkwell-renderer :first-child) {
-  margin-top: 0;
-}
 :where(.inkwell-renderer h1) {
   font-size: var(--inkwell-h1-size);
   font-weight: var(--inkwell-heading-weight);
@@ -701,4 +703,16 @@
   height: auto;
   border-radius: var(--inkwell-radius);
   margin: var(--inkwell-space-image) 0;
+}
+
+/* First-block margin normalization for BOTH surfaces. These sit at the
+   END of the stylesheet on purpose: every rule here is zero-specificity
+   `:where()`, so source order is the tie-break — placed earlier, the
+   per-block margin rules silently won and the first block sat lower in
+   the editor than in the renderer. */
+:where(.inkwell-editor :first-child) {
+  margin-top: 0;
+}
+:where(.inkwell-renderer :first-child) {
+  margin-top: 0;
 }

@@ -1,9 +1,8 @@
 import type { Root } from "mdast";
-import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
-import remarkNoTables from "../lib/remark-no-tables";
+import remarkGfmNoTables from "../lib/remark-gfm-no-tables";
 import remarkNoThematicBreak from "../lib/remark-no-thematic-break";
 import {
   remarkSoftBreakAsBreak,
@@ -184,20 +183,24 @@ export function parseMarkdownToMdast(
 
   const proc = unified()
     .use(remarkParse)
-    .use(remarkGfm)
-    .use(remarkNoTables)
+    .use(remarkGfmNoTables)
     .use(remarkNoThematicBreak, { source: escaped });
-
-  // The shapers take the (escaped) source so split text parts can carry
-  // real positions — the editor's verbatim slicing and the source cache
-  // both depend on split paragraphs staying positioned.
-  if (softBreak === "br") {
-    proc.use(remarkSoftBreakAsBreak, { source: escaped });
-  } else if (softBreak === "paragraph") {
-    proc.use(remarkSoftBreakAsParagraph, { source: escaped });
-  }
 
   const tree = proc.runSync(proc.parse(escaped)) as Root;
   remapTreeOffsets(tree, insertions);
+
+  // Soft-break shaping runs AFTER the offset remap and against the
+  // ORIGINAL source. Split-part position derivation compares each text
+  // node's decoded value against its source slice — and decoded escapes
+  // (mdast turns the pre-parse bare-`>` `\>` insertion back into `>`)
+  // only byte-match the ORIGINAL string. Running the shaper inside the
+  // processor against the escaped source left every bare-`>` paragraph
+  // positionless: the editor displayed the `\>` fallback text and the
+  // source cache skipped those blocks.
+  if (softBreak === "br") {
+    remarkSoftBreakAsBreak({ source: content })(tree);
+  } else if (softBreak === "paragraph") {
+    remarkSoftBreakAsParagraph({ source: content })(tree);
+  }
   return tree;
 }

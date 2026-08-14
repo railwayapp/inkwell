@@ -1,4 +1,5 @@
 import type { Paragraph, Root, Text, ThematicBreak } from "mdast";
+import { visit } from "unist-util-visit";
 
 export interface RemarkNoThematicBreakOptions {
   /**
@@ -19,6 +20,12 @@ export interface RemarkNoThematicBreakOptions {
  * recognizes thematic breaks as a structural feature. Falls back to
  * `---` only when no source/position is available (synthetic nodes).
  *
+ * The rewrite walks the WHOLE tree, not just `tree.children` — a
+ * `> ---` nested in a blockquote or list item must degrade to text the
+ * same way a top-level one does, or the renderer shows an `<hr>` the
+ * editor has no representation for. A thematic break is a single line,
+ * so the nested slice never spans container continuation prefixes.
+ *
  * `source` is the escaped string parse.ts feeds the parser; thematic
  * markers (`*`/`_`/`-`/spaces) never contain `>`, so they are identical
  * in the escaped and original source — slicing either yields the same
@@ -30,16 +37,15 @@ export default function remarkNoThematicBreak(
 ) {
   const { source } = options;
   return (tree: Root) => {
-    tree.children = tree.children.map(node => {
-      if (node.type !== "thematicBreak") return node;
-      const tb = node as ThematicBreak;
-      const value = markerSource(tb, source) ?? "---";
+    visit(tree, "thematicBreak", (node: ThematicBreak, index, parent) => {
+      if (!parent || index == null) return;
+      const value = markerSource(node, source) ?? "---";
       const paragraph: Paragraph = {
         type: "paragraph",
         children: [{ type: "text", value } satisfies Text],
       };
-      if (tb.position) paragraph.position = tb.position;
-      return paragraph;
+      if (node.position) paragraph.position = node.position;
+      parent.children[index] = paragraph;
     });
   };
 }

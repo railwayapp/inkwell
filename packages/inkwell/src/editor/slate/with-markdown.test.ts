@@ -1231,3 +1231,199 @@ describe("withMarkdown — structural Enter never destroys sibling content", () 
     expect(Node.string(elements[2])).toBe("after");
   });
 });
+
+/**
+ * Regression gestures from the 2026-08 adversarial review. Numbers
+ * reference the review report.
+ */
+describe("withMarkdown — code-block exit gestures and paste (review fixes)", () => {
+  it("#7 double-Enter exits a trailing code block", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\ncode line\n```");
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+    editor.insertBreak();
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("code-block");
+    expect(Node.string(elements[0])).toBe("code line");
+    expect(elements[1].type).toBe("paragraph");
+    expect(serialize(editor.children as InkwellElement[])).toBe(
+      "```js\ncode line\n```",
+    );
+  });
+
+  it("#7 typing ``` on the last line + Enter closes the fence and exits", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\ncode line\n```");
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertText("\n```");
+    editor.insertBreak();
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(Node.string(elements[0])).toBe("code line");
+    expect(elements[1].type).toBe("paragraph");
+  });
+
+  it("#7 Backspace in an empty code block converts it to a paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "code-block",
+        id: generateId(),
+        lang: "js",
+        children: [{ text: "" }],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0]));
+    editor.deleteBackward("character");
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("paragraph");
+    expect(elements[0].lang).toBeUndefined();
+  });
+
+  it("#7 double-Enter exits an empty code block", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "code-block",
+        id: generateId(),
+        lang: "js",
+        children: [{ text: "" }],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0]));
+    editor.insertBreak();
+    editor.insertBreak();
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("code-block");
+    expect(elements[1].type).toBe("paragraph");
+  });
+
+  it("#8 multi-line paste into a code block stays verbatim inside the fence", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\nstart\n```");
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    const data = {
+      getData: (type: string) =>
+        type === "text/plain" ? "\nline2\n# not a heading\n- not a list" : "",
+    } as DataTransfer;
+    editor.insertData(data);
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("code-block");
+    expect(Node.string(elements[0])).toBe(
+      "start\nline2\n# not a heading\n- not a list",
+    );
+  });
+
+  it("#9 typing over a select-all lands in a paragraph, not the old container", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("para\n\n```js\nold code\n```");
+    editor.onChange();
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+    editor.insertText("replacement");
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("replacement");
+  });
+});
+
+describe("withMarkdown — re-review gesture fixes (second adversarial pass)", () => {
+  it("RR#14 single Enter at end of code ending with a newline does NOT exit", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\na\n\n```");
+    editor.onChange();
+    expect(Node.string(editor.children[0])).toBe("a\n");
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak(); // must append a newline, not exit
+    expect(getElements(editor)).toHaveLength(1);
+    expect(Node.string(editor.children[0])).toBe("a\n\n");
+    editor.insertBreak(); // second consecutive Enter exits
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    // only the newline the gesture added is removed — the user's
+    // trailing blank line survives
+    expect(Node.string(elements[0])).toBe("a\n");
+    expect(elements[1].type).toBe("paragraph");
+  });
+
+  it("RR#14b typing disarms the pending exit", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\ncode\n```");
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+    editor.insertText("x");
+    editor.insertBreak(); // newline again, NOT an exit
+    expect(getElements(editor)).toHaveLength(1);
+    expect(Node.string(editor.children[0])).toBe("code\nx\n");
+  });
+
+  it("RR#9 exit via a lone ``` line drops exactly the typed fence", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "code-block",
+        id: generateId(),
+        lang: "js",
+        children: [{ text: "\n```" }],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    // '\n```' minus the 4-char fence tail leaves an empty block — no
+    // phantom blank line
+    expect(Node.string(elements[0])).toBe("");
+  });
+
+  it("RR#10 paste over a selection reaching INTO a code block uses the markdown path", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello\n\n```\nline1\nline2\n```");
+    editor.onChange();
+    // anchor mid-'hello', focus mid-'line1'
+    Transforms.select(editor, {
+      anchor: { path: [0, 0], offset: 3 },
+      focus: { path: [1, 0], offset: 3 },
+    });
+    const data = {
+      getData: (t: string) =>
+        t === "text/plain" ? "# Title\n\npara text" : "",
+    } as DataTransfer;
+    editor.insertData(data);
+    const out = serialize(editor.children as InkwellElement[]);
+    // no literal blank-line runs trapped inside a single paragraph leaf
+    for (const el of getElements(editor)) {
+      expect(Node.string(el)).not.toContain("\n\n");
+    }
+    expect(out).toContain("Title");
+  });
+
+  it("RR-low typing over select-all in a single-code-block doc yields a paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\nold\n```");
+    editor.onChange();
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+    editor.insertText("fresh");
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("fresh");
+  });
+});

@@ -16,7 +16,7 @@ export interface BlockLineRange {
  * Deserialize a markdown source string into Slate elements.
  *
  * Single pass: `parseMarkdownToMdast` produces an mdast tree (with
- * `remark-no-tables` / `remark-no-thematic-break` already applied) and
+ * the GFM-no-tables subset / `remark-no-thematic-break` already applied) and
  * `mdastToSlate` adapts it into the editor's Slate schema. The
  * line-based regex scanner that previously implemented this is gone —
  * both surfaces of Inkwell now derive from the same mdast tree, the
@@ -91,6 +91,14 @@ export function deserializeWithRanges(
  * the original source slice — preserving what the user typed so the
  * decoration layer can still surface it as text, and so the source
  * cache round-trips unchanged.
+ *
+ * Gating recurses into containers (blockquote, list, list item) for the
+ * single-line node kinds — headings and standalone images — so
+ * `features={{headings:false}}` also disables `> # title` inside a
+ * quote. Code blocks are gated at the TOP level only: a nested code
+ * node's source slice spans container continuation prefixes (`> `,
+ * list indent), and splicing those into paragraph text corrupts the
+ * round-trip — the lesser evil is keeping nested fences structural.
  */
 function applyFeatureGates(
   tree: Root,
@@ -105,30 +113,46 @@ function applyFeatureGates(
     5: cfg.heading5,
     6: cfg.heading6,
   };
-  const next: RootContent[] = tree.children.map(node => {
+
+  const gateNode = (node: RootContent, topLevel: boolean): RootContent => {
     if (node.type === "heading") {
       if (!headingEnabled[node.depth]) return paragraphFromSlice(node, content);
       return node;
     }
-    if (node.type === "blockquote" && !cfg.blockquotes) {
-      return paragraphFromSlice(node, content);
+    if (node.type === "blockquote") {
+      if (!cfg.blockquotes && topLevel) {
+        return paragraphFromSlice(node, content);
+      }
+      return {
+        ...node,
+        children: node.children.map(c => gateNode(c, false)),
+      } as RootContent;
     }
-    if (node.type === "code" && !cfg.codeBlocks) {
+    if (node.type === "list" || node.type === "listItem") {
+      return {
+        ...node,
+        children: node.children.map(c => gateNode(c as RootContent, false)),
+      } as RootContent;
+    }
+    if (node.type === "code" && !cfg.codeBlocks && topLevel) {
       return paragraphFromSlice(node, content);
     }
     if (!cfg.images && node.type === "paragraph") {
       // `![alt](url)` on its own line — mdast wraps it in a paragraph
       // with a single Image child. When images are disabled, keep
       // the source slice as plain text so the user sees what they
-      // typed and the decoration layer can style it.
+      // typed and the decoration layer can style it. Applies at every
+      // depth — to-slate's image promotion is unconditional, so the
+      // gate has to catch nested standalone images here.
       const only = node.children.length === 1 ? node.children[0] : undefined;
       if (only?.type === "image") {
         return paragraphFromSlice(node, content);
       }
     }
     return node;
-  });
-  return { ...tree, children: next };
+  };
+
+  return { ...tree, children: tree.children.map(n => gateNode(n, true)) };
 }
 
 function paragraphFromSlice(node: RootContent, content: string): RootContent {

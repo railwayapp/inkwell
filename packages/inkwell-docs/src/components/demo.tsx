@@ -74,7 +74,7 @@ const DEMO_SNIPPETS = [
   {
     title: "Bug Report",
     content:
-      "## Bug Report\n\n**Description:**\n\n**Steps to reproduce:**\n1. \n2. \n3. \n\n**Expected behavior:**\n\n**Actual behavior:**\n",
+      "## Bug Report\n\n**Description:**\n\n**Steps to reproduce:**\n\n1. \n2. \n3. \n\n**Expected behavior:**\n\n**Actual behavior:**\n",
   },
   {
     title: "Feature Request",

@@ -1,6 +1,33 @@
-import type { Nodes } from "mdast";
-import { gfmToMarkdown } from "mdast-util-gfm";
+import type { Literal, Nodes } from "mdast";
 import { toMarkdown } from "mdast-util-to-markdown";
+import { gfmNoTablesToMarkdown } from "../lib/remark-gfm-no-tables";
+
+/**
+ * Inline node whose value is emitted VERBATIM — no defensive escaping.
+ * `from-slate` produces one for a paragraph/heading leaf whose text has
+ * passed the verbatim-safety check (re-parsing the text yields exactly
+ * the block shape it lives in), so the user's typed bytes survive
+ * serialization: `snake_case` stays `snake_case` instead of gaining
+ * `\_` escapes, bare URLs stay bare instead of `<autolink>` brackets.
+ */
+export interface InkwellRaw extends Literal {
+  type: "inkwellRaw";
+}
+
+declare module "mdast" {
+  interface PhrasingContentMap {
+    inkwellRaw: InkwellRaw;
+  }
+  interface RootContentMap {
+    inkwellRaw: InkwellRaw;
+  }
+}
+
+function inkwellRawHandler(node: InkwellRaw): string {
+  return node.value;
+}
+inkwellRawHandler.peek = (node: InkwellRaw): string =>
+  node.value.charAt(0) || " ";
 
 /**
  * Default `mdast-util-to-markdown` options. The bullet/fence/emphasis
@@ -29,33 +56,27 @@ export interface StringifyOptions {
 
 /**
  * Stringify an mdast tree back to markdown source. Applies the GFM
- * stringifier so strikethrough / autolinks survive a round-trip. Tables
- * pass through as plain text because the parse side runs
- * `remarkNoTables` upstream.
+ * subset stringifier (no tables — see `remark-gfm-no-tables`) so
+ * strikethrough / autolinks / task lists survive a round-trip while
+ * pipe characters in plain text stay unescaped.
  *
- * Post-processing strips a few defensive escapes that `mdast-util-to-markdown`
- * inserts but Inkwell's parse pipeline doesn't need:
+ * `inkwellRaw` nodes (see above) are emitted verbatim — that is the
+ * primary inline path for edited paragraph/heading blocks. The
+ * remaining post-processing strips the defensive escapes
+ * `mdast-util-to-markdown` inserts on the FALLBACK inline path that
+ * Inkwell's parse pipeline doesn't need:
  *
  * - Escaped thematic-break lines (`\---`, `\*\*\*`, `\* \* \*`, `\_\_\_`) —
  *   `remarkNoThematicBreak` upstream means the unescaped marker re-parses
  *   as a paragraph, so the escapes just show as stray backslashes in the
  *   editor. Only lines consisting entirely of (escaped) marker characters
  *   are unescaped.
- * - `\[` / `\]` (link-bracket protection) — Inkwell stores link source
- *   verbatim in text and never emits the literal `\[` escape, so any
- *   `\[`/`\]` outside code is always the to-markdown defensive escape
- *   for literal brackets in plain text. Real `[label](url)` links emit
- *   their brackets unescaped.
  * - Trailing `&#x20;` (trailing-whitespace protection) — mdast inserts
  *   this entity only at end-of-line to preserve trailing whitespace
  *   (which is otherwise stripped on re-parse). The editor doesn't
  *   represent trailing spaces as significant content, so the entity is
  *   pure visual noise. Anchored to end-of-line so a literal `&#x20;`
  *   typed mid-content isn't silently deleted.
- * - `\>` after a blockquote prefix (`> \>foo` → `> >foo`) — comes from
- *   the legacy text-leaf blockquote path; in that context the inner
- *   `>` is meant as a nested blockquote marker, not a literal `>`.
- *   Anchored to start-of-line.
  *
  * Runs of consecutive bare-`>` lines collapse to a single `>`. These
  * come up when a trailing or leading empty paragraph is paired with the
@@ -75,7 +96,8 @@ export function stringifyMdast(
 ): string {
   const raw = toMarkdown(tree, {
     ...TO_MARKDOWN_DEFAULTS,
-    extensions: [gfmToMarkdown()],
+    extensions: [gfmNoTablesToMarkdown()],
+    handlers: { inkwellRaw: inkwellRawHandler },
     ...options.toMarkdown,
   });
   return postProcess(raw);
@@ -165,82 +187,28 @@ function transformLine(line: string): string {
   ) {
     out = out.replace(/\\/g, "");
   }
-  // Link-bracket unescape, skipping inline code spans.
-  out = mapOutsideCodeSpans(out, seg => seg.replace(/\\([[\]])/g, "$1"));
-  // Trailing-whitespace entity at end-of-line. A code span's content
-  // can't sit at end-of-line (its closing backtick follows it), so no
-  // span check is needed. The lookbehind keeps a user's literal
-  // backslash-escaped `\&#x20;` intact — only the bare entity is
-  // toMarkdown's whitespace protection.
-  out = out.replace(/ ?(?<!\\)&#x20;$/, "");
-  // Legacy text-leaf blockquote nested-marker unescape.
-  out = out.replace(/^(>+ )\\>/, "$1>");
-  return out;
-}
-
-/**
- * Apply `fn` to the segments of `line` that sit outside inline code
- * spans. A code span is delimited by backtick runs of equal length
- * (CommonMark); unmatched runs are treated as plain text.
- */
-function mapOutsideCodeSpans(
-  line: string,
-  fn: (segment: string) => string,
-): string {
-  if (!line.includes("`")) return fn(line);
-  // A backtick preceded by an odd number of backslashes is toMarkdown's
-  // escape for a LITERAL backtick in plain text (`` \` ``) — it cannot
-  // delimit a code span. Treating it as an opener used to pair it with
-  // a real span's opening run and strip escapes inside the span.
-  const isEscaped = (idx: number): boolean => {
-    let backslashes = 0;
-    for (let b = idx - 1; b >= 0 && line[b] === "\\"; b--) backslashes++;
-    return backslashes % 2 === 1;
-  };
-  const nextRun = (from: number): { start: number; end: number } | null => {
-    let k = line.indexOf("`", from);
-    while (k !== -1) {
-      if (!isEscaped(k)) {
-        let end = k;
-        while (line[end] === "`") end++;
-        return { start: k, end };
-      }
-      // Skip the escaped backtick (a lone literal, never a run start).
-      k = line.indexOf("`", k + 1);
-    }
-    return null;
-  };
-
-  let out = "";
-  let i = 0;
-  while (i < line.length) {
-    const open = nextRun(i);
-    if (!open) {
-      out += fn(line.slice(i));
-      return out;
-    }
-    const runLen = open.end - open.start;
-    // Find the next backtick run of exactly the same length.
-    let close: { start: number; end: number } | null = null;
-    let j = open.end;
-    while (true) {
-      const candidate = nextRun(j);
-      if (!candidate) break;
-      if (candidate.end - candidate.start === runLen) {
-        close = candidate;
-        break;
-      }
-      j = candidate.end;
-    }
-    if (!close) {
-      // Unmatched run: the backticks are literal text.
-      out += fn(line.slice(i, open.end));
-      i = open.end;
-      continue;
-    }
-    out += fn(line.slice(i, open.start));
-    out += line.slice(open.start, close.end);
-    i = close.end;
-  }
+  // NOTE: two strips that used to live here are deliberately GONE.
+  //
+  // - `\[`/`\]` unescape: it destroyed links/images whose label or alt
+  //   legitimately contains brackets (`[a\[b](url)` un-escaped to
+  //   `[a[b](url)`, which no longer parses as a link). The verbatim
+  //   inline path now emits typed bracket text byte-for-byte, so the
+  //   defensive `\[` only appears on genuine fallback paths, where the
+  //   escape is semantically required.
+  //
+  // - `\>` unescape after a blockquote prefix: it upgraded a user's
+  //   LITERAL `>`-prefixed text inside a quote into a nested blockquote
+  //   on the next parse. The structural nested-blockquote model emits
+  //   real `> > ` prefixes itself and never needs the unescape.
+  //
+  // Trailing-whitespace entity at end-of-line. toMarkdown's protection
+  // REPLACES the final space, so its entity is always attached directly
+  // to a non-space character (`foo&#x20;`) — only that exact shape is
+  // stripped. A user's literally-typed ` &#x20;` (space before the
+  // entity, emitted verbatim by the inkwellRaw path) and an entity-only
+  // line both survive; the lookbehind also keeps a backslash-escaped
+  // `\&#x20;` intact. A code span's content can't sit at end-of-line
+  // (its closing backtick follows it), so no span check is needed.
+  out = out.replace(/(?<=[^\\ \t])&#x20;$/, "");
   return out;
 }

@@ -101,10 +101,38 @@ primitives from the root API.
 ## Unified mdast pipeline
 
 Both surfaces parse the same way. `src/mdast/parse.ts` exposes
-`parseMarkdownToMdast(content)`, which runs `remark-parse` + `remark-gfm`
-with Inkwell's parse-shaping plugins (`remarkNoTables`,
-`remarkNoThematicBreak`, and one of the soft-break shapers) and returns
-a single mdast `Root` with position info on every block.
+`parseMarkdownToMdast(content)`, which runs `remark-parse` +
+`remarkGfmNoTables` (a GFM subset: autolink literals, footnotes,
+strikethrough, task lists — **no table syntax**, on either the parse or
+stringify side) with `remarkNoThematicBreak`, then a soft-break shaper,
+and returns a single mdast `Root` with position info on every block.
+
+Tables are disabled at the SYNTAX level, not flattened after parsing:
+the old `remark-no-tables` plugin reconstructed rows from a lossy table
+tree (bold/link cell content stringified to `""`, the delimiter row was
+rewritten) and its reconstructed text desynced from the source slice,
+so the cache skipped the block and every serialize emitted the mangled
+form. With the extension absent, pipe rows are ordinary paragraph text
+with real positions at any nesting depth — bytes survive verbatim. The
+stringify side must stay table-free too, or `|` joins toMarkdown's
+unsafe list and every pipe in plain text serializes as `\|`.
+(`html-serializer.ts` deliberately keeps FULL gfm — it converts foreign
+HTML to markdown text, where `<table>` → pipe rows with all cells is
+the best representation.)
+
+GFM task lists ARE modeled: `mdastToSlate` reconstructs the `[x] `/
+`[ ] ` marker as visible text at the start of the item's first
+paragraph (D1=visible), and `slateToMdast` detects the prefix and moves
+it back onto `listItem.checked` so the stringifier emits `- [x] …`.
+Dropping the marker on either side silently deletes checkbox state from
+the source. Two guards: the to-slate prepend checks the source between
+the item start and the paragraph start — when the content begins with
+an inline element (`- [x] **b**`) micromark does NOT advance the
+paragraph past the checkbox, the slice already contains it, and a blind
+prepend doubled the marker; and from-slate only moves the marker onto
+`checked` when content FOLLOWS it — an empty scaffold (`- [ ] `) keeps
+the marker as literal text, because the stripped-empty paragraph gets
+dropped and the GFM stringifier would emit a bare `-`.
 
 `parseMarkdownToMdast` also escapes bare `>` line markers (`>foo`
 without a trailing space) to `\>` before parsing, so CommonMark doesn't
@@ -124,15 +152,25 @@ may alias one Point into several nodes' positions — remapping an
 aliased Point twice double-subtracts. Documents with no bare-`>` line
 skip the remap entirely, so the common path is untouched.
 
-The soft-break shapers receive the (escaped) source via their `source`
-option and derive real `position` info for split text parts by offset
-arithmetic — **split paragraphs must stay positioned**. A positionless
-split paragraph falls back to `mdastToString` in the editor adapter
-(inline markers vanish from the model) and gets no source-cache entry.
-When a text node's source slice doesn't byte-match its value (entity or
-escape decoding), the splitter deliberately leaves parts positionless
-and the cache skips those blocks — canonical fallback, never a guessed
-slice.
+The soft-break shaper runs AFTER the offset remap, as a plain function
+over the remapped tree with the **original** source as its `source`
+option — not inside the unified pipeline against the escaped source.
+Split-part positions are derived by comparing each text node's decoded
+value to its source slice, and decoded escapes (mdast turns the
+pre-parse `\>` insertion back into `>`) only byte-match the ORIGINAL
+string. Running the shaper pre-remap left every bare-`>` paragraph
+positionless: the editor displayed literal `\>` fallback text and the
+cache skipped those blocks. **Split paragraphs must stay positioned.**
+When a text node's source slice still doesn't byte-match its value
+(entity decoding, container `> `/indent prefixes), the splitter leaves
+parts positionless and the cache skips those blocks — canonical
+fallback, never a guessed slice.
+
+Setext headings (`Title\n====`) normalize to the ATX form in the MODEL
+(`# Title` single-line leaf) at `convertHeading` — a multi-line heading
+leaf is a shape nothing downstream handles (the first keystroke used to
+corrupt it into escaped paragraphs). The source cache still round-trips
+the untouched setext source byte-for-byte.
 
 Two adapters consume that tree:
 
@@ -149,38 +187,53 @@ Two adapters consume that tree:
   `mdast-util-to-hast` to HTML.
 
 The reverse direction is `src/mdast/from-slate.ts`
-(`slateToMdast(nodes)`). Inline content is re-parsed through `remark`
-so `Strong` / `Emphasis` / `Link` / etc. nodes are recovered before
-`stringifyMdast` (which wraps `mdast-util-to-markdown` + the `gfm`
-extension) emits the source. Container empty-paragraph handling:
-list items drop all empty paragraphs (`"none"` policy); blockquotes
-keep leading and trailing empty paragraphs but drop **internal**
-empties (`"edges"` policy) so the natural mdast paragraph separator
-isn't doubled.
+(`slateToMdast(nodes)`). The PRIMARY inline path is **verbatim
+emission**: a paragraph/heading leaf whose text passes the
+verbatim-safety check becomes a single `inkwellRaw` node whose value
+`stringifyMdast` emits byte-for-byte, no defensive escaping. The check
+(`verbatimSafe`) re-parses the text through `parseMarkdownToMdast`
+(same bare-`>` escaping, no tables) and accepts only when it yields
+exactly ONE block of the same type/depth, with no leading whitespace
+and no `\r`. This is what keeps typed bytes intact — `snake_case`,
+`2 * 3`, bare URLs, `@user[alice]`, `[label](url)` all serialize
+exactly as typed; the old always-escape path injected `\_`/`\*`,
+rewrote bare URLs to `<autolink>` form, and made stored markdown
+diverge from what the user typed (visible backslashes after reload).
+Text that would re-parse as a DIFFERENT block shape (`1. ` scaffolds,
+`---` lookalikes, leading indent) falls back to `parseInline` +
+toMarkdown's escaping, which is semantically required there. The
+fallback `parseInline` keeps the WHOLE text as one literal leaf when it
+re-parses to multiple blocks — returning only the first block's
+children silently deleted the rest from the output. Container
+empty-paragraph handling: list items drop all empty paragraphs
+(`"none"` policy); blockquotes keep leading and trailing empty
+paragraphs but drop **internal** empties (`"edges"` policy) so the
+natural mdast paragraph separator isn't doubled.
 
-`stringifyMdast` post-processes the toMarkdown output to strip a few
-defensive escapes Inkwell doesn't need:
+`stringifyMdast` post-processes the toMarkdown output to strip the few
+defensive escapes the FALLBACK path emits that Inkwell doesn't need:
 
 - Escaped thematic-break lines (`\---` and the per-character forms
   `\*\*\*` / `\_\_\_` / `\* \* \*` — unneeded under
   `remarkNoThematicBreak`; only lines consisting entirely of marker
   characters are unescaped)
-- `\[` / `\]` (link-bracket protection — Inkwell stores link source
-  verbatim in text)
 - Trailing `&#x20;` (trailing-whitespace protection)
-- `\>` after a blockquote prefix (so legacy text-leaf blockquotes
-  round-trip nested-quote markers cleanly)
+
+Two strips that used to live here are deliberately GONE — do not bring
+them back: the `\[`/`\]` unescape destroyed links/images whose
+label/alt legitimately contains brackets (`[a\[b](url)` un-escaped to a
+non-link), and the `\>`-after-prefix unescape upgraded a user's literal
+`>`-text inside a quote into a real nested blockquote.
 
 It also collapses runs of consecutive bare-`>` lines to a single `>`.
 
 The whole post-process is **code-aware**: a line walker tracks fenced
 code (including blockquote-prefixed fences) and leaves fence content
-untouched, and the bracket strip skips inline code spans. toMarkdown
-emits code verbatim, so any backslash, entity, or `>` line inside code
-is the user's actual content — a blind strip corrupted edited code
-blocks (`` `\[a-z]` `` lost its backslash; `>`-only code lines were
-collapsed). Likewise `serialize()` trims newlines only at block-piece
-*edges* before joining — a document-wide `\n{3,}` collapse used to eat
+untouched. toMarkdown emits code verbatim, so any backslash, entity, or
+`>` line inside code is the user's actual content — a blind strip
+corrupted edited code blocks (`>`-only code lines were collapsed).
+Likewise `serialize()` trims newlines only at block-piece *edges*
+before joining — a document-wide `\n{3,}` collapse used to eat
 blank-line runs inside fenced code even for untouched cached blocks.
 
 `deserialize` for single-line plain-text input bypasses the slice path
@@ -213,17 +266,44 @@ b`, tight nested lists) only fire for blocks the user has actually
 edited.
 
 Soft-wrapped paragraphs (`a\nb`) split into sibling blocks — that IS
-the editor model — so the single-newline gap normalizes to a blank
-line on serialize: the per-block cache cannot express "no blank line
-between blocks". At top level, inline markers survive the split via
-verbatim slices (positioned parts). Inside containers (blockquote /
+the editor model. AT REST the original gap survives anyway: each cache
+entry records the verbatim separator to the NEXT block
+(`gapToNext: { nextId, gap }`), and `serialize` re-emits it when both
+neighbors emit from cache and the recorded `nextId` still matches. So
+`a\nb`, `- a\n* b\n+ c` (marker-alternating sibling lists), and 3+
+newline runs all stay byte-exact until one of the neighbors is edited,
+inserted, deleted, or reordered — then the join falls back to the
+normalized blank line. At top level, inline markers survive the split
+via verbatim slices (positioned parts). Inside containers (blockquote /
 list-item), the text-node value never byte-matches its source slice
 (the slice carries `> `/indent prefixes), so split parts stay
 positionless there — `mdastToSlate` falls back to re-stringifying the
-inline children (`inlineFallback` in to-slate.ts), which preserves
+inline children (`inlineFallback` in to-slate.ts; single plain-text
+children short-circuit to their decoded value), which preserves
 `**`/link structure at the cost of canonical escape normalization.
 Don't swap that fallback back to `mdast-util-to-string` — the flat
 text dropped markers and link URLs from the model entirely.
+
+`verbatimSafe`'s paragraph expectation also accepts `definition`,
+`footnoteDefinition`, and `html` re-parse shapes — the editor models
+all three as verbatim-text paragraphs (to-slate's default case), and
+the escaped fallback would break them (`\[ref]: url` is no longer a
+definition, so every reference link pointing at it dies). Two hard
+safety rules inside `verbatimSafe`: (1) the check parses the text with
+a SENTINEL paragraph appended after a blank line and requires exactly
+`[expected block, sentinel]` — an unclosed `<pre>`/`<script>`/`<!--`
+html block or fence-opening line would otherwise absorb every later
+sibling once blocks are joined; (2) in container context (blockquote /
+list item) any line-leading `>` is rejected — the top-level parse
+escapes it, but after the container's `> ` prefix is prepended on emit
+it re-reads as a NESTED quote marker.
+
+The same termination rule guards the source cache:
+`populateSourceCacheFromParse` refuses to cache a slice that fails the
+sentinel check (`sliceTerminates`) — a cached UNCLOSED fence would
+swallow whichever block the user creates after it (the code-block exit
+gesture made that reachable by keyboard). The canonical fallback closes
+fences and is always join-safe.
 
 ## Editor Rendering Model
 
@@ -239,8 +319,28 @@ All features are enabled by default:
   fences themselves are structural; serialize wraps the text back in
   ` ```lang ` / ` ``` `. Editor renders as `<pre data-lang="…"><code>…</code></pre>`;
   `white-space: pre-wrap` on `.inkwell-editor-code-block` keeps caret
-  placement aligned with the visual line breaks.
+  placement aligned with the visual line breaks. Exit gestures (a code
+  block must never be a keyboard trap): a second CONSECUTIVE Enter at
+  the block end exits to a new paragraph after the block — the exit is
+  armed only by an Enter that itself added the trailing newline
+  (`pendingCodeExit`), so code that legitimately ends with a blank line
+  is never truncated by a single Enter; Enter after typing ` ``` ` as
+  the last line removes that line and exits; Backspace in an EMPTY code
+  block converts it back to a paragraph. The paste-verbatim branch
+  applies only when the selection sits entirely inside ONE code block —
+  a selection merely reaching into a fence from outside takes the
+  normal markdown paste path.
+  Paste inside a code block inserts the clipboard text verbatim — the
+  markdown-deserialize paste path used to keep only the first line as
+  code and leak the rest out of the fence as parsed blocks.
 - `images`
+
+Feature gates apply at ALL nesting depths for headings and standalone
+images (`> # title` with `headings:false` degrades to text inside the
+quote, same as at top level). Code blocks are gated at the top level
+only — a nested code node's source slice spans container continuation
+prefixes, and splicing those into paragraph text corrupts the round
+trip.
 
 Lists are not a feature-flag (they're always recognized). A run of
 `<marker> content` lines (unordered `-`/`*`/`+` or ordered `<n>.`)
@@ -250,7 +350,15 @@ serialize re-emits it. Editor renders as `<ul>`/`<ol>` + `<li>`. `Tab`
 inside a list-item nests it under its previous sibling (creating or
 reusing a nested list); `Shift+Tab` un-nests one level. Ordered lists
 remember a non-default starting number on the list element's `start`
-property and emit `<ol start="…">` accordingly.
+property and emit `<ol start="…">` accordingly. Task-list items keep
+their `[x] `/`[ ] ` marker as visible text at the start of the item
+(see the pipeline section); the renderer shows real checkboxes.
+
+Typing over a selection that spans multiple top-level blocks routes the
+deletion through `editor.deleteFragment` first, so the replacement text
+lands in a paragraph (or the start block's type) — Slate's built-in
+expanded-range insert kept the LAST block's container, trapping
+replacement text inside a trailing code block.
 
 Images are top-level void blocks. A standalone `![alt](url)` line
 deserializes to a top-level `image` element (rather than the mdast-
@@ -290,26 +398,39 @@ guard suppress the `onChange` that imperative `setContent`/`clear`
 would otherwise leak (the prior dead `suppressImperativeOnChange` ref
 never gated anything).
 
-Invalidation rides on `editor.apply`: any op whose path touches a
-top-level block (and `move_node`'s `newPath` as well) drops that
-block's entry. This is broad — some edits that preserve canonical
-shape still invalidate — but the fallback is just the canonical
-form, which is correct. The cache lives outside Slate state, so
-undo/redo doesn't have to thread through it; the canonical-equality
-check naturally re-uses cache entries when the structure returns to
-its previous shape.
+There is NO per-op invalidation. `getCachedSource` re-validates every
+hit by recomputing the block's canonical form and comparing (plus a
+plain-text guard), so a retained entry can never emit stale bytes — and
+retention is what lets edit → undo restore the block's original source
+style (`> a\n> b` comes back as `> a\n> b`, not `> a\n>\n> b`). The old
+apply-interceptor deleted entries on every op, which made that loss
+permanent. Entries are rebuilt wholesale on `setContent`/`clear`, which
+bounds growth. The cache lives outside Slate state, so undo/redo
+doesn't have to thread through it.
+
+`canonicalize` is memoized by node identity (WeakMap): Slate rebuilds
+the object for any block an op touches, so an unchanged reference has
+an unchanged canonical form. Serialize runs over every top-level block
+on every keystroke — the memo makes that O(edited blocks) instead of a
+full-document remark re-parse per keystroke (which cost 50–180ms on
+200–500-block documents). `handleChange` also serializes ONCE per
+change and feeds the same string to the character count and the
+`onChange` emission.
 
 Thematic breaks (`---` / `***` / `___` / `* * *` / `- - -`) are not
 modeled. `remarkNoThematicBreak` rewrites every `thematicBreak` node
-back to a paragraph in the parse pipeline, so these markers stay as
-plain paragraph text in both surfaces (no `<hr>` rendering, no
-decoration). A standard mdast `thematicBreak` carries no value, so the
-plugin slices the **verbatim** marker from the parsed source by
-`position.offset` (it takes the source string as a `source` option) —
-otherwise the renderer would collapse every marker to `---` while the
-editor's source slice kept the typed one, breaking WYSIWYG parity. The
-`\---` / `\***` / `\___` defensive escapes mdast-util-to-markdown would
-emit are stripped by `stringifyMdast`'s post-process.
+back to a paragraph in the parse pipeline — at **every** nesting depth
+(a `> ---` inside a quote degrades the same way; the top-level-only
+version leaked real `<hr>`s into the renderer inside containers) — so
+these markers stay as plain paragraph text in both surfaces (no `<hr>`
+rendering, no decoration). A standard mdast `thematicBreak` carries no
+value, so the plugin slices the **verbatim** marker from the parsed
+source by `position.offset` (it takes the source string as a `source`
+option) — otherwise the renderer would collapse every marker to `---`
+while the editor's source slice kept the typed one, breaking WYSIWYG
+parity. The `\---` / `\***` / `\___` defensive escapes
+mdast-util-to-markdown would emit are stripped by `stringifyMdast`'s
+post-process.
 
 List markers (`-`, `*`, `+`, `1.`) are structural (see the Lists
 paragraph above — the editor re-emits them on serialize) and are not
@@ -392,8 +513,9 @@ Blank source lines do not produce empty-paragraph nodes. They flush
 the current paragraph run; paragraph margins
 (`--inkwell-space-paragraph`, shared with the renderer) handle the
 visual gap between sibling blocks. Source round-trip fidelity comes
-from the source cache; collapsed blank runs (3+ newlines between
-blocks) normalize to one blank line.
+from the source cache; blank runs (3+ newlines between blocks) stay
+byte-exact AT REST via the inter-block gap map and normalize to one
+blank line once either neighboring block is edited.
 
 What stays at normal specificity — and MUST stay there — is layout-critical
 geometry: `.inkwell-editor-wrapper` (position relative anchors plugins),

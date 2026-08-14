@@ -1219,7 +1219,9 @@ describe("InkwellEditor — plugin integration", () => {
         });
       });
       await waitFor(() => {
-        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
+        // Byte-faithful at rest: the untouched Intro/Middle blocks keep
+        // their original soft-wrap gap (the inter-block gap map).
+        expect(ref.current?.getState().content).toBe("Intro\nMiddle");
       });
     });
 
@@ -1244,7 +1246,9 @@ describe("InkwellEditor — plugin integration", () => {
 
       expect(onExecute).not.toHaveBeenCalled();
       await waitFor(() => {
-        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
+        // Byte-faithful at rest: the untouched Intro/Middle blocks keep
+        // their original soft-wrap gap (the inter-block gap map).
+        expect(ref.current?.getState().content).toBe("Intro\nMiddle");
       });
     });
 
@@ -3642,7 +3646,9 @@ describe("InkwellEditor — plugin integration", () => {
         });
       });
       await waitFor(() => {
-        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
+        // Byte-faithful at rest: the untouched Intro/Middle blocks keep
+        // their original soft-wrap gap (the inter-block gap map).
+        expect(ref.current?.getState().content).toBe("Intro\nMiddle");
       });
     });
 
@@ -3667,7 +3673,9 @@ describe("InkwellEditor — plugin integration", () => {
 
       expect(onExecute).not.toHaveBeenCalled();
       await waitFor(() => {
-        expect(ref.current?.getState().content).toBe("Intro\n\nMiddle");
+        // Byte-faithful at rest: the untouched Intro/Middle blocks keep
+        // their original soft-wrap gap (the inter-block gap map).
+        expect(ref.current?.getState().content).toBe("Intro\nMiddle");
       });
     });
 

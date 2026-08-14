@@ -49,6 +49,12 @@ export interface InkwellElement extends BaseElement {
    */
   alt?: string;
   /**
+   * Image title (`![alt](url "title")`). Only present on `image`
+   * elements; carried through the round-trip so an edit to the block
+   * doesn't silently delete the user's title.
+   */
+  title?: string;
+  /**
    * Code-block language tag (e.g. `"ts"`, `"py"`). Only present on
    * `code-block` elements; serialized into the opening fence at
    * round-trip time.

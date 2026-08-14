@@ -1,7 +1,30 @@
 import { Node } from "slate";
+import { parseMarkdownToMdast } from "../../mdast/parse";
 import { canonicalize } from "./canonicalize";
 import type { BlockLineRange } from "./deserialize";
 import type { InkwellElement } from "./types";
+
+/**
+ * A cached slice must TERMINATE: emitting an unclosed construct (a
+ * fence with no closing line, an unclosed `<pre>`/`<script>`/comment
+ * HTML block) followed by `\n\n` + the next block's source makes the
+ * re-parse absorb that sibling into the construct — silent content
+ * loss the moment a block exists after it. The canonical fallback
+ * closes fences and is always join-safe. Cheap prefilter first; the
+ * sentinel parse runs only for suspicious slices.
+ */
+const ABSORPTION_SUSPECT_RE =
+  /(^|\n)[ \t]{0,3}(`{3,}|~{3,})|<\/?(pre|script|style|textarea)\b|(^|\n)<!--/i;
+const SENTINEL = "InkwellSentinel7";
+
+function sliceTerminates(source: string): boolean {
+  if (!ABSORPTION_SUSPECT_RE.test(source)) return true;
+  const tree = parseMarkdownToMdast(`${source}\n\n${SENTINEL}`);
+  const tail = tree.children[tree.children.length - 1];
+  if (!tail || tail.type !== "paragraph") return false;
+  const child = tail.children.length === 1 ? tail.children[0] : undefined;
+  return !!child && child.type === "text" && child.value === SENTINEL;
+}
 
 /**
  * Per-block source cache. The editor instance owns one of these and
@@ -24,11 +47,10 @@ import type { InkwellElement } from "./types";
  * the block hasn't structurally changed, emit `source`. Different →
  * the block has been edited, emit the fresh canonical form.
  *
- * Invalidation is triggered by an `editor.apply` interceptor — any
- * op whose path touches a top-level block drops that block's cache
- * entry. We don't try to be precise about which sub-mutations
- * preserve canonical equivalence; falling back to the canonical form
- * for an edited block is correct, just less stylistically faithful.
+ * There is no per-op invalidation: that read-time re-validation is the
+ * whole consistency story, and RETAINING entries is what lets
+ * edit → undo restore a block's original source style instead of the
+ * canonical form. Entries are rebuilt wholesale on setContent/clear.
  */
 export interface SourceCacheEntry {
   source: string;
@@ -41,6 +63,18 @@ export interface SourceCacheEntry {
    * text check, copy would emit the unselected trailing space.
    */
   text: string;
+  /**
+   * Verbatim separator between this block and the NEXT top-level block
+   * at parse time (`"\n"` for soft-wrap siblings and marker-alternating
+   * list runs, `"\n\n"` for a normal blank line, longer for blank
+   * runs). `serialize` re-emits it only when BOTH neighbors emit from
+   * cache AND the recorded `nextId` still matches — so `- a\n* b\n+ c`
+   * and soft-wrapped paragraphs stay byte-exact at rest instead of
+   * gaining normalized blank lines. Any edit, reorder, insert, or
+   * delete on either side breaks the id/adjacency check and falls back
+   * to the canonical `"\n\n"` join.
+   */
+  gapToNext?: { nextId: string; gap: string };
 }
 
 export type SourceCache = Map<string, SourceCacheEntry>;
@@ -83,7 +117,11 @@ export function setCacheEntry(
 }
 
 /**
- * Drop a single cache entry. Called when a Slate op edits the block.
+ * Drop a single cache entry, forcing the block to its canonical form on
+ * the next serialize. The editor does NOT call this per-op anymore —
+ * `getCachedSource` re-validates every hit (canonical + text compare),
+ * so retained entries can never emit stale bytes, and retaining them is
+ * what lets edit → undo restore a block's original source style.
  */
 export function invalidateCacheEntry(cache: SourceCache, id: string): void {
   cache.delete(id);
@@ -110,6 +148,7 @@ export function populateSourceCacheFromParse(
   // its canonical (LF-normalized) form.
   if (content.includes("\r")) return;
   const lines = content.split("\n");
+  let cachedIndices: number[] = [];
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
     const range = ranges[i];
@@ -120,6 +159,28 @@ export function populateSourceCacheFromParse(
     const { startLine, endLine } = range;
     if (startLine < 0 || endLine >= lines.length) continue;
     const source = lines.slice(startLine, endLine + 1).join("\n");
+    if (!sliceTerminates(source)) continue;
     setCacheEntry(cache, node, source, canonicalize(node));
+    cachedIndices.push(i);
+  }
+  // Record the verbatim inter-block separator for consecutive cached
+  // blocks, so at-rest serialization can re-emit the exact gap (a
+  // single `\n` for soft-wrap siblings and marker-alternating lists, a
+  // blank-line run for spaced-out documents) instead of the normalized
+  // `\n\n`.
+  cachedIndices = cachedIndices.filter(i => ranges[i] !== null);
+  for (let k = 0; k + 1 < cachedIndices.length; k++) {
+    const i = cachedIndices[k];
+    const j = cachedIndices[k + 1];
+    if (j !== i + 1) continue; // an uncached block sits between them
+    const a = ranges[i];
+    const b = ranges[j];
+    if (!a || !b || b.startLine <= a.endLine) continue;
+    const between = lines.slice(a.endLine + 1, b.startLine);
+    const gap = between.length === 0 ? "\n" : `\n${between.join("\n")}\n`;
+    const entry = cache.get(nodes[i].id);
+    if (entry) {
+      entry.gapToNext = { nextId: nodes[j].id, gap };
+    }
   }
 }

@@ -30,7 +30,17 @@ function App() {
 }
 ```
 
-`onChange` receives the updated Markdown source string.
+`onChange` receives the updated Markdown source string. Typed text
+serializes byte-for-byte — the editor does not inject `\_`/`\*` escapes
+or rewrite bare URLs into `<autolink>` form. Lists are structural
+(`- `/`* `/`+ `/`1. ` typing triggers; `Tab` nests, `Shift+Tab`
+un-nests); task-list markers `[ ]`/`[x]` stay visible text in the item
+and round-trip through `listItem.checked`. Pipe tables and thematic
+breaks are not modeled: they stay plain source text on both surfaces at
+any nesting depth. Inside a code block `Enter` inserts a newline; exit
+with `Enter` on an empty last line, a ` ``` ` line + `Enter`, or
+`Backspace` in an empty block. Pasting into a code block inserts the
+clipboard text verbatim.
 
 Use a ref for imperative actions:
 

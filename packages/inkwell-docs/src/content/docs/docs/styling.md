@@ -40,7 +40,7 @@ descendant scoping required.
 That covers `.inkwell-editor` and its inline marks (`strong`, `em`,
 `del`, `code`), the heading and blockquote block classes, every
 `.inkwell-renderer <tag>` rule (including links, headings, lists, code,
-images, `hr`), the bubble menu chrome, and the shared plugin picker
+images), the bubble menu chrome, and the shared plugin picker
 chrome. Three concrete patterns:
 
 ```tsx
@@ -294,8 +294,10 @@ needs to handle positioning and opacity.
 
 The renderer wraps output in `<div class="inkwell-renderer">`. Inside,
 standard HTML elements are used: `h1`–`h6`, `p`, `blockquote`, `ul`,
-`ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `hr`, `img`.
-GFM table syntax is rendered as source text rather than `<table>` elements.
+`ol`, `li`, `pre`, `code`, `a`, `strong`, `em`, `del`, `img`.
+GFM table syntax and thematic breaks (`---`) are rendered as source
+text rather than `<table>`/`<hr>` elements — at any nesting depth —
+matching what the editor shows.
 
 Target them with descendant selectors:
 

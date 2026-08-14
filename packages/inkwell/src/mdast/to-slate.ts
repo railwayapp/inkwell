@@ -97,6 +97,11 @@ function convertParagraph(node: Paragraph, content: string): InkwellElement {
  * (e.g. `&` → `\&`) is the accepted cost.
  */
 function inlineFallback(node: Paragraph): string {
+  // Always re-stringify — do NOT shortcut single-text children to
+  // their decoded value. The decoded value has the source's escapes
+  // and entities removed (`\*\*bold\*\*` decodes to `**bold**`), and
+  // injecting it into the D1=visible model turns the user's literal
+  // text into live formatting on the next serialize.
   return stringifyMdast({ type: "root", children: [node] }).replace(/\n+$/, "");
 }
 
@@ -106,9 +111,30 @@ function convertHeading(node: Heading, content: string): InkwellElement {
   // fall back to mdast-util-to-string (synthetic nodes from
   // soft-break splitting, etc.) we reconstruct the prefix from
   // `depth` so the editor model still sees it as visible text.
-  const text =
-    slice ??
-    `${"#".repeat(node.depth)} ${mdastToString(node)}`.replace(/\s+$/, "");
+  let text: string;
+  if (slice !== undefined && !slice.includes("\n")) {
+    text = slice;
+  } else if (slice !== undefined) {
+    // Setext heading (`Title\n=====`): the slice spans the underline
+    // line, and a multi-line heading leaf is a shape nothing downstream
+    // handles — the first keystroke used to corrupt the block into
+    // escaped paragraphs. Normalize the MODEL to the ATX form (content
+    // lines joined with spaces behind a `#{depth} ` prefix); the source
+    // cache still round-trips the untouched setext source byte-for-byte.
+    const lines = slice.split("\n");
+    const inner = lines
+      .slice(0, -1)
+      // Continuation lines of a setext heading inside a blockquote
+      // carry the `> ` prefix in the slice — strip it, it is structural.
+      .map(l => l.replace(/^(?:> ?)+/, "").trim())
+      .join(" ");
+    text = `${"#".repeat(node.depth)} ${inner}`;
+  } else {
+    text = `${"#".repeat(node.depth)} ${mdastToString(node)}`.replace(
+      /\s+$/,
+      "",
+    );
+  }
   return {
     type: "heading",
     id: generateId(),
@@ -161,6 +187,48 @@ function convertListItem(node: ListItem, content: string): InkwellElement {
   const children = node.children
     .map(child => convertBlock(child, content))
     .filter((c): c is InkwellElement => c !== null);
+  // Task-list marker: micromark strips `[x] `/`[ ] ` from the paragraph
+  // and stores it on `checked`. Reconstruct it as visible text at the
+  // start of the item (D1=visible markers) so the editor displays it
+  // and the round trip keeps it — dropping it here silently deleted
+  // checkbox state from the source on the first edit. from-slate
+  // detects the prefix and moves it back onto `checked`.
+  //
+  // BUT: mdast-util-gfm-task-list-item only advances the paragraph's
+  // position past the checkbox when the paragraph STARTS with a plain
+  // text node. When the content starts with an inline element
+  // (`- [x] **b**`), the paragraph's verbatim source slice already
+  // contains the marker — prepending would double it. Detect that by
+  // looking at the source between the item start and the paragraph
+  // start: if it contains no `[`, the checkbox is inside the slice.
+  if (typeof node.checked === "boolean") {
+    const firstMd = node.children[0];
+    const between =
+      node.position?.start.offset != null &&
+      firstMd?.position?.start.offset != null
+        ? content.slice(
+            node.position.start.offset,
+            firstMd.position.start.offset,
+          )
+        : undefined;
+    const markerAlreadyInSlice =
+      between !== undefined && !between.includes("[");
+    if (!markerAlreadyInSlice) {
+      const marker = node.checked ? "[x] " : "[ ] ";
+      const first = children[0];
+      const firstLeaf =
+        first && first.type === "paragraph" ? first.children[0] : undefined;
+      if (firstLeaf && "text" in firstLeaf) {
+        firstLeaf.text = marker + firstLeaf.text;
+      } else {
+        children.unshift({
+          type: "paragraph",
+          id: generateId(),
+          children: [{ text: marker }],
+        });
+      }
+    }
+  }
   return {
     type: "list-item",
     id: generateId(),
@@ -192,13 +260,15 @@ function convertCode(node: Code): InkwellElement {
 }
 
 function convertImageBlock(node: Image): InkwellElement {
-  return {
+  const out: InkwellElement = {
     type: "image",
     id: generateId(),
     url: node.url,
     alt: node.alt ?? "",
     children: [{ text: "" }],
   };
+  if (node.title != null) out.title = node.title;
+  return out;
 }
 
 /**

@@ -115,6 +115,7 @@ export function withMarkdown(
   featuresRef: { current: ResolvedInkwellFeatures },
 ): InkwellEditor {
   const {
+    deleteBackward,
     deleteFragment,
     insertBreak,
     insertData,
@@ -123,6 +124,37 @@ export function withMarkdown(
     normalizeNode,
     setFragmentData,
   } = editor;
+
+  // One-shot arm for the code-block double-Enter exit: set when an
+  // Enter inserts the trailing newline at a block's end, checked (and
+  // consumed) by the next Enter, disarmed by any other text edit.
+  let pendingCodeExit: { id: string; text: string } | null = null;
+
+  // Backspace inside an EMPTY code block converts it back to a
+  // paragraph instead of merging into the previous block — the escape
+  // hatch that makes an empty fence removable by keyboard (paired with
+  // the double-Enter exit in insertBreak).
+  editor.deleteBackward = unit => {
+    pendingCodeExit = null;
+    const [match] = Editor.nodes(editor, {
+      match: n =>
+        Element.isElement(n) && (n as InkwellElement).type === "code-block",
+      mode: "lowest",
+    });
+    if (match) {
+      const [node, path] = match;
+      if (Node.string(node) === "") {
+        Transforms.setNodes(
+          editor,
+          { type: "paragraph" } as Partial<InkwellElement>,
+          { at: path },
+        );
+        Transforms.unsetNodes(editor, "lang", { at: path });
+        return;
+      }
+    }
+    deleteBackward(unit);
+  };
 
   editor.isVoid = (element: InkwellElement) => {
     if (element.type === "image") return true;
@@ -206,12 +238,66 @@ export function withMarkdown(
       return;
     }
 
-    // Enter inside a code-block → insert a literal newline into the
-    // single text leaf. The browser renders it as a visual line break
-    // (the editor's `.inkwell-editor-code-block` rule sets
+    // Enter inside a code-block. Two exit gestures come first — a code
+    // block with no keyboard way out is a trap (the trailing code block
+    // used to be inescapable):
+    // - Second CONSECUTIVE Enter at the very end (tracked via
+    //   pendingCodeExit — set only when the previous Enter inserted the
+    //   trailing newline) → drop that blank line and insert a paragraph
+    //   after the block, mirroring the blockquote exit. Keying on
+    //   "text ends with \n" alone exited on the FIRST Enter for code
+    //   that legitimately ends with a blank line, silently deleting it.
+    // - Caret at the very end with the last line exactly ``` (the user
+    //   typed a closing fence) → remove that line and exit the same way.
+    // (Backspace in an EMPTY code block converts it back to a paragraph
+    // — see deleteBackward below — so an empty fence is removable too.)
+    // Anything else inserts a literal newline into the single text leaf
+    // (the editor's `.inkwell-editor-code-block` rule renders it via
     // `white-space: pre-wrap`).
     if (element.type === "code-block") {
+      const collapsed = Range.isCollapsed(selection);
+      const blockEnd = Editor.end(editor, path);
+      const atEnd = collapsed && Point.equals(selection.anchor, blockEnd);
+      const closingFence = /(?:^|\n)```$/.exec(text);
+      const pendingExit =
+        pendingCodeExit !== null &&
+        pendingCodeExit.id === element.id &&
+        pendingCodeExit.text === text &&
+        text.endsWith("\n");
+      if (atEnd && (pendingExit || closingFence)) {
+        // match[0] includes the leading `\n` when the fence isn't the
+        // whole text, so its length is exactly what must be dropped.
+        const dropLen = pendingExit
+          ? 1
+          : (closingFence as RegExpExecArray)[0].length;
+        pendingCodeExit = null;
+        Editor.withoutNormalizing(editor, () => {
+          Transforms.delete(editor, {
+            at: {
+              anchor: {
+                path: blockEnd.path,
+                offset: blockEnd.offset - dropLen,
+              },
+              focus: blockEnd,
+            },
+          });
+          Transforms.insertNodes(
+            editor,
+            {
+              type: "paragraph",
+              id: generateId(),
+              children: [{ text: "" }],
+            } as InkwellElement,
+            { at: Path.next(path) },
+          );
+        });
+        Transforms.select(editor, Editor.start(editor, Path.next(path)));
+        return;
+      }
       editor.insertText("\n");
+      // Arm the exit only when THIS Enter added a trailing newline at
+      // the block end; any other edit disarms it (see insertText).
+      pendingCodeExit = atEnd ? { id: element.id, text: `${text}\n` } : null;
       return;
     }
 
@@ -452,8 +538,27 @@ export function withMarkdown(
   };
 
   editor.insertText = (text: string) => {
+    pendingCodeExit = null;
     const { selection } = editor;
     if (!selection) return insertText(text);
+
+    // Typing over a selection that spans multiple top-level blocks OR
+    // covers the whole document: route the deletion through
+    // editor.deleteFragment first (which resets a full-document
+    // selection to a fresh paragraph), then insert at the collapsed
+    // caret. Slate's built-in expanded-range insertText keeps the
+    // surviving block's container — typing over select-all in a
+    // document ending with (or consisting of) a code block used to
+    // land the replacement text inside that fence.
+    if (
+      !Range.isCollapsed(selection) &&
+      (selection.anchor.path[0] !== selection.focus.path[0] ||
+        isFullDocumentRange(editor, selection))
+    ) {
+      editor.deleteFragment();
+      editor.insertText(text);
+      return;
+    }
 
     const [match] = Editor.nodes(editor, {
       match: n => Element.isElement(n),
@@ -576,6 +681,35 @@ export function withMarkdown(
   editor.insertData = (data: DataTransfer) => {
     const text = data.getData("text/plain");
     if (text) {
+      // Paste with the selection INSIDE a code block (collapsed caret,
+      // or an expanded selection whose both edges sit in the SAME code
+      // block): code content is verbatim. Deserializing the payload as
+      // markdown used to keep only the first pasted line as code and
+      // re-parse the remainder into real blocks OUTSIDE the fence (a
+      // pasted `# comment` became an actual heading after the block).
+      // A selection that merely TOUCHES a code block from outside falls
+      // through to the normal markdown paste — hijacking it inserted
+      // literal blank-line runs into the surviving paragraph.
+      const selection = editor.selection;
+      const codeBlockAt = (point: Point): InkwellElement | undefined => {
+        const entry = Editor.above(editor, {
+          at: point,
+          match: n =>
+            Element.isElement(n) && (n as InkwellElement).type === "code-block",
+        });
+        return entry ? (entry[0] as InkwellElement) : undefined;
+      };
+      if (selection) {
+        const [start, end] = Range.edges(selection);
+        const startCode = codeBlockAt(start);
+        const insideOneCodeBlock =
+          startCode !== undefined &&
+          (Range.isCollapsed(selection) || codeBlockAt(end) === startCode);
+        if (insideOneCodeBlock) {
+          Transforms.insertText(editor, text.replace(/\r\n?/g, "\n"));
+          return;
+        }
+      }
       const trimmed = text.trim();
       const sel = editor.selection;
       if (

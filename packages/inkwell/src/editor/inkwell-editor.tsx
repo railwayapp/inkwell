@@ -53,7 +53,6 @@ import { RenderLeaf } from "./slate/render-leaf";
 import { serialize } from "./slate/serialize";
 import {
   createSourceCache,
-  invalidateCacheEntry,
   populateSourceCacheFromParse,
   type SourceCache,
 } from "./slate/source-cache";
@@ -251,34 +250,14 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     const editor = useMemo<InkwellSlateEditor>(() => {
       const base = withNodeId(withReact(createEditor()));
       const composed = withMarkdown(withHistory(base), featuresRef);
-      const { apply } = composed;
-      composed.apply = op => {
-        // Most ops touch a single top-level block at `op.path[0]`.
-        // Move ops also touch `op.newPath[0]`. Invalidating before
-        // the op applies catches the case where the op replaces the
-        // block — the OLD id's cache entry becomes meaningless.
-        if (
-          "path" in op &&
-          op.path.length > 0 &&
-          typeof op.path[0] === "number"
-        ) {
-          const topNode = composed.children[op.path[0]];
-          if (topNode && "id" in topNode && typeof topNode.id === "string") {
-            invalidateCacheEntry(sourceCacheRef.current, topNode.id);
-          }
-        }
-        if (
-          op.type === "move_node" &&
-          op.newPath.length > 0 &&
-          typeof op.newPath[0] === "number"
-        ) {
-          const destNode = composed.children[op.newPath[0]];
-          if (destNode && "id" in destNode && typeof destNode.id === "string") {
-            invalidateCacheEntry(sourceCacheRef.current, destNode.id);
-          }
-        }
-        apply(op);
-      };
+      // No apply-time cache invalidation: `getCachedSource` re-validates
+      // every hit by recomputing the block's canonical form (plus a text
+      // guard), so a retained entry can never emit stale bytes. Deleting
+      // entries on every op — the previous design — meant a single
+      // keystroke followed by undo lost the block's source style
+      // forever (`> a\n> b` came back as `> a\n>\n> b`). Entries are
+      // rebuilt wholesale on setContent/clear, which also bounds growth.
+      //
       // Expose the cache on the editor instance so withMarkdown's
       // copy/cut serialization threads it like every other serialize
       // path (see InkwellEditor.sourceCache in slate/types.ts).
@@ -398,14 +377,22 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       }
     }, [editor, scheduleFocusedState]);
 
-    const updateCharacterCount = useCallback(() => {
-      const length = serialize(editor.children as InkwellElement[], {
-        cache: sourceCacheRef.current,
-      }).length;
-      setCharacterCount(length);
-      onCharacterCount?.(length, characterLimit);
-      return length;
-    }, [editor, onCharacterCount, characterLimit]);
+    const updateCharacterCount = useCallback(
+      (precomputed?: string) => {
+        // Callers that already hold the serialized document (handleChange)
+        // pass it in so each keystroke serializes once, not twice.
+        const length = (
+          precomputed ??
+          serialize(editor.children as InkwellElement[], {
+            cache: sourceCacheRef.current,
+          })
+        ).length;
+        setCharacterCount(length);
+        onCharacterCount?.(length, characterLimit);
+        return length;
+      },
+      [editor, onCharacterCount, characterLimit],
+    );
 
     const serializeContent = useCallback(
       () =>
@@ -424,7 +411,18 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         );
         if (!isAstChange) return;
 
-        updateCharacterCount();
+        // Serialize through the source cache so untouched sibling blocks
+        // round-trip byte-for-byte (matching getState/onSubmit/character
+        // count). Without the cache, editing one block re-canonicalizes
+        // every untouched sibling (`*`→`-`, expanded blockquotes, escaped
+        // `***`) in the onChange payload — diverging from getState and
+        // breaking the source-cache contract. Cache-faithful serialization
+        // also lets the echo guard below correctly suppress the onChange
+        // that imperative setContent/clear would otherwise leak.
+        const nextContent = serialize(value as InkwellElement[], {
+          cache: sourceCacheRef.current,
+        });
+        updateCharacterCount(nextContent);
         bumpStateVersion();
 
         const currentPluginEditor = pluginEditorRef.current;
@@ -467,17 +465,6 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           syncMobilePluginStateRef.current();
         }
 
-        // Serialize through the source cache so untouched sibling blocks
-        // round-trip byte-for-byte (matching getState/onSubmit/character
-        // count). Without the cache, editing one block re-canonicalizes
-        // every untouched sibling (`*`→`-`, expanded blockquotes, escaped
-        // `***`) in the onChange payload — diverging from getState and
-        // breaking the source-cache contract. Cache-faithful serialization
-        // also lets the echo guard below correctly suppress the onChange
-        // that imperative setContent/clear would otherwise leak.
-        const nextContent = serialize(value as InkwellElement[], {
-          cache: sourceCacheRef.current,
-        });
         // Prevent echo loops
         if (nextContent !== lastContent.current) {
           lastContent.current = nextContent;

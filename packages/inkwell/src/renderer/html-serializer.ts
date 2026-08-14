@@ -4,15 +4,19 @@ import rehypeRemark from "rehype-remark";
 import remarkGfm from "remark-gfm";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
-import remarkNoTables from "../lib/remark-no-tables";
 
 // Unified pipeline: HTML → HAST → MDAST → Markdown
 // Mirrors mdxeditor's MDAST-based approach instead of using Turndown.
+//
+// remark-gfm (WITH tables) is intentional here, unlike the parse
+// pipeline: this converts foreign HTML to markdown text, and an HTML
+// <table> stringifies to pipe-table rows with every cell intact. The
+// editor then shows those rows as plain text (its parse side has no
+// table syntax), which is Inkwell's representation for tables.
 const processor = unified()
   .use(rehypeParse, { fragment: true })
   .use(rehypeRemark)
   .use(remarkGfm)
-  .use(remarkNoTables)
   .use(remarkStringify, {
     bullet: "-",
     emphasis: "_",

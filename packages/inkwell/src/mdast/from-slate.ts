@@ -10,12 +10,13 @@ import type {
   Root,
   RootContent,
 } from "mdast";
-import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { Node } from "slate";
 import { unified } from "unified";
 import type { InkwellElement } from "../editor/slate/types";
+import remarkGfmNoTables from "../lib/remark-gfm-no-tables";
 import { parseMarkdownToMdast } from "./parse";
+import type { InkwellRaw } from "./stringify";
 
 /**
  * Convert a Slate `InkwellElement[]` back into an mdast tree.
@@ -39,17 +40,20 @@ export function slateToMdast(nodes: InkwellElement[]): Root {
   return {
     type: "root",
     children: nodes
-      .map(convertBlock)
+      .map(n => convertBlock(n, false))
       .filter((n): n is RootContent => n !== null),
   };
 }
 
-function convertBlock(node: InkwellElement): RootContent | null {
+function convertBlock(
+  node: InkwellElement,
+  inContainer: boolean,
+): RootContent | null {
   switch (node.type) {
     case "paragraph":
-      return convertParagraphBlock(node);
+      return convertParagraphBlock(node, inContainer);
     case "heading":
-      return convertHeadingBlock(node);
+      return convertHeadingBlock(node, inContainer);
     case "blockquote":
       return convertBlockquoteBlock(node);
     case "list":
@@ -73,8 +77,23 @@ function convertBlock(node: InkwellElement): RootContent | null {
   }
 }
 
-function convertParagraphBlock(node: InkwellElement): Paragraph {
+function convertParagraphBlock(
+  node: InkwellElement,
+  inContainer: boolean,
+): Paragraph {
   const text = Node.string(node);
+  // Whitespace-only paragraphs are cursor targets, not content — treat
+  // them as empty so the container empty-paragraph policies see them
+  // (a space-only quote paragraph used to emit `> &#x20;`).
+  if (text.trim() === "") {
+    return { type: "paragraph", children: [] };
+  }
+  if (verbatimSafe(text, { type: "paragraph" }, inContainer)) {
+    return {
+      type: "paragraph",
+      children: [{ type: "inkwellRaw", value: text } satisfies InkwellRaw],
+    };
+  }
   return {
     type: "paragraph",
     children: parseInline(text),
@@ -83,16 +102,110 @@ function convertParagraphBlock(node: InkwellElement): Paragraph {
 
 const HEADING_PREFIX_RE = /^(#{1,6})\s+/;
 
-function convertHeadingBlock(node: InkwellElement): Heading {
+function convertHeadingBlock(
+  node: InkwellElement,
+  inContainer: boolean,
+): Heading {
   const raw = Node.string(node);
   const match = HEADING_PREFIX_RE.exec(raw);
-  const inner = match ? raw.slice(match[0].length) : raw;
   const depth = clampHeadingDepth(node.level ?? match?.[1].length ?? 1);
+  // Verbatim path: toMarkdown emits `#{depth} ` + children, so raw must
+  // start with exactly that prefix and a SINGLE space for the emitted
+  // bytes to equal the leaf text — a second space would be re-emitted
+  // as a `&#x20;` entity by the heading handler, injecting visible
+  // text. Multi-space prefixes fall back to the escaped path.
+  if (
+    raw.startsWith("#".repeat(depth)) &&
+    raw[depth] === " " &&
+    raw[depth + 1] !== " "
+  ) {
+    const inner = raw.slice(depth + 1);
+    if (
+      inner !== "" &&
+      verbatimSafe(raw, { type: "heading", depth }, inContainer)
+    ) {
+      return {
+        type: "heading",
+        depth,
+        children: [{ type: "inkwellRaw", value: inner } satisfies InkwellRaw],
+      };
+    }
+  }
+  const inner = match ? raw.slice(match[0].length) : raw;
   return {
     type: "heading",
     depth,
     children: parseInline(inner),
   };
+}
+
+/**
+ * Sentinel paragraph appended after a blank line for the termination
+ * check below. Any string that always parses as its own paragraph
+ * works; this one is unlikely to interact with user text.
+ */
+const SENTINEL = "InkwellSentinel7";
+
+/**
+ * True when `text` can be emitted VERBATIM as the source of a block of
+ * the expected shape: re-parsing it through the SAME pipeline the
+ * editor loads content with (bare-`>` escaping, no tables, no thematic
+ * breaks) yields exactly one block of that type — AND that block
+ * terminates before a following sibling. This is what lets typed text
+ * keep its bytes — `snake_case`, `2 * 3`, bare URLs, and bracketed
+ * mention markers all serialize exactly as typed instead of gaining
+ * `\_`/`\*`/`<>` defensive escapes.
+ *
+ * Guards:
+ * - Leading indentation is rejected: once blocks are joined, an
+ *   indented first line could chain into a preceding list item as a
+ *   continuation line, or read as an indented code block.
+ * - `\r` is rejected: carriage returns desync the LF-based pipeline.
+ * - Inside a container, any line-leading `>` is rejected: the
+ *   top-level parse escapes it into paragraph text, but after the
+ *   container's `> ` prefix is prepended on emit it re-reads as a
+ *   NESTED blockquote marker.
+ * - The parse runs with a sentinel paragraph appended after a blank
+ *   line, and the result must be exactly [expected block, sentinel].
+ *   A block that swallows the sentinel — an unclosed `<pre>`/
+ *   `<script>`/`<!--` HTML block, a fence-opening line — would absorb
+ *   every later sibling once blocks are joined in the document.
+ * - `softBreak: "br"` keeps a multi-line leaf a single paragraph for
+ *   the check, mirroring how the editor displays it in one block.
+ */
+function verbatimSafe(
+  text: string,
+  expect: { type: "paragraph" } | { type: "heading"; depth: number },
+  inContainer: boolean,
+): boolean {
+  if (/^[ \t]/.test(text) || text.includes("\r")) return false;
+  if (inContainer && /^>/m.test(text)) return false;
+  const tree = parseMarkdownToMdast(`${text}\n\n${SENTINEL}`, {
+    softBreak: "br",
+  });
+  if (tree.children.length !== 2) return false;
+  const [only, tail] = tree.children;
+  if (tail.type !== "paragraph") return false;
+  const tailChild = tail.children.length === 1 ? tail.children[0] : undefined;
+  if (!tailChild || tailChild.type !== "text" || tailChild.value !== SENTINEL) {
+    return false;
+  }
+  if (expect.type === "paragraph") {
+    // Besides paragraphs proper, accept the block kinds the editor
+    // MODELS as verbatim-text paragraphs (to-slate's default case):
+    // link-reference definitions, footnote definitions, and HTML
+    // blocks that terminate before the sentinel. Emitting their source
+    // verbatim keeps them functioning on re-parse — the escaped
+    // fallback turned `[ref]: url` into `\[ref]: url`, silently
+    // breaking every reference link that pointed at it.
+    return (
+      only.type === "paragraph" ||
+      only.type === "definition" ||
+      only.type === "footnoteDefinition" ||
+      only.type === "html"
+    );
+  }
+  return only.type === "heading" && only.depth === expect.depth;
 }
 
 function clampHeadingDepth(level: number): 1 | 2 | 3 | 4 | 5 | 6 {
@@ -155,12 +268,53 @@ function convertListBlock(node: InkwellElement): List {
   return out;
 }
 
+const TASK_MARKER_RE = /^\[([ xX])\] /;
+
 function convertListItemNode(node: InkwellElement): ListItem {
-  return {
+  // Task-list items: the editor stores the `[x] `/`[ ] ` marker as
+  // visible text at the start of the item's first paragraph (mirroring
+  // to-slate, which reconstructs it from mdast's `listItem.checked`).
+  // Move it back onto `checked` so the GFM stringifier emits
+  // `- [x] …` — leaving it in the text would double the marker or, on
+  // the escaped fallback path, emit `\[x]`.
+  const firstBlock = node.children.find(
+    (c): c is InkwellElement => !("text" in c),
+  );
+  let checked: boolean | undefined;
+  let itemNode = node;
+  if (firstBlock && firstBlock.type === "paragraph") {
+    const text = Node.string(firstBlock);
+    const m = TASK_MARKER_RE.exec(text);
+    // Only move the marker onto `checked` when content follows it. An
+    // EMPTY scaffold item (`- [ ] `) must keep the marker as literal
+    // paragraph text: stripping it leaves an empty paragraph that the
+    // `"none"` policy drops, and the GFM stringifier has no first
+    // child to inject the checkbox into — the marker bytes vanished
+    // from the output.
+    if (m && text.slice(m[0].length) !== "") {
+      checked = m[1] !== " ";
+      itemNode = {
+        ...node,
+        children: node.children.map(c =>
+          c === firstBlock
+            ? {
+                ...firstBlock,
+                children: [{ text: text.slice(m[0].length) }],
+              }
+            : c,
+        ),
+      };
+    }
+  }
+  const item: ListItem = {
     type: "listItem",
     spread: false,
-    children: convertContainerChildren(node, { keepEmptyParagraphs: "none" }),
+    children: convertContainerChildren(itemNode, {
+      keepEmptyParagraphs: "none",
+    }),
   };
+  if (checked !== undefined) item.checked = checked;
+  return item;
 }
 
 type EmptyParagraphPolicy = "none" | "edges";
@@ -202,7 +356,7 @@ function convertContainerChildren(
   const converted: ContainerChild[] = [];
   for (const child of node.children) {
     if ("text" in child) continue;
-    const c = convertBlock(child);
+    const c = convertBlock(child, true);
     if (!c) continue;
     // Admit every block type a container can hold. Headings used to be
     // missing here and were silently dropped — `> # title` serialized
@@ -260,7 +414,7 @@ function convertImageBlock(node: InkwellElement): Paragraph {
     type: "image",
     url: node.url ?? "",
     alt: node.alt ?? "",
-    title: null,
+    title: node.title ?? null,
   };
   return { type: "paragraph", children: [image] };
 }
@@ -274,13 +428,21 @@ function convertImageBlock(node: InkwellElement): Paragraph {
  */
 function parseInline(text: string): PhrasingContent[] {
   if (text === "") return [];
-  // Inline source is parsed as a one-block document. The first child
-  // is a paragraph whose children are the phrasing nodes we want.
-  // Anything else (block-level content slipping into a paragraph's
-  // text — which the editor shape doesn't allow) falls back to a
-  // literal text leaf.
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(text) as Root;
+  // Inline source is parsed as a one-block document. A single
+  // paragraph's children are the phrasing nodes we want. Anything else
+  // (block-level content in the text, or MULTIPLE blocks) falls back to
+  // one literal text leaf covering the WHOLE text — returning only the
+  // first block's children here used to silently delete every later
+  // block from the serialized output while the editor kept displaying
+  // it. toMarkdown escapes whatever the literal needs to stay one
+  // paragraph, so nothing is lost.
+  const tree = unified()
+    .use(remarkParse)
+    .use(remarkGfmNoTables)
+    .parse(text) as Root;
   const first = tree.children[0];
-  if (first && first.type === "paragraph") return first.children;
+  if (tree.children.length === 1 && first && first.type === "paragraph") {
+    return first.children;
+  }
   return [{ type: "text", value: text }];
 }

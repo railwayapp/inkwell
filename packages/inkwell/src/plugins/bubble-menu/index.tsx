@@ -110,11 +110,18 @@ function BubbleMenuWidget({
 
     const rect = sel.getRangeAt(0).getBoundingClientRect();
     const editorRect = editorRef.current.getBoundingClientRect();
-    const topInEditor = rect.top - editorRect.top;
-    const hasRoomAbove = topInEditor >= 48;
+    // Placement is a viewport question, not an editor-box one: the menu
+    // is absolutely positioned in the wrapper and overflows the editor
+    // freely — the window edge is what clips it. A single-line composer
+    // pinned to the bottom of the window has no headroom inside the
+    // editor but plenty above it in the viewport; flipping below there
+    // pushes the menu off-screen. 48px ≈ menu height + gap.
+    const hasRoomAbove = rect.top >= 48;
 
     setPosition({
-      top: hasRoomAbove ? topInEditor : rect.bottom - editorRect.top,
+      top: hasRoomAbove
+        ? rect.top - editorRect.top
+        : rect.bottom - editorRect.top,
       left: rect.left - editorRect.left + rect.width / 2,
       placement: hasRoomAbove ? "above" : "below",
     });

@@ -289,6 +289,68 @@ describe("Bubble Editing Toolbar — selection triggers", () => {
   });
 });
 
+describe("Bubble Editing Toolbar — placement", () => {
+  function mockEditorRect(editorEl: HTMLElement, rect: Partial<DOMRect>) {
+    vi.spyOn(editorEl, "getBoundingClientRect").mockReturnValue({
+      top: rect.top ?? 0,
+      left: rect.left ?? 0,
+      bottom: rect.bottom ?? 0,
+      right: rect.right ?? 0,
+      width: rect.width ?? 0,
+      height: rect.height ?? 0,
+      x: rect.x ?? rect.left ?? 0,
+      y: rect.y ?? rect.top ?? 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+  }
+
+  it("places the menu above when the viewport has headroom, even with the selection flush against the editor top", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello world" onChange={vi.fn()} />,
+    );
+    const editor = getEditor(container);
+
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 10));
+    });
+
+    // A single-line composer near the bottom of the window: the selection
+    // sits 4px inside the editor box but 500px below the viewport top.
+    mockEditorRect(editor, { top: 496, bottom: 532, left: 0, right: 400 });
+    mockTextSelection(editor, "hello", { top: 500, bottom: 520 });
+
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    const toolbar = getToolbar(container) as HTMLElement;
+    expect(toolbar).toBeInTheDocument();
+    expect(toolbar.style.transform).toContain("translateY(-100%)");
+  });
+
+  it("places the menu below when the selection is near the viewport top", async () => {
+    const { container } = render(
+      <InkwellEditor content="hello world" onChange={vi.fn()} />,
+    );
+    const editor = getEditor(container);
+
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 10));
+    });
+
+    mockEditorRect(editor, { top: 0, bottom: 300, left: 0, right: 400 });
+    mockTextSelection(editor, "hello", { top: 20, bottom: 40 });
+
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+
+    const toolbar = getToolbar(container) as HTMLElement;
+    expect(toolbar).toBeInTheDocument();
+    expect(toolbar.style.transform).not.toContain("translateY(-100%)");
+  });
+});
+
 describe("Bubble Editing Toolbar — keyboard shortcuts", () => {
   it("Cmd+B does not throw", () => {
     const { container } = render(

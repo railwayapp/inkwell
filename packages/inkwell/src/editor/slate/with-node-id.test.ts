@@ -1,4 +1,4 @@
-import { createEditor, Editor, Transforms } from "slate";
+import { createEditor, Editor, Node, Transforms } from "slate";
 import { withHistory } from "slate-history";
 import { withReact } from "slate-react";
 import { describe, expect, it } from "vitest";
@@ -85,15 +85,12 @@ describe("deserialize — node IDs", () => {
     expect(typeof elements[0].id).toBe("string");
   });
 
-  it("assigns IDs to code fence elements", () => {
+  it("assigns IDs to code-block elements", () => {
     const elements = deserialize("```ts\nconst x = 1;\n```");
-    for (const el of elements) {
-      expect(el.id).toBeDefined();
-      expect(typeof el.id).toBe("string");
-    }
-    expect(elements[0].type).toBe("code-fence");
-    expect(elements[1].type).toBe("code-line");
-    expect(elements[2].type).toBe("code-fence");
+    expect(elements).toHaveLength(1);
+    expect(elements[0].id).toBeDefined();
+    expect(typeof elements[0].id).toBe("string");
+    expect(elements[0].type).toBe("code-block");
   });
 
   it("assigns IDs to blockquote elements", () => {
@@ -102,11 +99,17 @@ describe("deserialize — node IDs", () => {
     expect(elements[0].type).toBe("blockquote");
   });
 
-  it("assigns IDs to list-like paragraph elements", () => {
+  it("assigns IDs to list, list-item, and inner paragraph elements", () => {
     const elements = deserialize("- item 1\n- item 2");
-    for (const el of elements) {
-      expect(el.id).toBeDefined();
-      expect(el.type).toBe("paragraph");
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("list");
+    expect(elements[0].id).toBeDefined();
+    for (const item of elements[0].children) {
+      if (!("type" in item) || item.type !== "list-item") continue;
+      expect(item.id).toBeDefined();
+      for (const inner of item.children) {
+        if ("type" in inner) expect(inner.id).toBeDefined();
+      }
     }
   });
 
@@ -123,22 +126,21 @@ describe("deserialize — node IDs", () => {
     expect(elements[0].type).toBe("heading");
   });
 
-  it("assigns IDs to blank-line separator paragraphs", () => {
+  it("assigns IDs to both paragraphs across a blank-line separator", () => {
     const elements = deserialize("first\n\nsecond");
-    expect(elements.length).toBe(3);
+    expect(elements.length).toBe(2);
     for (const el of elements) {
       expect(el.id).toBeDefined();
       expect(typeof el.id).toBe("string");
     }
   });
 
-  it("assigns IDs for unclosed code block elements", () => {
+  it("assigns an ID to an unclosed code-block", () => {
     const elements = deserialize("```js\nunclosed");
-    for (const el of elements) {
-      expect(el.id).toBeDefined();
-    }
-    expect(elements[0].type).toBe("code-fence");
-    expect(elements[1].type).toBe("code-line");
+    expect(elements).toHaveLength(1);
+    expect(elements[0].id).toBeDefined();
+    expect(elements[0].type).toBe("code-block");
+    expect(elements[0].lang).toBe("js");
   });
 
   it("assigns IDs for trailing empty line fallback", () => {
@@ -281,9 +283,13 @@ describe("withNodeId — merge_node", () => {
     editor.children = deserialize("hello\n\nworld");
     editor.onChange();
 
+    // `hello\n\nworld` deserializes to two paragraphs (no empty
+    // separator). Merge them by selecting the start of the second
+    // paragraph and calling `mergeNodes`.
     const idsBefore = getAllIds(editor);
+    expect(idsBefore.length).toBe(2);
 
-    Transforms.select(editor, Editor.start(editor, [2]));
+    Transforms.select(editor, Editor.start(editor, [1]));
     Transforms.mergeNodes(editor);
 
     const idsAfter = getAllIds(editor);
@@ -293,11 +299,12 @@ describe("withNodeId — merge_node", () => {
 });
 
 describe("withMarkdown — element creation IDs", () => {
-  it("creates elements with IDs via insertBreak on code fence", () => {
+  it("Enter inside a code-block keeps its ID intact", () => {
     const editor = createTestEditor();
-    editor.children = deserialize("```typescript");
+    editor.children = deserialize("```typescript\n```");
     editor.onChange();
 
+    const originalId = getElements(editor)[0].id;
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertBreak();
 
@@ -305,21 +312,29 @@ describe("withMarkdown — element creation IDs", () => {
       expect(el.id).toBeDefined();
       expect(typeof el.id).toBe("string");
     }
+    expect(getElements(editor)[0].id).toBe(originalId);
   });
 
-  it("creates elements with IDs via insertBreak on blockquote", () => {
+  it("creates elements with IDs via insertBreak inside a blockquote paragraph", () => {
     const editor = createTestEditor();
     editor.children = deserialize("> some quote");
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [0]));
+    // Caret at the end of the inner paragraph — Slate's default
+    // insertBreak splits the paragraph in two siblings inside the
+    // existing blockquote, so the tree still has one top-level element.
+    Transforms.select(editor, Editor.end(editor, [0, 0]));
     editor.insertBreak();
 
-    const elements = getElements(editor);
-    for (const el of elements) {
-      expect(el.id).toBeDefined();
+    const top = getElements(editor);
+    expect(top).toHaveLength(1);
+    expect(top[0].type).toBe("blockquote");
+    expect(top[0].id).toBeDefined();
+    // Both inner paragraphs must carry IDs as well.
+    for (const child of top[0].children) {
+      if ("id" in child) expect(child.id).toBeDefined();
     }
-    expect(elements.length).toBe(2);
+    expect(top[0].children).toHaveLength(2);
   });
 
   it("creates elements with IDs via insertSoftBreak on blockquote", () => {
@@ -368,119 +383,82 @@ describe("withMarkdown — element creation IDs", () => {
     expect(elements[0].id).toBeDefined();
   });
 
-  it("code-line closing fence creates elements with IDs", () => {
+  it("``` Enter promotes to a code-block with an ID", () => {
     const editor = createTestEditor();
-    editor.children = deserialize("```ts\n```");
-    editor.onChange();
-
-    const codeLineIdx = getElements(editor).findIndex(
-      e => e.type === "code-line" && e.children[0]?.text === "```",
-    );
-
-    if (codeLineIdx >= 0) {
-      Transforms.select(editor, Editor.end(editor, [codeLineIdx]));
-      editor.insertBreak();
-
-      for (const el of getElements(editor)) {
-        expect(el.id).toBeDefined();
-      }
-    }
-  });
-
-  it("code-fence Enter (opening fence) creates code-line with ID", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("```typescript\ncode\n```");
+    editor.children = deserialize("```typescript");
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertBreak();
 
-    for (const el of getElements(editor)) {
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("code-block");
+    for (const el of elements) {
       expect(el.id).toBeDefined();
     }
   });
 
-  it("code-fence Enter (closing fence) creates paragraph with ID", () => {
+  it("deserialized code-block retains its ID across Enter", () => {
     const editor = createTestEditor();
-    editor.children = deserialize("```ts\ncode\n```");
+    editor.children = deserialize("```ts\nconst x = 1;\n```");
     editor.onChange();
 
-    const elements = getElements(editor);
-    const closingIdx = elements.length - 1;
-    if (elements[closingIdx].type === "code-fence") {
-      Transforms.select(editor, Editor.end(editor, [closingIdx]));
-      editor.insertBreak();
+    const originalId = getElements(editor)[0].id;
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
 
-      for (const el of getElements(editor)) {
-        expect(el.id).toBeDefined();
-      }
-    }
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("code-block");
+    expect(elements[0].id).toBe(originalId);
   });
 
-  it("code-line insertSoftBreak creates code-line with ID", () => {
+  it("code-block Shift+Enter preserves the block ID", () => {
     const editor = createTestEditor();
     editor.children = deserialize("```ts\nline1\n```");
     editor.onChange();
 
-    const codeLineIdx = getElements(editor).findIndex(
-      e => e.type === "code-line",
-    );
-    if (codeLineIdx >= 0) {
-      Transforms.select(editor, Editor.end(editor, [codeLineIdx]));
-      editor.insertSoftBreak();
+    const originalId = getElements(editor)[0].id;
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertSoftBreak();
 
-      for (const el of getElements(editor)) {
-        expect(el.id).toBeDefined();
-      }
-    }
+    expect(getElements(editor)[0].id).toBe(originalId);
   });
 
-  it("code-line overflow (typing after ```) creates paragraph with ID", () => {
+  it("inserting text into an existing code-block doesn't allocate new IDs", () => {
+    const codeBlockId = generateId();
     const editor = createTestEditor();
     editor.children = [
-      { type: "code-fence", id: generateId(), children: [{ text: "```ts" }] },
-      { type: "code-line", id: generateId(), children: [{ text: "```" }] },
+      { type: "code-block", id: codeBlockId, children: [{ text: "code" }] },
     ];
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [1]));
+    Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertText("x");
 
-    for (const el of getElements(editor)) {
-      expect(el.id).toBeDefined();
-    }
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].id).toBe(codeBlockId);
+    expect(Node.string(elements[0])).toBe("codex");
   });
 
-  it("code-fence overflow (typing after closing fence) creates paragraph with ID", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      { type: "code-fence", id: generateId(), children: [{ text: "```ts" }] },
-      { type: "code-line", id: generateId(), children: [{ text: "code" }] },
-      { type: "code-fence", id: generateId(), children: [{ text: "```" }] },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [2]));
-    editor.insertText("x");
-
-    for (const el of getElements(editor)) {
-      expect(el.id).toBeDefined();
-    }
-  });
-
-  it("empty blockquote Enter converts in-place (preserves ID)", () => {
+  it("Enter on an empty blockquote paragraph yields an ID'd outer paragraph", () => {
     const editor = createTestEditor();
     editor.children = deserialize("> ");
     editor.onChange();
 
-    const originalId = getElements(editor)[0].id;
-
-    Transforms.select(editor, Editor.end(editor, [0]));
+    // Caret inside the empty inner paragraph.
+    Transforms.select(editor, Editor.end(editor, [0, 0]));
     editor.insertBreak();
 
+    // Exit path: the blockquote is replaced by a fresh paragraph.
+    // Under nestable-blockquote the original blockquote/paragraph IDs
+    // are not threaded through — the replacement paragraph is a new
+    // node — but it must still carry an ID for downstream features
+    // that key on stable node IDs.
     const elements = getElements(editor);
     expect(elements[0].type).toBe("paragraph");
-    expect(elements[0].id).toBe(originalId);
+    expect(elements[0].id).toBeDefined();
+    expect(typeof elements[0].id).toBe("string");
   });
 
   it("empty heading Enter converts in-place (preserves ID)", () => {

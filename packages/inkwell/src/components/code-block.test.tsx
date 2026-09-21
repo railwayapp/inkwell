@@ -6,7 +6,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { InkwellRenderer } from "./inkwell-renderer";
+import { InkwellRenderer } from "../renderer/inkwell-renderer";
 
 const CODE_BLOCK_MD = "```js\nconsole.log('hello');\n```";
 const MULTI_BLOCK_MD =

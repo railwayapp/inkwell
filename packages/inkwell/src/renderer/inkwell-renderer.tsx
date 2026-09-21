@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo } from "react";
+import { rendererComponents } from "../components/renderer-bindings";
 import type { InkwellRendererProps } from "../types";
-import { CopyCodeBlock } from "./copy-code-block";
 import { parseMarkdown } from "./markdown-parser";
 
 export function InkwellRenderer({
@@ -12,7 +12,7 @@ export function InkwellRenderer({
   softBreak,
 }: InkwellRendererProps): ReactNode {
   const mergedComponents = useMemo(
-    () => ({ pre: CopyCodeBlock, ...components }),
+    () => ({ ...rendererComponents, ...components }),
     [components],
   );
 

@@ -33,78 +33,68 @@ function getElements(editor: Editor): InkwellElement[] {
   return editor.children as InkwellElement[];
 }
 
-describe("withMarkdown — code fence triggers", () => {
-  it("``` + Enter converts paragraph to code-fence and inserts code-line", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("```typescript");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const types = getElements(editor).map(e => e.type);
-    expect(types).toContain("code-fence");
-    expect(types).toContain("code-line");
-  });
-
-  it("closing ``` on code-line converts to fence and exits", () => {
+describe("withMarkdown — code block triggers", () => {
+  it("``` + Enter promotes a typed paragraph to a code-block with the language tag", () => {
+    // Typing `"```typescript"` builds a paragraph (the normalizer does
+    // not auto-promote fence openings on its own — only deserialize
+    // does, which the user reaches via paste/load, not typing). Pressing
+    // Enter is the explicit "open the fence" gesture.
     const editor = createTestEditor();
     editor.children = [
-      { type: "code-fence", id: generateId(), children: [{ text: "```ts" }] },
-      { type: "code-line", id: generateId(), children: [{ text: "```" }] },
+      {
+        type: "paragraph",
+        id: generateId(),
+        children: [{ text: "```typescript" }],
+      },
     ];
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [1]));
-    editor.insertBreak();
-
-    const types = getElements(editor).map(e => e.type);
-    expect(types.filter(t => t === "code-fence")).toHaveLength(2);
-    expect(types).toContain("paragraph");
-  });
-
-  it("Enter on opening fence inserts code-line", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("```ts\ncode\n```");
-    editor.onChange();
-
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertBreak();
 
     const elements = getElements(editor);
-    expect(elements[1].type).toBe("code-line");
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("code-block");
+    expect(elements[0].lang).toBe("typescript");
+    expect(Node.string(elements[0])).toBe("");
   });
 
-  it("Enter on closing fence inserts paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("```ts\ncode\n```");
-    editor.onChange();
-
-    const elements = getElements(editor);
-    const closingIdx = elements.length - 1;
-    Transforms.select(editor, Editor.end(editor, [closingIdx]));
-    editor.insertBreak();
-
-    const last = getElements(editor).at(-1);
-    expect(last?.type).toBe("paragraph");
-  });
-
-  it("Enter on code-line inserts new code-line", () => {
+  it("Enter inside a code-block inserts a literal newline into the text", () => {
     const editor = createTestEditor();
     editor.children = deserialize("```ts\nline1\n```");
     editor.onChange();
 
-    const codeLineIdx = getElements(editor).findIndex(
-      e => e.type === "code-line",
-    );
-    Transforms.select(editor, Editor.end(editor, [codeLineIdx]));
+    // Caret at end of the inner text leaf.
+    Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertBreak();
 
-    const types = getElements(editor).map(e => e.type);
-    expect(types.filter(t => t === "code-line")).toHaveLength(2);
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("code-block");
+    expect(Node.string(elements[0])).toBe("line1\n");
   });
 
-  it("does not create code fence when codeBlocks disabled", () => {
+  it("Shift+Enter inside a code-block also inserts a newline", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```ts\nline1\n```");
+    editor.onChange();
+
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertSoftBreak();
+
+    expect(Node.string(getElements(editor)[0])).toBe("line1\n");
+  });
+
+  it("round-trips a code block through deserialize → serialize", () => {
+    const source = "```ts\nconst x = 1;\nconst y = 2;\n```";
+    const nodes = deserialize(source);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].type).toBe("code-block");
+    expect(nodes[0].lang).toBe("ts");
+    expect(serialize(nodes)).toBe(source);
+  });
+
+  it("does not promote to code-block when codeBlocks disabled", () => {
     const editor = createTestEditor({ codeBlocks: false });
     editor.children = deserialize("```typescript", { codeBlocks: false });
     editor.onChange();
@@ -113,12 +103,12 @@ describe("withMarkdown — code fence triggers", () => {
     editor.insertBreak();
 
     const types = getElements(editor).map(e => e.type);
-    expect(types).not.toContain("code-fence");
+    expect(types).not.toContain("code-block");
   });
 });
 
 describe("withMarkdown — blockquote triggers", () => {
-  it("> space converts paragraph to blockquote", () => {
+  it("typing `> ` on an empty paragraph wraps it in a blockquote", () => {
     const editor = createTestEditor();
     editor.children = deserialize(">");
     editor.onChange();
@@ -126,12 +116,14 @@ describe("withMarkdown — blockquote triggers", () => {
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertText(" ");
 
-    expect(getElements(editor)[0].type).toBe("blockquote");
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("blockquote");
+    expect(serialize(elements)).toBe(">");
   });
 
   it("does not convert when blockquotes disabled", () => {
     const editor = createTestEditor({ blockquotes: false });
-    editor.children = deserialize(">");
+    editor.children = deserialize(">", { blockquotes: false });
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
@@ -140,42 +132,119 @@ describe("withMarkdown — blockquote triggers", () => {
     expect(getElements(editor)[0].type).toBe("paragraph");
   });
 
-  it("Enter on non-empty blockquote exits to paragraph", () => {
+  it("Enter inside a non-empty blockquote paragraph inserts a sibling inside the quote", () => {
     const editor = createTestEditor();
     editor.children = deserialize("> some quote");
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [0]));
+    // Caret at end of the inner paragraph
+    Transforms.select(editor, Editor.end(editor, [0, 0]));
     editor.insertBreak();
 
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("blockquote");
-    expect(elements[1].type).toBe("paragraph");
+    const top = getElements(editor);
+    expect(top).toHaveLength(1);
+    expect(top[0].type).toBe("blockquote");
+    expect(top[0].children).toHaveLength(2);
   });
 
-  it("Enter on empty blockquote converts to paragraph in place", () => {
+  it("Enter on an empty inner paragraph exits the blockquote", () => {
     const editor = createTestEditor();
     editor.children = deserialize("> ");
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [0]));
+    Transforms.select(editor, Editor.end(editor, [0, 0]));
     editor.insertBreak();
 
-    expect(getElements(editor)[0].type).toBe("paragraph");
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("paragraph");
   });
 
-  it("Shift+Enter on blockquote creates new blockquote", () => {
+  it("Shift+Enter inside a blockquote inserts another inner paragraph", () => {
     const editor = createTestEditor();
     editor.children = deserialize("> first");
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [0]));
+    Transforms.select(editor, Editor.end(editor, [0, 0]));
     editor.insertSoftBreak();
 
     const elements = getElements(editor);
-    const bqCount = elements.filter(e => e.type === "blockquote").length;
-    expect(bqCount).toBe(2);
-    expect(serialize(elements)).toBe("> first\n> ");
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("blockquote");
+    expect(elements[0].children).toHaveLength(2);
+    expect(serialize(elements)).toBe("> first\n>");
+  });
+});
+
+describe("withMarkdown — select-all + delete", () => {
+  it("cmd+A → delete on a code-block resets to a single empty paragraph", () => {
+    // Slate's default `deleteFragment` only clears content inside the
+    // covered range; the anchoring code-block shell would otherwise
+    // survive, leaving the user with an empty `<pre>` block they
+    // can't dismiss.
+    const editor = createTestEditor();
+    editor.children = deserialize("```ts\nconst x = 1;\n```");
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+    editor.deleteFragment();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("");
+  });
+
+  it("cmd+A → delete on a heading resets to a single empty paragraph", () => {
+    const editor = createTestEditor({ heading1: true });
+    editor.children = deserialize("# title");
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+    editor.deleteFragment();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("");
+  });
+
+  it("cmd+A → delete across mixed blocks resets to a single empty paragraph", () => {
+    const editor = createTestEditor({ heading1: true });
+    editor.children = deserialize(
+      "# title\n\n> quoted\n\n```\ncode\n```\n\npara",
+    );
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+    editor.deleteFragment();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("");
+  });
+
+  it("partial range delete still goes through Slate's default", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello world");
+    editor.onChange();
+
+    Transforms.select(editor, {
+      anchor: { path: [0, 0], offset: 0 },
+      focus: { path: [0, 0], offset: 5 },
+    });
+    editor.deleteFragment();
+
+    expect(Node.string(editor)).toBe(" world");
   });
 });
 
@@ -421,6 +490,20 @@ describe("withMarkdown — heading triggers", () => {
     expect(getElements(editor)[0].type).toBe("blockquote");
   });
 
+  it("keeps `---` as a paragraph (thematic-break support removed)", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "paragraph" as const,
+        id: generateId(),
+        children: [{ text: "---" }],
+      },
+    ];
+    Editor.normalize(editor, { force: true });
+
+    expect(getElements(editor)[0].type).toBe("paragraph");
+  });
+
   it("backspacing the trailing char of a heading source down-grades to paragraph", () => {
     const editor = createTestEditor({ heading2: true });
     editor.children = deserialize("## ", { heading2: true });
@@ -499,172 +582,119 @@ describe("withMarkdown — heading triggers", () => {
   });
 });
 
-describe("withMarkdown — list-like input", () => {
-  it("keeps unordered marker text as a paragraph", () => {
+describe("withMarkdown — list triggers", () => {
+  it("typing `- ` on an empty paragraph wraps it in an unordered list", () => {
     const editor = createTestEditor();
-    editor.children = deserialize("-");
+    editor.children = [
+      {
+        type: "paragraph",
+        id: generateId(),
+        children: [{ text: "-" }],
+      },
+    ];
     editor.onChange();
 
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertText(" ");
 
-    expect(getElements(editor)[0].type).toBe("paragraph");
-    expect(Node.string(getElements(editor)[0])).toBe("- ");
+    const top = getElements(editor);
+    expect(top).toHaveLength(1);
+    expect(top[0].type).toBe("list");
+    expect(top[0].ordered).toBeUndefined();
+    expect(top[0].children).toHaveLength(1);
   });
 
-  it("keeps ordered marker text as a paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("1.");
-    editor.onChange();
+  it("typing `* ` and `+ ` also produce unordered lists", () => {
+    for (const marker of ["*", "+"] as const) {
+      const editor = createTestEditor();
+      editor.children = [
+        {
+          type: "paragraph",
+          id: generateId(),
+          children: [{ text: marker }],
+        },
+      ];
+      editor.onChange();
+      Transforms.select(editor, Editor.end(editor, [0]));
+      editor.insertText(" ");
+      expect(getElements(editor)[0].type).toBe("list");
+    }
+  });
 
+  it("typing `1. ` produces an ordered list", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "paragraph",
+        id: generateId(),
+        children: [{ text: "1." }],
+      },
+    ];
+    editor.onChange();
     Transforms.select(editor, Editor.end(editor, [0]));
     editor.insertText(" ");
-
-    expect(getElements(editor)[0].type).toBe("paragraph");
-    expect(Node.string(getElements(editor)[0])).toBe("1. ");
+    const top = getElements(editor);
+    expect(top[0].type).toBe("list");
+    expect(top[0].ordered).toBe(true);
+    expect(top[0].start).toBeUndefined();
   });
 
-  it("continues unordered list marker text on Enter", () => {
+  it("typing `3. ` captures the starting number on the list", () => {
     const editor = createTestEditor();
-    editor.children = deserialize("- asdf");
+    editor.children = [
+      {
+        type: "paragraph",
+        id: generateId(),
+        children: [{ text: "3." }],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertText(" ");
+    expect(getElements(editor)[0].start).toBe(3);
+  });
+
+  it("Enter on a non-empty list-item paragraph splits into two items", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("- one");
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [0]));
+    // Caret at end of the inner paragraph (path [0, 0, 0]).
+    Transforms.select(editor, Editor.end(editor, [0, 0, 0]));
     editor.insertBreak();
 
-    const elements = getElements(editor);
-    expect(elements[0].type).toBe("paragraph");
-    expect(elements[1].type).toBe("paragraph");
-    expect(Node.string(elements[1])).toBe("- ");
+    const top = getElements(editor);
+    expect(top).toHaveLength(1);
+    expect(top[0].type).toBe("list");
+    expect(top[0].children).toHaveLength(2);
   });
 
-  it("Enter on empty `- ` at indent 0 clears line to plain paragraph", () => {
+  it("Enter on an empty inner paragraph exits the list", () => {
     const editor = createTestEditor();
     editor.children = deserialize("- ");
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [0]));
+    Transforms.select(editor, Editor.end(editor, [0, 0, 0]));
     editor.insertBreak();
 
-    const elements = getElements(editor);
-    expect(elements).toHaveLength(1);
-    expect(elements[0].type).toBe("paragraph");
-    expect(Node.string(elements[0])).toBe("");
+    expect(getElements(editor)[0].type).toBe("paragraph");
   });
 
-  it("Enter on `  - ` outdents to `- ` on the same line", () => {
+  it("does not re-trigger inside an existing list-item", () => {
+    // Typing `- ` inside a list-item that already has `-` content should
+    // remain as text — the trigger only fires when we're outside a list.
     const editor = createTestEditor();
-    editor.children = deserialize("  - ");
+    editor.children = deserialize("- ");
     editor.onChange();
 
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements).toHaveLength(1);
-    expect(elements[0].type).toBe("paragraph");
-    expect(Node.string(elements[0])).toBe("- ");
-  });
-
-  it("Enter on `    - ` outdents to `  - ` on the same line", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("    - ");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements).toHaveLength(1);
-    expect(elements[0].type).toBe("paragraph");
-    expect(Node.string(elements[0])).toBe("  - ");
-  });
-
-  it("Enter on `  - asdf` continues with `  - ` on the next line", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("  - asdf");
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [0]));
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements).toHaveLength(2);
-    expect(elements[1].type).toBe("paragraph");
-    expect(Node.string(elements[1])).toBe("  - ");
-  });
-
-  it("Enter mid-content carries the tail onto the next list item", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("- asdf");
-    editor.onChange();
-
-    // Place caret after "asd", before "f".
-    Transforms.select(editor, { path: [0, 0], offset: 5 });
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements).toHaveLength(2);
-    expect(Node.string(elements[0])).toBe("- asd");
-    expect(Node.string(elements[1])).toBe("- f");
-    expect(editor.selection?.anchor).toEqual({ path: [1, 0], offset: 2 });
-  });
-
-  it("Enter at the start of content pushes an empty item above, caret stays with content", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("- asdf");
-    editor.onChange();
-
-    // Original node id so we can verify the content node was preserved
-    // (not destroyed and recreated) when the empty line is inserted above.
-    const originalId = (editor.children[0] as InkwellElement).id;
-
-    // Place caret right after "- " and before "asdf".
-    Transforms.select(editor, { path: [0, 0], offset: 2 });
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements).toHaveLength(2);
-    expect(Node.string(elements[0])).toBe("- ");
-    expect(Node.string(elements[1])).toBe("- asdf");
-    // The original "- asdf" node should now be at index 1 — the new node is
-    // the empty one above, not the content one below.
-    expect(elements[1].id).toBe(originalId);
-    expect(editor.selection?.anchor).toEqual({ path: [1, 0], offset: 2 });
-  });
-
-  it("Enter with a selected range deletes the selection, then splits", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("- asdf");
-    editor.onChange();
-
-    // Select "sd" — from offset 3 to offset 5.
-    Transforms.select(editor, {
-      anchor: { path: [0, 0], offset: 3 },
-      focus: { path: [0, 0], offset: 5 },
-    });
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements).toHaveLength(2);
-    expect(Node.string(elements[0])).toBe("- a");
-    expect(Node.string(elements[1])).toBe("- f");
-  });
-
-  it("Enter on indented `  - asdf` mid-content preserves the indent", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("  - asdf");
-    editor.onChange();
-
-    // Place caret after "  - as", before "df".
-    Transforms.select(editor, { path: [0, 0], offset: 6 });
-    editor.insertBreak();
-
-    const elements = getElements(editor);
-    expect(elements).toHaveLength(2);
-    expect(Node.string(elements[0])).toBe("  - as");
-    expect(Node.string(elements[1])).toBe("  - df");
-    expect(editor.selection?.anchor).toEqual({ path: [1, 0], offset: 4 });
+    Transforms.select(editor, Editor.end(editor, [0, 0, 0]));
+    editor.insertText("-");
+    Transforms.select(editor, Editor.end(editor, [0, 0, 0]));
+    editor.insertText(" ");
+    // The inner paragraph keeps the literal `- ` text.
+    const list = getElements(editor)[0];
+    expect(list.type).toBe("list");
+    expect(Node.string(list)).toBe("- ");
   });
 });
 
@@ -722,14 +752,14 @@ describe("withMarkdown — clipboard text/plain", () => {
 
   it("serializes partial selections across paragraphs without phantom blank lines", () => {
     const editor = createTestEditor();
-    // `\n\n` deserializes to three blocks (paragraph, empty paragraph,
-    // paragraph), so paragraph 2 sits at path [2].
+    // `\n\n` deserializes to two paragraphs (no empty separator), so
+    // the second paragraph sits at path [1].
     editor.children = deserialize("hello world\n\nfoo bar");
     editor.onChange();
 
     Transforms.select(editor, {
       anchor: { path: [0, 0], offset: 6 },
-      focus: { path: [2, 0], offset: 3 },
+      focus: { path: [1, 0], offset: 3 },
     });
 
     const data = makeDataTransfer();
@@ -765,15 +795,27 @@ describe("withMarkdown — image element", () => {
     expect(editor.isVoid(pEl)).toBe(false);
   });
 
-  it("Enter on image inserts a paragraph after it", () => {
+  it("Enter at the end of a paragraph containing an inline image inserts a sibling paragraph", () => {
+    // Inline-image shape: a paragraph wrapping `[text"", image, text""]`.
+    // Enter at the end of that paragraph follows Slate's default split
+    // (a new sibling paragraph), not a special "paragraph-after-void-
+    // image" path.
     const editor = createTestEditor();
     editor.children = [
       {
-        type: "image" as const,
+        type: "paragraph",
         id: generateId(),
-        url: "https://x.png",
-        alt: "img",
-        children: [{ text: "" }],
+        children: [
+          { text: "" },
+          {
+            type: "image",
+            id: generateId(),
+            url: "https://x.png",
+            alt: "img",
+            children: [{ text: "" }],
+          },
+          { text: "" },
+        ],
       },
     ];
     editor.onChange();
@@ -782,8 +824,9 @@ describe("withMarkdown — image element", () => {
     editor.insertBreak();
 
     const elements = getElements(editor);
-    expect(elements).toHaveLength(2);
-    expect(elements[0].type).toBe("image");
+    expect(elements.length).toBeGreaterThanOrEqual(2);
+    // The original paragraph still carries the image; a fresh paragraph
+    // sits below it.
     expect(elements[1].type).toBe("paragraph");
   });
 
@@ -813,39 +856,6 @@ describe("withMarkdown — image element", () => {
   });
 });
 
-describe("withMarkdown — code-line overflow", () => {
-  it("typing after ``` on code-line closes fence and creates paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      { type: "code-fence", id: generateId(), children: [{ text: "```ts" }] },
-      { type: "code-line", id: generateId(), children: [{ text: "```" }] },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [1]));
-    editor.insertText("x");
-
-    const types = getElements(editor).map(e => e.type);
-    expect(types).toContain("paragraph");
-  });
-
-  it("typing after closing code-fence creates paragraph", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      { type: "code-fence", id: generateId(), children: [{ text: "```ts" }] },
-      { type: "code-line", id: generateId(), children: [{ text: "code" }] },
-      { type: "code-fence", id: generateId(), children: [{ text: "```" }] },
-    ];
-    editor.onChange();
-
-    Transforms.select(editor, Editor.end(editor, [2]));
-    editor.insertText("x");
-
-    const last = getElements(editor).at(-1);
-    expect(last?.type).toBe("paragraph");
-  });
-});
-
 describe("withMarkdown — insertSoftBreak fallthrough", () => {
   it("Shift+Enter on paragraph falls through to insertBreak", () => {
     const editor = createTestEditor();
@@ -856,21 +866,6 @@ describe("withMarkdown — insertSoftBreak fallthrough", () => {
     editor.insertSoftBreak();
 
     expect(getElements(editor).length).toBe(2);
-  });
-
-  it("Shift+Enter on code-line creates new code-line", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("```ts\nline1\n```");
-    editor.onChange();
-
-    const codeLineIdx = getElements(editor).findIndex(
-      e => e.type === "code-line",
-    );
-    Transforms.select(editor, Editor.end(editor, [codeLineIdx]));
-    editor.insertSoftBreak();
-
-    const types = getElements(editor).map(e => e.type);
-    expect(types.filter(t => t === "code-line")).toHaveLength(2);
   });
 });
 
@@ -1009,5 +1004,426 @@ describe("withMarkdown — paste (insertData)", () => {
     editor.insertData(makeDataTransfer("  https://example.com  "));
 
     expect(Node.string(editor)).toBe("hello [world](https://example.com)");
+  });
+});
+
+describe("withMarkdown — structural Enter never destroys sibling content", () => {
+  // Regression battery: the list-exit and blockquote-exit branches used
+  // to decide "remove the whole container" from child COUNTS alone,
+  // deleting sibling content reachable via plain Enter presses.
+
+  it("Enter on an empty nested item exits without deleting the parent item's text", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list",
+        id: generateId(),
+        children: [
+          {
+            type: "list-item",
+            id: generateId(),
+            children: [
+              {
+                type: "paragraph",
+                id: generateId(),
+                children: [{ text: "a" }],
+              },
+              {
+                type: "list",
+                id: generateId(),
+                children: [
+                  {
+                    type: "list-item",
+                    id: generateId(),
+                    children: [
+                      {
+                        type: "paragraph",
+                        id: generateId(),
+                        children: [{ text: "" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    editor.onChange();
+    // Caret in the empty nested paragraph.
+    Transforms.select(editor, Editor.start(editor, [0, 0, 1, 0, 0]));
+
+    editor.insertBreak();
+    expect(serialize(getElements(editor))).toContain("a");
+
+    editor.insertBreak();
+    // Second Enter exits the list entirely — "a" must survive.
+    const out = serialize(getElements(editor));
+    expect(out).toContain("- a");
+  });
+
+  it("Enter on an empty paragraph beside content in the same item removes only the paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list",
+        id: generateId(),
+        children: [
+          {
+            type: "list-item",
+            id: generateId(),
+            children: [
+              {
+                type: "paragraph",
+                id: generateId(),
+                children: [{ text: "x" }],
+              },
+              { type: "paragraph", id: generateId(), children: [{ text: "" }] },
+            ],
+          },
+        ],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0, 0, 1]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("list");
+    expect(Node.string(elements[0])).toBe("x");
+    expect(elements[1]?.type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("");
+  });
+
+  it("Enter on a lone empty item still replaces the list with a paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "list",
+        id: generateId(),
+        children: [
+          {
+            type: "list-item",
+            id: generateId(),
+            children: [
+              { type: "paragraph", id: generateId(), children: [{ text: "" }] },
+            ],
+          },
+        ],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0, 0, 0]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+  });
+
+  it("Enter on an empty item of a list inside a blockquote keeps the blockquote and its other items", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "blockquote",
+        id: generateId(),
+        children: [
+          {
+            type: "list",
+            id: generateId(),
+            children: [
+              {
+                type: "list-item",
+                id: generateId(),
+                children: [
+                  {
+                    type: "paragraph",
+                    id: generateId(),
+                    children: [{ text: "one" }],
+                  },
+                ],
+              },
+              {
+                type: "list-item",
+                id: generateId(),
+                children: [
+                  {
+                    type: "paragraph",
+                    id: generateId(),
+                    children: [{ text: "" }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0, 0, 1, 0]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    // The blockquote survives with the list ("one") plus the exit
+    // paragraph inside it; nothing was deleted.
+    expect(elements[0].type).toBe("blockquote");
+    expect(Node.string(elements[0])).toContain("one");
+    const bqChildren = elements[0].children as InkwellElement[];
+    expect(bqChildren).toHaveLength(2);
+    expect(bqChildren[0].type).toBe("list");
+    expect(bqChildren[1].type).toBe("paragraph");
+    expect(Node.string(bqChildren[1])).toBe("");
+  });
+
+  it("Enter on an empty paragraph directly inside a blockquote still exits the quote", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "blockquote",
+        id: generateId(),
+        children: [
+          { type: "paragraph", id: generateId(), children: [{ text: "q" }] },
+          { type: "paragraph", id: generateId(), children: [{ text: "" }] },
+        ],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0, 1]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("blockquote");
+    expect(Node.string(elements[0])).toBe("q");
+    expect(elements[1]?.type).toBe("paragraph");
+  });
+
+  it("Enter on a selected void image inserts a paragraph after it instead of retyping it", () => {
+    // Regression vs main: the rewrite dropped the explicit image branch
+    // and the default path converted the image element itself into an
+    // empty paragraph, deleting the image.
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "image",
+        id: generateId(),
+        url: "https://img/cat.png",
+        alt: "cat",
+        children: [{ text: "" }],
+      },
+      { type: "paragraph", id: generateId(), children: [{ text: "after" }] },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0]));
+
+    editor.insertBreak();
+
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("image");
+    expect(elements[0].url).toBe("https://img/cat.png");
+    expect(elements[1].type).toBe("paragraph");
+    expect(Node.string(elements[1])).toBe("");
+    expect(elements[2].type).toBe("paragraph");
+    expect(Node.string(elements[2])).toBe("after");
+  });
+});
+
+/**
+ * Regression gestures from the 2026-08 adversarial review. Numbers
+ * reference the review report.
+ */
+describe("withMarkdown — code-block exit gestures and paste (review fixes)", () => {
+  it("#7 double-Enter exits a trailing code block", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\ncode line\n```");
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+    editor.insertBreak();
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("code-block");
+    expect(Node.string(elements[0])).toBe("code line");
+    expect(elements[1].type).toBe("paragraph");
+    expect(serialize(editor.children as InkwellElement[])).toBe(
+      "```js\ncode line\n```",
+    );
+  });
+
+  it("#7 typing ``` on the last line + Enter closes the fence and exits", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\ncode line\n```");
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertText("\n```");
+    editor.insertBreak();
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(Node.string(elements[0])).toBe("code line");
+    expect(elements[1].type).toBe("paragraph");
+  });
+
+  it("#7 Backspace in an empty code block converts it to a paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "code-block",
+        id: generateId(),
+        lang: "js",
+        children: [{ text: "" }],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0]));
+    editor.deleteBackward("character");
+    const elements = getElements(editor);
+    expect(elements[0].type).toBe("paragraph");
+    expect(elements[0].lang).toBeUndefined();
+  });
+
+  it("#7 double-Enter exits an empty code block", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "code-block",
+        id: generateId(),
+        lang: "js",
+        children: [{ text: "" }],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.start(editor, [0]));
+    editor.insertBreak();
+    editor.insertBreak();
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    expect(elements[0].type).toBe("code-block");
+    expect(elements[1].type).toBe("paragraph");
+  });
+
+  it("#8 multi-line paste into a code block stays verbatim inside the fence", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\nstart\n```");
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    const data = {
+      getData: (type: string) =>
+        type === "text/plain" ? "\nline2\n# not a heading\n- not a list" : "",
+    } as DataTransfer;
+    editor.insertData(data);
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("code-block");
+    expect(Node.string(elements[0])).toBe(
+      "start\nline2\n# not a heading\n- not a list",
+    );
+  });
+
+  it("#9 typing over a select-all lands in a paragraph, not the old container", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("para\n\n```js\nold code\n```");
+    editor.onChange();
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+    editor.insertText("replacement");
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("replacement");
+  });
+});
+
+describe("withMarkdown — re-review gesture fixes (second adversarial pass)", () => {
+  it("RR#14 single Enter at end of code ending with a newline does NOT exit", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\na\n\n```");
+    editor.onChange();
+    expect(Node.string(editor.children[0])).toBe("a\n");
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak(); // must append a newline, not exit
+    expect(getElements(editor)).toHaveLength(1);
+    expect(Node.string(editor.children[0])).toBe("a\n\n");
+    editor.insertBreak(); // second consecutive Enter exits
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    // only the newline the gesture added is removed — the user's
+    // trailing blank line survives
+    expect(Node.string(elements[0])).toBe("a\n");
+    expect(elements[1].type).toBe("paragraph");
+  });
+
+  it("RR#14b typing disarms the pending exit", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\ncode\n```");
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+    editor.insertText("x");
+    editor.insertBreak(); // newline again, NOT an exit
+    expect(getElements(editor)).toHaveLength(1);
+    expect(Node.string(editor.children[0])).toBe("code\nx\n");
+  });
+
+  it("RR#9 exit via a lone ``` line drops exactly the typed fence", () => {
+    const editor = createTestEditor();
+    editor.children = [
+      {
+        type: "code-block",
+        id: generateId(),
+        lang: "js",
+        children: [{ text: "\n```" }],
+      },
+    ];
+    editor.onChange();
+    Transforms.select(editor, Editor.end(editor, [0]));
+    editor.insertBreak();
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(2);
+    // '\n```' minus the 4-char fence tail leaves an empty block — no
+    // phantom blank line
+    expect(Node.string(elements[0])).toBe("");
+  });
+
+  it("RR#10 paste over a selection reaching INTO a code block uses the markdown path", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("hello\n\n```\nline1\nline2\n```");
+    editor.onChange();
+    // anchor mid-'hello', focus mid-'line1'
+    Transforms.select(editor, {
+      anchor: { path: [0, 0], offset: 3 },
+      focus: { path: [1, 0], offset: 3 },
+    });
+    const data = {
+      getData: (t: string) =>
+        t === "text/plain" ? "# Title\n\npara text" : "",
+    } as DataTransfer;
+    editor.insertData(data);
+    const out = serialize(editor.children as InkwellElement[]);
+    // no literal blank-line runs trapped inside a single paragraph leaf
+    for (const el of getElements(editor)) {
+      expect(Node.string(el)).not.toContain("\n\n");
+    }
+    expect(out).toContain("Title");
+  });
+
+  it("RR-low typing over select-all in a single-code-block doc yields a paragraph", () => {
+    const editor = createTestEditor();
+    editor.children = deserialize("```js\nold\n```");
+    editor.onChange();
+    Transforms.select(editor, {
+      anchor: Editor.start(editor, []),
+      focus: Editor.end(editor, []),
+    });
+    editor.insertText("fresh");
+    const elements = getElements(editor);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].type).toBe("paragraph");
+    expect(Node.string(elements[0])).toBe("fresh");
   });
 });

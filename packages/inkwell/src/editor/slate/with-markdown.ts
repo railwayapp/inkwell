@@ -1,25 +1,29 @@
-import { Editor, Element, Node, Path, Range, Transforms } from "slate";
+import { Editor, Element, Node, Path, Point, Range, Transforms } from "slate";
 import type { ResolvedInkwellFeatures } from "../../types";
 import { deserialize } from "./deserialize";
 import { serialize } from "./serialize";
 import type { InkwellEditor, InkwellElement } from "./types";
 import { generateId } from "./with-node-id";
 
+/**
+ * True when `range` covers the entire editor from the very first text
+ * offset to the very last. Used to short-circuit `deleteFragment` so
+ * cmd+A → delete resets to a clean paragraph regardless of which block
+ * type the editor currently holds.
+ */
+function isFullDocumentRange(editor: Editor, range: Range): boolean {
+  const start = Range.start(range);
+  const end = Range.end(range);
+  const docStart = Editor.start(editor, []);
+  const docEnd = Editor.end(editor, []);
+  return Point.equals(start, docStart) && Point.equals(end, docEnd);
+}
+
 const HEADING_RE = /^#{1,6}$/;
-/**
- * Matches a paragraph that is a Markdown unordered-list line with a body —
- * leading indent, marker, trailing space, then some non-empty content.
- * Used to decide whether Enter should continue the list source.
- */
-const UNORDERED_LIST_CONTINUE_RE = /^(\s*)([-*+]) \S/;
-/**
- * Matches a paragraph that is an unordered-list marker with no body —
- * just the marker followed by an optional trailing space. Used to decide
- * whether Enter should outdent or exit list mode.
- */
-const UNORDERED_LIST_EMPTY_RE = /^(\s*)([-*+]) ?$/;
 /** Matches a line that opens with valid heading syntax: `#{1,6}` + space. */
 const HEADING_LINE_RE = /^(#{1,6})\s/;
+/** Matches an ordered-list bare marker like `1.`, `42.`, used as a typing trigger. */
+const ORDERED_TRIGGER_RE = /^(\d+)\.$/;
 /**
  * Matches a single URL token on the clipboard — `https?://...` or `www....`,
  * no embedded whitespace. Used to detect "paste URL over selection" and wrap
@@ -36,13 +40,16 @@ const PASTED_URL_RE = /^(?:https?:\/\/|www\.)\S+$/i;
  * Only covers the block kinds that are 1:1 with a markdown line and can
  * appear inside a paragraph-like element: heading (when the feature is
  * enabled), blockquote (when enabled), and the paragraph fallback.
- * Structural blocks (code-fence/code-line) and void blocks (image) are
- * handled separately by their own logic and are never reclassified here.
+ * Structural blocks (code-block) and block voids (image) are handled
+ * separately by their own logic and are never reclassified here.
  */
 function classifyLine(
   text: string,
   deco: ResolvedInkwellFeatures,
-): { type: "heading" | "paragraph" | "blockquote"; level?: number } {
+): {
+  type: "heading" | "paragraph" | "blockquote";
+  level?: number;
+} {
   const headingMatch = HEADING_LINE_RE.exec(text);
   if (headingMatch) {
     const level = headingMatch[1].length;
@@ -54,16 +61,49 @@ function classifyLine(
   }
   return { type: "paragraph" };
 }
+
+/** Strip a single `> ` (or `>`) blockquote prefix from a line. */
+function stripBlockquotePrefix(line: string): string {
+  if (line === ">") return "";
+  if (line.startsWith("> ") || line.startsWith(">\t")) return line.slice(2);
+  return line.slice(1);
+}
+
+/**
+ * Walk the ancestor chain starting at `path` and return the path of the
+ * nearest blockquote ancestor, or `null` if there isn't one.
+ */
+function nearestBlockquotePath(editor: InkwellEditor, path: Path): Path | null {
+  for (let p = path; p.length > 0; p = Path.parent(p)) {
+    if (p.length === path.length) continue;
+    const node = Node.get(editor, p) as InkwellElement;
+    if (node?.type === "blockquote") return p;
+  }
+  return null;
+}
+
+/**
+ * Walk the ancestor chain starting at `path` and return the path of the
+ * nearest list-item ancestor, or `null` if there isn't one.
+ */
+function nearestListItemPath(editor: InkwellEditor, path: Path): Path | null {
+  for (let p = path; p.length > 0; p = Path.parent(p)) {
+    if (p.length === path.length) continue;
+    const node = Node.get(editor, p) as InkwellElement;
+    if (node?.type === "list-item") return p;
+  }
+  return null;
+}
 /**
  * Slate plugin that adds markdown-specific editor behaviors:
- * - Enter on code-fence → new paragraph (exit code block)
+ * - `\`\`\`` + Enter on a paragraph → promote to a code-block
  * - Enter on blockquote → new paragraph (exit blockquote)
  * - Enter on heading → new paragraph (exit heading)
  * - Shift+Enter on blockquote → soft break (stay in blockquote)
  * - Typing "> " at start of paragraph → convert to blockquote
  * - Typing "# " at start of paragraph → convert to heading
- * - Typing ``` at start of paragraph → convert to code-fence
- * - Closing ``` on code-line → convert to code-fence, exit code block
+ * - Enter on a paragraph that starts with ` ``` ` → convert to code-block
+ * - Enter inside a code-block → insert a literal `\n` into its text
  * - Enter on image → insert a paragraph after the void image block
  * - Paste → parse as markdown, insert structured nodes (including images)
  *
@@ -75,6 +115,8 @@ export function withMarkdown(
   featuresRef: { current: ResolvedInkwellFeatures },
 ): InkwellEditor {
   const {
+    deleteBackward,
+    deleteFragment,
     insertBreak,
     insertData,
     insertText,
@@ -83,9 +125,78 @@ export function withMarkdown(
     setFragmentData,
   } = editor;
 
+  // One-shot arm for the code-block double-Enter exit: set when an
+  // Enter inserts the trailing newline at a block's end, checked (and
+  // consumed) by the next Enter, disarmed by any other text edit.
+  let pendingCodeExit: { id: string; text: string } | null = null;
+
+  // Backspace inside an EMPTY code block converts it back to a
+  // paragraph instead of merging into the previous block — the escape
+  // hatch that makes an empty fence removable by keyboard (paired with
+  // the double-Enter exit in insertBreak).
+  editor.deleteBackward = unit => {
+    pendingCodeExit = null;
+    const [match] = Editor.nodes(editor, {
+      match: n =>
+        Element.isElement(n) && (n as InkwellElement).type === "code-block",
+      mode: "lowest",
+    });
+    if (match) {
+      const [node, path] = match;
+      if (Node.string(node) === "") {
+        Transforms.setNodes(
+          editor,
+          { type: "paragraph" } as Partial<InkwellElement>,
+          { at: path },
+        );
+        Transforms.unsetNodes(editor, "lang", { at: path });
+        return;
+      }
+    }
+    deleteBackward(unit);
+  };
+
   editor.isVoid = (element: InkwellElement) => {
     if (element.type === "image") return true;
     return isVoid(element);
+  };
+
+  // Slate's default `deleteFragment` clears the content covered by the
+  // selection but never removes the top-level block that anchors the
+  // selection — so deleting a full-editor selection (cmd+A → backspace)
+  // over a code-block, heading, blockquote, or image leaves an empty
+  // shell of that block behind. Reset the editor to a single empty
+  // paragraph instead so the post-delete state matches what the user
+  // expects: a fresh blank line.
+  editor.deleteFragment = options => {
+    const { selection } = editor;
+    if (
+      selection &&
+      !Range.isCollapsed(selection) &&
+      isFullDocumentRange(editor, selection)
+    ) {
+      Editor.withoutNormalizing(editor, () => {
+        for (let i = editor.children.length - 1; i >= 0; i--) {
+          Transforms.removeNodes(editor, { at: [i] });
+        }
+        // Anchor at `[0]` explicitly: after the remove loop the editor
+        // has no children and no selection, and Slate's default insert
+        // location math doesn't have an answer for "empty editor, no
+        // selection". The explicit path keeps this deterministic.
+        Transforms.insertNodes(
+          editor,
+          {
+            type: "paragraph",
+            id: generateId(),
+            children: [{ text: "" }],
+          } as InkwellElement,
+          { at: [0] },
+        );
+      });
+      Transforms.select(editor, Editor.start(editor, [0]));
+      return;
+    }
+    deleteFragment(options);
   };
 
   editor.insertBreak = () => {
@@ -94,6 +205,7 @@ export function withMarkdown(
 
     const [match] = Editor.nodes(editor, {
       match: n => Element.isElement(n),
+      mode: "lowest",
     });
     if (!match) return insertBreak();
 
@@ -102,84 +214,130 @@ export function withMarkdown(
     const text = Node.string(node);
     const deco = featuresRef.current;
 
-    // Paragraph starting with ``` → convert to code-fence, insert code-line
+    // Paragraph starting with ``` → promote to a code-block. The fence
+    // (and any language tag) becomes structural; the new code-block is
+    // empty and ready to accept code.
     if (
       deco.codeBlocks &&
       element.type === "paragraph" &&
       text.startsWith("```")
     ) {
-      Transforms.setNodes(editor, {
-        type: "code-fence",
-      } as Partial<InkwellElement>);
-      const newLine: InkwellElement = {
-        type: "code-line",
-        id: generateId(),
-        children: [{ text: "" }],
-      };
-      Transforms.insertNodes(editor, newLine, { at: Path.next(path) });
-      Transforms.select(editor, Editor.start(editor, Path.next(path)));
-      return;
-    }
-
-    // Code-line with exactly ``` → closing fence, insert paragraph
-    if (element.type === "code-line" && text.trim() === "```") {
-      Transforms.setNodes(editor, {
-        type: "code-fence",
-      } as Partial<InkwellElement>);
-      const newParagraph: InkwellElement = {
-        type: "paragraph",
-        id: generateId(),
-        children: [{ text: "" }],
-      };
-      Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
-      Transforms.select(editor, Editor.start(editor, Path.next(path)));
-      return;
-    }
-
-    // Enter on code-fence → depends on opening vs closing
-    if (element.type === "code-fence") {
-      // Closing fence: previous sibling is code-line → insert paragraph
-      const prevIdx = path[0] - 1;
-      const isClosing =
-        prevIdx >= 0 &&
-        (editor.children[prevIdx] as InkwellElement).type === "code-line";
-
-      const newNode: InkwellElement = isClosing
-        ? { type: "paragraph", id: generateId(), children: [{ text: "" }] }
-        : { type: "code-line", id: generateId(), children: [{ text: "" }] };
-
-      Transforms.insertNodes(editor, newNode, { at: Path.next(path) });
-      Transforms.select(editor, Editor.start(editor, Path.next(path)));
-      return;
-    }
-
-    // Enter on blockquote → exit to new paragraph
-    if (element.type === "blockquote") {
-      // Empty blockquote → remove it and insert paragraph
-      const text = Node.string(node);
-      if (/^>\s*$/.test(text)) {
+      const lang = text.slice(3).trim();
+      Editor.withoutNormalizing(editor, () => {
         Transforms.delete(editor, {
           at: {
             anchor: Editor.start(editor, path),
             focus: Editor.end(editor, path),
           },
         });
-        Transforms.setNodes(editor, {
-          type: "paragraph",
-        } as Partial<InkwellElement>);
+        const update: Partial<InkwellElement> = { type: "code-block" };
+        if (lang) update.lang = lang;
+        Transforms.setNodes(editor, update);
+      });
+      Transforms.select(editor, Editor.start(editor, path));
+      return;
+    }
+
+    // Enter inside a code-block. Two exit gestures come first — a code
+    // block with no keyboard way out is a trap (the trailing code block
+    // used to be inescapable):
+    // - Second CONSECUTIVE Enter at the very end (tracked via
+    //   pendingCodeExit — set only when the previous Enter inserted the
+    //   trailing newline) → drop that blank line and insert a paragraph
+    //   after the block, mirroring the blockquote exit. Keying on
+    //   "text ends with \n" alone exited on the FIRST Enter for code
+    //   that legitimately ends with a blank line, silently deleting it.
+    // - Caret at the very end with the last line exactly ``` (the user
+    //   typed a closing fence) → remove that line and exit the same way.
+    // (Backspace in an EMPTY code block converts it back to a paragraph
+    // — see deleteBackward below — so an empty fence is removable too.)
+    // Anything else inserts a literal newline into the single text leaf
+    // (the editor's `.inkwell-editor-code-block` rule renders it via
+    // `white-space: pre-wrap`).
+    if (element.type === "code-block") {
+      const collapsed = Range.isCollapsed(selection);
+      const blockEnd = Editor.end(editor, path);
+      const atEnd = collapsed && Point.equals(selection.anchor, blockEnd);
+      const closingFence = /(?:^|\n)```$/.exec(text);
+      const pendingExit =
+        pendingCodeExit !== null &&
+        pendingCodeExit.id === element.id &&
+        pendingCodeExit.text === text &&
+        text.endsWith("\n");
+      if (atEnd && (pendingExit || closingFence)) {
+        // match[0] includes the leading `\n` when the fence isn't the
+        // whole text, so its length is exactly what must be dropped.
+        const dropLen = pendingExit
+          ? 1
+          : (closingFence as RegExpExecArray)[0].length;
+        pendingCodeExit = null;
+        Editor.withoutNormalizing(editor, () => {
+          Transforms.delete(editor, {
+            at: {
+              anchor: {
+                path: blockEnd.path,
+                offset: blockEnd.offset - dropLen,
+              },
+              focus: blockEnd,
+            },
+          });
+          Transforms.insertNodes(
+            editor,
+            {
+              type: "paragraph",
+              id: generateId(),
+              children: [{ text: "" }],
+            } as InkwellElement,
+            { at: Path.next(path) },
+          );
+        });
+        Transforms.select(editor, Editor.start(editor, Path.next(path)));
         return;
       }
-      // Non-empty → insert paragraph after
-      const newParagraph: InkwellElement = {
-        type: "paragraph",
-        id: generateId(),
-        children: [{ text: "" }],
-      };
-      Transforms.insertNodes(editor, newParagraph, {
-        at: Path.next(path),
-      });
-      Transforms.select(editor, Editor.start(editor, Path.next(path)));
+      editor.insertText("\n");
+      // Arm the exit only when THIS Enter added a trailing newline at
+      // the block end; any other edit disarms it (see insertText).
+      pendingCodeExit = atEnd ? { id: element.id, text: `${text}\n` } : null;
       return;
+    }
+
+    // Enter inside a paragraph that lives within a blockquote.
+    // - Empty inner paragraph → exit the blockquote: drop the empty
+    //   paragraph, insert a fresh paragraph as the blockquote's outer
+    //   sibling, and move the caret there. If removing the empty
+    //   paragraph would empty the blockquote, replace the entire
+    //   blockquote with the fresh paragraph (in-place) so we never
+    //   transition through a tree state where Slate has no blocks.
+    // - Non-empty inner paragraph → fall through to Slate's default
+    //   split, which inserts a sibling paragraph inside the blockquote.
+    if (element.type === "paragraph") {
+      const bqPath = nearestBlockquotePath(editor, path);
+      // Only handle paragraphs that are DIRECT children of the
+      // blockquote. An empty paragraph nested deeper (inside a list in
+      // the quote) belongs to the list-exit branch below — handling it
+      // here used to count the blockquote's direct children (just the
+      // list), conclude "only child", and delete the entire blockquote
+      // with all its content.
+      if (bqPath !== null && text === "" && Path.isParent(bqPath, path)) {
+        const blockquote = Node.get(editor, bqPath) as InkwellElement;
+        const isOnlyChild = blockquote.children.length === 1;
+        const newParagraph: InkwellElement = {
+          type: "paragraph",
+          id: generateId(),
+          children: [{ text: "" }],
+        };
+        const insertAt = isOnlyChild ? bqPath : Path.next(bqPath);
+        Editor.withoutNormalizing(editor, () => {
+          if (isOnlyChild) {
+            Transforms.removeNodes(editor, { at: bqPath });
+          } else {
+            Transforms.removeNodes(editor, { at: path });
+          }
+          Transforms.insertNodes(editor, newParagraph, { at: insertAt });
+        });
+        Transforms.select(editor, Editor.start(editor, insertAt));
+        return;
+      }
     }
 
     // Enter on heading → split at caret. Each half is re-classified against
@@ -253,122 +411,74 @@ export function withMarkdown(
       return;
     }
 
-    // Enter on a Markdown unordered list-like paragraph. List source stays as
-    // plain paragraph text (no `list-item` element), so we replicate the
-    // list-ergonomics here:
-    //   • non-empty body          → insert next paragraph `${indent}${marker} `
-    //   • empty body, indent ≥ 2  → outdent same line to `${indent-2}${marker} `
-    //   • empty body, indent 0    → clear the line, stay as empty paragraph
+    // Enter inside a paragraph that lives within a list-item.
+    // - Empty inner paragraph → exit the list (mirrors blockquote
+    //   exit behavior). If the empty item was the list's only child,
+    //   the entire list is replaced in-place with the fresh paragraph;
+    //   otherwise the empty item is removed and a paragraph is
+    //   inserted as the list's outer sibling.
+    // - Non-empty inner paragraph → split the *list-item* at the
+    //   caret, producing two sibling items inside the same list. This
+    //   is the standard "Enter creates a new bullet" UX.
     if (element.type === "paragraph") {
-      const emptyMatch = UNORDERED_LIST_EMPTY_RE.exec(text);
-      if (emptyMatch) {
-        const [, indent, marker] = emptyMatch;
-        Transforms.delete(editor, {
-          at: {
-            anchor: Editor.start(editor, path),
-            focus: Editor.end(editor, path),
-          },
-        });
-        if (indent.length >= 2) {
-          editor.insertText(`${indent.slice(2)}${marker} `);
+      const liPath = nearestListItemPath(editor, path);
+      if (liPath !== null) {
+        if (text === "") {
+          const listPath = Path.parent(liPath);
+          const list = Node.get(editor, listPath) as InkwellElement;
+          const li = Node.get(editor, liPath) as InkwellElement;
+          // Decide how much structure the exit removes. Never remove a
+          // node that still holds other content — "remove the whole
+          // list" used to fire on `list.children.length === 1` alone,
+          // destroying sibling paragraphs/nested lists via plain Enter
+          // presses.
+          const liHasOtherContent = li.children.length > 1;
+          const listHasOtherItems = list.children.length > 1;
+          const newParagraph: InkwellElement = {
+            type: "paragraph",
+            id: generateId(),
+            children: [{ text: "" }],
+          };
+          let removeAt: Path;
+          let insertAt: Path;
+          if (liHasOtherContent) {
+            // Only the empty paragraph goes; the item keeps its other
+            // children. The fresh paragraph exits past the list.
+            removeAt = path;
+            insertAt = Path.next(listPath);
+          } else if (listHasOtherItems) {
+            // The item held nothing but the empty paragraph — drop it.
+            removeAt = liPath;
+            insertAt = Path.next(listPath);
+          } else {
+            // The whole list is just this one empty item — replace the
+            // list with the paragraph in place.
+            removeAt = listPath;
+            insertAt = listPath;
+          }
+          Editor.withoutNormalizing(editor, () => {
+            Transforms.removeNodes(editor, { at: removeAt });
+            Transforms.insertNodes(editor, newParagraph, { at: insertAt });
+          });
+          Transforms.select(editor, Editor.start(editor, insertAt));
+          return;
         }
-        return;
-      }
-
-      const continueMatch = UNORDERED_LIST_CONTINUE_RE.exec(text);
-      if (continueMatch) {
-        const [, indent, marker] = continueMatch;
-        const prefix = `${indent}${marker} `;
-
-        // Collapse any selected range first so the split happens at a point.
+        // Non-empty: split at the list-item boundary.
         if (!Range.isCollapsed(selection)) {
           Transforms.delete(editor);
         }
-
-        // List source paragraphs are a single text leaf, so the anchor
-        // offset is the offset within the paragraph string.
-        const point = editor.selection?.anchor;
-        const cursorOffset = point?.offset ?? text.length;
-
-        // Caret inside the indent/marker prefix → keep the original
-        // empty-continuation behavior. Splitting in the prefix would yield a
-        // malformed marker on the new line.
-        if (cursorOffset < prefix.length) {
-          const newParagraph: InkwellElement = {
-            type: "paragraph",
-            id: generateId(),
-            children: [{ text: prefix }],
-          };
-          Transforms.insertNodes(editor, newParagraph, {
-            at: Path.next(path),
-          });
-          Transforms.select(editor, Editor.end(editor, Path.next(path)));
-          return;
-        }
-
-        // Caret exactly at the start of the content (just past the marker) →
-        // push an empty list item above the current line, leaving the
-        // original content and caret in place. This mirrors how text editors
-        // handle Enter at the start of typed text: the line you're on stays
-        // with you, an empty line appears above.
-        if (cursorOffset === prefix.length) {
-          const newParagraph: InkwellElement = {
-            type: "paragraph",
-            id: generateId(),
-            children: [{ text: prefix }],
-          };
-          Transforms.insertNodes(editor, newParagraph, { at: path });
-          // After the insert, the original paragraph shifted from `path` to
-          // Path.next(path). Re-anchor the caret at the same column on what
-          // is now the second line.
-          Transforms.select(editor, {
-            path: [...Path.next(path), 0],
-            offset: prefix.length,
-          });
-          return;
-        }
-
-        // Caret mid-content → split: carve off the tail and carry it onto
-        // a new line below, with the marker prefix re-applied.
-        const endPoint = Editor.end(editor, path);
-        const tail = point
-          ? Editor.string(editor, { anchor: point, focus: endPoint })
-          : "";
-        if (point && tail.length > 0) {
-          Transforms.delete(editor, { at: { anchor: point, focus: endPoint } });
-        }
-
-        const newParagraph: InkwellElement = {
-          type: "paragraph",
-          id: generateId(),
-          children: [{ text: `${prefix}${tail}` }],
-        };
-        Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
-        // Place caret right after the prefix on the new line, before the
-        // moved tail.
-        Transforms.select(editor, {
-          path: [...Path.next(path), 0],
-          offset: prefix.length,
+        Transforms.splitNodes(editor, {
+          match: n => Element.isElement(n) && n.type === "list-item",
+          always: true,
         });
         return;
       }
     }
 
-    // Enter on code-line → new code-line (stay in code block)
-    if (element.type === "code-line") {
-      // Normal code line → insert new code-line
-      const newLine: InkwellElement = {
-        type: "code-line",
-        id: generateId(),
-        children: [{ text: "" }],
-      };
-      Transforms.insertNodes(editor, newLine, { at: Path.next(path) });
-      Transforms.select(editor, Editor.start(editor, Path.next(path)));
-      return;
-    }
-
     // Enter on image → insert paragraph after the image (void elements
-    // can't hold a cursor internally)
+    // can't hold a cursor internally). Without this branch the default
+    // path below retypes the void element itself into a paragraph,
+    // deleting the image.
     if (element.type === "image") {
       const newParagraph: InkwellElement = {
         type: "paragraph",
@@ -391,30 +501,35 @@ export function withMarkdown(
   editor.insertSoftBreak = () => {
     const [match] = Editor.nodes(editor, {
       match: n => Element.isElement(n),
+      mode: "lowest",
     });
     if (match) {
       const [node, path] = match;
       const element = node as InkwellElement;
-      // Shift+Enter in blockquote → new blockquote line
-      if (element.type === "blockquote") {
-        const newBq: InkwellElement = {
-          type: "blockquote",
-          id: generateId(),
-          children: [{ text: "> " }],
-        };
-        Transforms.insertNodes(editor, newBq, { at: Path.next(path) });
-        Transforms.select(editor, Editor.start(editor, Path.next(path)));
-        return;
+      // Shift+Enter inside a blockquote paragraph → insert another
+      // paragraph as a sibling inside the blockquote so the caret stays
+      // in the quoted context. (Pre-nesting this added a sibling
+      // blockquote element instead; the structural marker is now
+      // implicit, so the user-visible behavior is the same.)
+      if (element.type === "paragraph") {
+        const bqPath = nearestBlockquotePath(editor, path);
+        if (bqPath !== null) {
+          const newParagraph: InkwellElement = {
+            type: "paragraph",
+            id: generateId(),
+            children: [{ text: "" }],
+          };
+          Transforms.insertNodes(editor, newParagraph, {
+            at: Path.next(path),
+          });
+          Transforms.select(editor, Editor.start(editor, Path.next(path)));
+          return;
+        }
       }
-      // Shift+Enter in code-line → new code-line
-      if (element.type === "code-line") {
-        const newLine: InkwellElement = {
-          type: "code-line",
-          id: generateId(),
-          children: [{ text: "" }],
-        };
-        Transforms.insertNodes(editor, newLine, { at: Path.next(path) });
-        Transforms.select(editor, Editor.start(editor, Path.next(path)));
+      // Shift+Enter inside a code-block → same as Enter: insert a
+      // literal newline into the single text leaf.
+      if (element.type === "code-block") {
+        editor.insertText("\n");
         return;
       }
     }
@@ -423,11 +538,31 @@ export function withMarkdown(
   };
 
   editor.insertText = (text: string) => {
+    pendingCodeExit = null;
     const { selection } = editor;
     if (!selection) return insertText(text);
 
+    // Typing over a selection that spans multiple top-level blocks OR
+    // covers the whole document: route the deletion through
+    // editor.deleteFragment first (which resets a full-document
+    // selection to a fresh paragraph), then insert at the collapsed
+    // caret. Slate's built-in expanded-range insertText keeps the
+    // surviving block's container — typing over select-all in a
+    // document ending with (or consisting of) a code block used to
+    // land the replacement text inside that fence.
+    if (
+      !Range.isCollapsed(selection) &&
+      (selection.anchor.path[0] !== selection.focus.path[0] ||
+        isFullDocumentRange(editor, selection))
+    ) {
+      editor.deleteFragment();
+      editor.insertText(text);
+      return;
+    }
+
     const [match] = Editor.nodes(editor, {
       match: n => Element.isElement(n),
+      mode: "lowest",
     });
     if (!match) return insertText(text);
 
@@ -436,39 +571,32 @@ export function withMarkdown(
     const currentText = Node.string(node);
     const deco = featuresRef.current;
 
-    // Code-line with ``` and user types more → close fence, overflow to paragraph
-    if (
-      element.type === "code-line" &&
-      currentText === "```" &&
-      text !== "" &&
-      text !== "\n"
-    ) {
-      // Convert to closing fence
-      Transforms.setNodes(editor, {
-        type: "code-fence",
-      } as Partial<InkwellElement>);
-      // Insert the typed text as a new paragraph after
-      const newParagraph: InkwellElement = {
-        type: "paragraph",
-        id: generateId(),
-        children: [{ text }],
-      };
-      Transforms.insertNodes(editor, newParagraph, { at: Path.next(path) });
-      Transforms.select(editor, Editor.end(editor, Path.next(path)));
-      return;
-    }
-
-    // Detect "> " typed at start of paragraph → convert to blockquote
+    // Detect "> " typed at the start of a paragraph → wrap the paragraph
+    // in a blockquote (or, when the paragraph is already inside a
+    // blockquote, deepen one more level of nesting). The `> ` marker is
+    // structural — it doesn't stay in the text — so we drop the existing
+    // `>` content before wrapping and don't re-insert the space.
     if (
       deco.blockquotes &&
       element.type === "paragraph" &&
       text === " " &&
       currentText === ">"
     ) {
-      insertText(text);
-      Transforms.setNodes(editor, {
-        type: "blockquote",
-      } as Partial<InkwellElement>);
+      Transforms.delete(editor, {
+        at: {
+          anchor: Editor.start(editor, path),
+          focus: Editor.end(editor, path),
+        },
+      });
+      Transforms.wrapNodes(
+        editor,
+        {
+          type: "blockquote",
+          id: generateId(),
+          children: [],
+        } as InkwellElement,
+        { at: path },
+      );
       return;
     }
 
@@ -490,25 +618,56 @@ export function withMarkdown(
       return;
     }
 
-    // Text typed after closing ``` on a code-fence → overflow to new paragraph
-    if (element.type === "code-fence") {
-      // Check if this is a closing fence (has code-line before it)
-      const prevIdx = path[0] - 1;
-      if (prevIdx >= 0) {
-        const prev = editor.children[prevIdx] as InkwellElement;
-        if (prev.type === "code-line" && currentText === "```") {
-          // Insert text as new paragraph after the fence
-          const newParagraph: InkwellElement = {
-            type: "paragraph",
-            id: generateId(),
-            children: [{ text }],
-          };
-          Transforms.insertNodes(editor, newParagraph, {
-            at: Path.next(path),
-          });
-          Transforms.select(editor, Editor.end(editor, Path.next(path)));
-          return;
+    // List trigger: typing `<marker><space>` at the start of a paragraph
+    // (and the paragraph isn't already inside a list-item) promotes the
+    // paragraph into a `list → list-item → paragraph` chain. Unordered
+    // markers (`-`, `*`, `+`) drop their character; ordered markers
+    // (`<n>.`) carry the parsed number through to the list's `start`.
+    if (
+      element.type === "paragraph" &&
+      text === " " &&
+      nearestListItemPath(editor, path) === null
+    ) {
+      let listShape: { ordered: boolean; start?: number } | null = null;
+      if (currentText === "-" || currentText === "*" || currentText === "+") {
+        listShape = { ordered: false };
+      } else {
+        const ord = ORDERED_TRIGGER_RE.exec(currentText);
+        if (ord) {
+          listShape = { ordered: true, start: Number.parseInt(ord[1], 10) };
         }
+      }
+      if (listShape) {
+        Editor.withoutNormalizing(editor, () => {
+          Transforms.delete(editor, {
+            at: {
+              anchor: Editor.start(editor, path),
+              focus: Editor.end(editor, path),
+            },
+          });
+          Transforms.wrapNodes(
+            editor,
+            {
+              type: "list-item",
+              id: generateId(),
+              children: [],
+            } as InkwellElement,
+            { at: path },
+          );
+          const listNode: InkwellElement = {
+            type: "list",
+            id: generateId(),
+            children: [],
+          };
+          if (listShape.ordered) {
+            listNode.ordered = true;
+            if (listShape.start !== undefined && listShape.start !== 1) {
+              listNode.start = listShape.start;
+            }
+          }
+          Transforms.wrapNodes(editor, listNode, { at: path });
+        });
+        return;
       }
     }
 
@@ -522,6 +681,35 @@ export function withMarkdown(
   editor.insertData = (data: DataTransfer) => {
     const text = data.getData("text/plain");
     if (text) {
+      // Paste with the selection INSIDE a code block (collapsed caret,
+      // or an expanded selection whose both edges sit in the SAME code
+      // block): code content is verbatim. Deserializing the payload as
+      // markdown used to keep only the first pasted line as code and
+      // re-parse the remainder into real blocks OUTSIDE the fence (a
+      // pasted `# comment` became an actual heading after the block).
+      // A selection that merely TOUCHES a code block from outside falls
+      // through to the normal markdown paste — hijacking it inserted
+      // literal blank-line runs into the surviving paragraph.
+      const selection = editor.selection;
+      const codeBlockAt = (point: Point): InkwellElement | undefined => {
+        const entry = Editor.above(editor, {
+          at: point,
+          match: n =>
+            Element.isElement(n) && (n as InkwellElement).type === "code-block",
+        });
+        return entry ? (entry[0] as InkwellElement) : undefined;
+      };
+      if (selection) {
+        const [start, end] = Range.edges(selection);
+        const startCode = codeBlockAt(start);
+        const insideOneCodeBlock =
+          startCode !== undefined &&
+          (Range.isCollapsed(selection) || codeBlockAt(end) === startCode);
+        if (insideOneCodeBlock) {
+          Transforms.insertText(editor, text.replace(/\r\n?/g, "\n"));
+          return;
+        }
+      }
       const trimmed = text.trim();
       const sel = editor.selection;
       if (
@@ -567,7 +755,14 @@ export function withMarkdown(
     }
     const fragment = editor.getFragment() as InkwellElement[];
     if (fragment.length > 0) {
-      data.setData("text/plain", serialize(fragment));
+      // Thread the editor's source cache so fully-selected untouched
+      // blocks hit the same byte-faithful short-circuit as getState /
+      // onChange. Partially-selected blocks miss the canonical-equality
+      // gate and fall back to canonical, which is correct.
+      data.setData(
+        "text/plain",
+        serialize(fragment, { cache: editor.sourceCache }),
+      );
     }
   };
 
@@ -582,16 +777,18 @@ export function withMarkdown(
   //
   // This normalizer reruns the same line-level classification the
   // deserializer uses on every operation. Only the text-driven block
-  // kinds are reclassified — code-fence/code-line are structural and
+  // kinds are reclassified — code-block is structural and
   // images are void, so neither is in scope here.
   editor.normalizeNode = entry => {
     const [node, path] = entry;
     if (Element.isElement(node)) {
       const element = node as InkwellElement;
+      // Only text-bearing elements are reclassifiable. Blockquote holds
+      // block children (no direct text) — its presence is structural,
+      // driven by deserialize / the typing trigger / the wrap below, not
+      // by line classification.
       const textDriven =
-        element.type === "paragraph" ||
-        element.type === "heading" ||
-        element.type === "blockquote";
+        element.type === "paragraph" || element.type === "heading";
       if (textDriven) {
         const text = Node.string(node);
         const cls = classifyLine(text, featuresRef.current);
@@ -608,17 +805,31 @@ export function withMarkdown(
             return;
           }
         } else if (cls.type === "blockquote") {
-          if (element.type !== "blockquote") {
-            Transforms.setNodes(
-              editor,
-              { type: "blockquote" } as Partial<InkwellElement>,
-              { at: path },
-            );
-            if (element.level !== undefined) {
-              Transforms.unsetNodes(editor, "level", { at: path });
-            }
-            return;
+          // The paragraph's text starts with `> ` — strip the marker and
+          // wrap the paragraph in a blockquote so the resulting tree
+          // matches what `deserialize` would produce for the same source.
+          const stripped = stripBlockquotePrefix(text);
+          Transforms.delete(editor, {
+            at: {
+              anchor: Editor.start(editor, path),
+              focus: Editor.end(editor, path),
+            },
+          });
+          if (stripped) {
+            Transforms.insertText(editor, stripped, {
+              at: Editor.start(editor, path),
+            });
           }
+          Transforms.wrapNodes(
+            editor,
+            {
+              type: "blockquote",
+              id: generateId(),
+              children: [],
+            } as InkwellElement,
+            { at: path },
+          );
+          return;
         } else {
           // paragraph
           if (element.type !== "paragraph") {

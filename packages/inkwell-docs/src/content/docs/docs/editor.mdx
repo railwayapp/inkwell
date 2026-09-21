@@ -66,16 +66,26 @@ All formatting is enabled by default.
 ### Block formatting
 
 Use these Markdown patterns at the start of a line. Headings,
-blockquotes, and code fences also have typing triggers; block images are
-recognized when Markdown is loaded, pasted, or inserted. List markers stay
-plain text in the editor.
+blockquotes, code fences, and lists have typing triggers; block images
+are recognized when Markdown is loaded, pasted, or inserted.
 
 | Pattern                       | Result                                  |
 | ----------------------------- | --------------------------------------- |
 | `# ` through `###### `        | Headings (h1–h6)                        |
 | `> `                          | Blockquotes                             |
 | ` ``` `                       | Fenced code blocks                      |
+| `- `, `* `, `+ `, `1. `       | Lists — `Tab` nests, `Shift+Tab` un-nests |
+| `- [ ] ` / `- [x] `           | Task-list items (marker stays visible)  |
 | `![alt](url)` on its own line | Block image                             |
+
+Inside a code block, `Enter` inserts a newline. Three gestures leave
+it: press `Enter` on an empty last line, type ` ``` ` on its own line
+and press `Enter`, or press `Backspace` in an empty block to turn it
+back into a paragraph. Pasting into a code block always inserts the
+clipboard text verbatim — nothing is re-parsed as Markdown.
+
+Pipe tables are not modeled: table rows stay plain paragraph text on
+both surfaces, byte-for-byte.
 
 ### Inline formatting
 

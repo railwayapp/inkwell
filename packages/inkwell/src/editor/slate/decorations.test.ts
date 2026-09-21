@@ -155,18 +155,31 @@ describe("computeDecorations — inline marks", () => {
     expect(ranges).toEqual([]);
   });
 
-  it("works on blockquote elements", () => {
+  it("returns no decorations at the blockquote element level (children carry them)", () => {
+    // Under the nestable schema, a blockquote holds block children
+    // (paragraphs) — not text leaves. Inline marker decorations live
+    // on the inner paragraph nodes; Slate calls `computeDecorations`
+    // separately for each descendant, so the blockquote entry itself
+    // contributes nothing.
+    const inner: InkwellElement = {
+      type: "paragraph",
+      id: generateId(),
+      children: [{ text: "**bold in quote**" }],
+    };
     const el: InkwellElement = {
       type: "blockquote",
       id: generateId(),
-      children: [{ text: "**bold in quote**" }],
+      children: [inner],
     };
     const editor = createTestEditor();
     editor.children = [el];
     editor.onChange();
 
-    const ranges = computeDecorations(makeEntry(el, 0), editor);
-    expect(ranges.length).toBeGreaterThan(0);
+    expect(computeDecorations(makeEntry(el, 0), editor)).toEqual([]);
+    // The inner paragraph still produces inline marker ranges, as a
+    // normal paragraph would.
+    const innerRanges = computeDecorations([inner, [0, 0]], editor);
+    expect(innerRanges.length).toBeGreaterThan(0);
   });
 
   it("does not decorate legacy list-item elements", () => {
@@ -337,91 +350,59 @@ describe("computeDecorations — links", () => {
   });
 });
 
-describe("computeDecorations — code-fence", () => {
-  it("returns empty for code-fence elements", () => {
-    const el: InkwellElement = {
-      type: "code-fence",
-      id: generateId(),
-      children: [{ text: "```ts" }],
-    };
+describe("computeDecorations — code-block syntax highlighting", () => {
+  it("produces hljs ranges spanning the block's multi-line text", () => {
     const editor = createTestEditor();
-    editor.children = [el];
-    editor.onChange();
-
-    const ranges = computeDecorations(makeEntry(el, 0), editor);
-    expect(ranges).toEqual([]);
-  });
-});
-
-describe("computeDecorations — code-line syntax highlighting", () => {
-  it("produces hljs ranges for code lines", () => {
-    const editor = createTestEditor();
-    editor.children = deserialize("```typescript\nconst x = 1;\n```");
-    editor.onChange();
-
-    const codeLine = (editor.children as InkwellElement[]).find(
-      e => e.type === "code-line",
+    editor.children = deserialize(
+      "```typescript\nconst x = 1;\nconst y = 2;\n```",
     );
-    if (!codeLine) throw new Error("No code-line found");
+    editor.onChange();
 
-    const idx = (editor.children as InkwellElement[]).indexOf(codeLine);
-    const ranges = computeDecorations([codeLine, [idx]] as NodeEntry, editor);
+    const block = (editor.children as InkwellElement[]).find(
+      e => e.type === "code-block",
+    );
+    if (!block) throw new Error("No code-block found");
+
+    const idx = (editor.children as InkwellElement[]).indexOf(block);
+    const ranges = computeDecorations([block, [idx]] as NodeEntry, editor);
     const hljsRanges = ranges.filter(r => (r as unknown as InkwellText).hljs);
     expect(hljsRanges.length).toBeGreaterThan(0);
   });
 
-  it("returns empty for empty code line", () => {
+  it("returns empty for an empty code-block", () => {
     const editor = createTestEditor();
     editor.children = deserialize("```ts\n\n```");
     editor.onChange();
 
-    const codeLine = (editor.children as InkwellElement[]).find(
-      e => e.type === "code-line",
+    const block = (editor.children as InkwellElement[]).find(
+      e => e.type === "code-block",
     );
-    if (!codeLine) throw new Error("No code-line found");
+    if (!block) throw new Error("No code-block found");
 
-    const idx = (editor.children as InkwellElement[]).indexOf(codeLine);
-    const ranges = computeDecorations([codeLine, [idx]] as NodeEntry, editor);
+    const idx = (editor.children as InkwellElement[]).indexOf(block);
+    const ranges = computeDecorations([block, [idx]] as NodeEntry, editor);
     expect(ranges).toEqual([]);
   });
 
-  it("all range offsets are within text length", () => {
+  it("all hljs range offsets stay within the block's text length", () => {
     const editor = createTestEditor();
-    editor.children = deserialize("```html\n<div>hello</div>\n```");
+    editor.children = deserialize(
+      "```html\n<div>hello</div>\n<span>x</span>\n```",
+    );
     editor.onChange();
 
     const elements = editor.children as InkwellElement[];
-    const codeLine = elements.find(
-      e => e.type === "code-line" && Node.string(e) === "<div>hello</div>",
-    );
-    if (!codeLine) throw new Error("No code-line found");
+    const block = elements.find(e => e.type === "code-block");
+    if (!block) throw new Error("No code-block found");
 
-    const textLen = Node.string(codeLine).length;
-    const idx = elements.indexOf(codeLine);
-    const ranges = computeDecorations([codeLine, [idx]] as NodeEntry, editor);
+    const textLen = Node.string(block).length;
+    const idx = elements.indexOf(block);
+    const ranges = computeDecorations([block, [idx]] as NodeEntry, editor);
 
     for (const r of ranges) {
       expect(r.anchor.offset).toBeLessThanOrEqual(textLen);
       expect(r.focus.offset).toBeLessThanOrEqual(textLen);
     }
-  });
-
-  it("returns empty for orphaned code-line without preceding fence", () => {
-    const editor = createTestEditor();
-    editor.children = [
-      {
-        type: "code-line" as const,
-        id: generateId(),
-        children: [{ text: "orphaned" }],
-      },
-    ];
-    editor.onChange();
-
-    const ranges = computeDecorations(
-      [editor.children[0], [0]] as NodeEntry,
-      editor,
-    );
-    expect(Array.isArray(ranges)).toBe(true);
   });
 });
 

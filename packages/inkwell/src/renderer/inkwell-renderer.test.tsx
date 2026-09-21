@@ -72,9 +72,10 @@ describe("InkwellRenderer", () => {
     expect(container.querySelector("blockquote")).toBeInTheDocument();
   });
 
-  it("renders horizontal rules", () => {
+  it("keeps `---` as paragraph text (no horizontal rule)", () => {
     const { container } = render(<InkwellRenderer content="---" />);
-    expect(container.querySelector("hr")).toBeInTheDocument();
+    expect(container.querySelector("hr")).not.toBeInTheDocument();
+    expect(container.textContent).toContain("---");
   });
 
   it("does not render GFM tables", () => {

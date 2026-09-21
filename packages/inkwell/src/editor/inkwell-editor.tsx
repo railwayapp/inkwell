@@ -46,11 +46,16 @@ import type {
   SubscribeForwardedKey,
 } from "../types";
 import { computeDecorations } from "./slate/decorations";
-import { deserialize } from "./slate/deserialize";
+import { deserialize, deserializeWithRanges } from "./slate/deserialize";
 import { resolveFeatures } from "./slate/features";
 import { RenderElement } from "./slate/render-element";
 import { RenderLeaf } from "./slate/render-leaf";
 import { serialize } from "./slate/serialize";
+import {
+  createSourceCache,
+  populateSourceCacheFromParse,
+  type SourceCache,
+} from "./slate/source-cache";
 import type {
   InkwellElement,
   InkwellEditor as InkwellSlateEditor,
@@ -86,12 +91,22 @@ function CharacterCount({
 }
 
 /**
- * Tab-on-list-marker recognizers. Markdown list lines stay as paragraph
- * text in the editor model, so Tab handling matches the raw text instead
- * of element type.
+ * Walk the ancestor chain from a Slate path and return the path of the
+ * nearest list-item ancestor (or `null`). Used by the Tab/Shift+Tab
+ * keybindings to find the current bullet's container for nest /
+ * un-nest operations.
  */
-const ORDERED_LIST_MARKER_RE = /^\s*\d+\.(?:\s|$)/;
-const UNORDERED_LIST_MARKER_RE = /^(\s*)([-*+])(?:\s|$)/;
+function nearestListItemPath(
+  editor: InkwellSlateEditor,
+  path: Path,
+): Path | null {
+  for (let p = path; p.length > 0; p = Path.parent(p)) {
+    if (p.length === path.length) continue;
+    const node = Node.get(editor, p) as InkwellElement;
+    if (node?.type === "list-item") return p;
+  }
+  return null;
+}
 
 /**
  * Find the plugin activated by typing a single character (e.g. `[` for
@@ -224,21 +239,50 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       return [...survivingBuiltIns, ...userPlugins];
     }, [userPlugins, bubbleMenu]);
 
+    // Per-editor source cache. Tracks the original source slice +
+    // canonical form for each top-level block so untouched blocks
+    // round-trip byte-perfect. The cache lives outside Slate state
+    // (so undo/redo doesn't have to thread through it) and is
+    // populated at parse time + invalidated by an `editor.apply`
+    // interceptor whenever a top-level block is mutated.
+    const sourceCacheRef = useRef<SourceCache>(createSourceCache());
+
     const editor = useMemo<InkwellSlateEditor>(() => {
       const base = withNodeId(withReact(createEditor()));
-      return withMarkdown(withHistory(base), featuresRef);
+      const composed = withMarkdown(withHistory(base), featuresRef);
+      // No apply-time cache invalidation: `getCachedSource` re-validates
+      // every hit by recomputing the block's canonical form (plus a text
+      // guard), so a retained entry can never emit stale bytes. Deleting
+      // entries on every op — the previous design — meant a single
+      // keystroke followed by undo lost the block's source style
+      // forever (`> a\n> b` came back as `> a\n>\n> b`). Entries are
+      // rebuilt wholesale on setContent/clear, which also bounds growth.
+      //
+      // Expose the cache on the editor instance so withMarkdown's
+      // copy/cut serialization threads it like every other serialize
+      // path (see InkwellEditor.sourceCache in slate/types.ts).
+      composed.sourceCache = sourceCacheRef.current;
+      return composed;
     }, []);
 
-    const initialValue = useMemo(
-      () => deserialize(content, resolvedFeatures),
-      [],
-    );
+    const initialValue = useMemo(() => {
+      const parsed = deserializeWithRanges(content, resolvedFeatures);
+      populateSourceCacheFromParse(
+        sourceCacheRef.current,
+        content,
+        parsed.nodes,
+        parsed.ranges,
+      );
+      return parsed.nodes;
+    }, []);
 
     const lastContent = useRef<string>(content);
     const isInternalChange = useRef(false);
-    const suppressImperativeOnChange = useRef(false);
     const [characterCount, setCharacterCount] = useState(
-      () => serialize(initialValue as InkwellElement[]).length,
+      () =>
+        serialize(initialValue as InkwellElement[], {
+          cache: sourceCacheRef.current,
+        }).length,
     );
     const [isFocused, setIsFocused] = useState(false);
     const focusStateFrameRef = useRef<number | null>(null);
@@ -333,15 +377,28 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       }
     }, [editor, scheduleFocusedState]);
 
-    const updateCharacterCount = useCallback(() => {
-      const length = serialize(editor.children as InkwellElement[]).length;
-      setCharacterCount(length);
-      onCharacterCount?.(length, characterLimit);
-      return length;
-    }, [editor, onCharacterCount, characterLimit]);
+    const updateCharacterCount = useCallback(
+      (precomputed?: string) => {
+        // Callers that already hold the serialized document (handleChange)
+        // pass it in so each keystroke serializes once, not twice.
+        const length = (
+          precomputed ??
+          serialize(editor.children as InkwellElement[], {
+            cache: sourceCacheRef.current,
+          })
+        ).length;
+        setCharacterCount(length);
+        onCharacterCount?.(length, characterLimit);
+        return length;
+      },
+      [editor, onCharacterCount, characterLimit],
+    );
 
     const serializeContent = useCallback(
-      () => serialize(editor.children as InkwellElement[]),
+      () =>
+        serialize(editor.children as InkwellElement[], {
+          cache: sourceCacheRef.current,
+        }),
       [editor],
     );
     const pluginEditorRef = useRef<InkwellPluginEditor | null>(null);
@@ -354,7 +411,18 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         );
         if (!isAstChange) return;
 
-        updateCharacterCount();
+        // Serialize through the source cache so untouched sibling blocks
+        // round-trip byte-for-byte (matching getState/onSubmit/character
+        // count). Without the cache, editing one block re-canonicalizes
+        // every untouched sibling (`*`→`-`, expanded blockquotes, escaped
+        // `***`) in the onChange payload — diverging from getState and
+        // breaking the source-cache contract. Cache-faithful serialization
+        // also lets the echo guard below correctly suppress the onChange
+        // that imperative setContent/clear would otherwise leak.
+        const nextContent = serialize(value as InkwellElement[], {
+          cache: sourceCacheRef.current,
+        });
+        updateCharacterCount(nextContent);
         bumpStateVersion();
 
         const currentPluginEditor = pluginEditorRef.current;
@@ -362,6 +430,28 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           for (const plugin of plugins) {
             plugin.onEditorChange?.(currentPluginEditor);
           }
+        }
+
+        // An active trigger/manual plugin holds a position anchor that
+        // refers to a character somewhere in the editor (typically the
+        // `@`/`/`/`:` the user typed). When the document gets cleared
+        // out from under it (cmd+A → delete, setContent, paste-over-
+        // selection, etc.) that anchor becomes meaningless and the
+        // picker would render at stale coordinates. Dismiss as soon as
+        // the editor is empty so the user sees a clean state. The
+        // narrow check — single empty paragraph — keeps this from
+        // misfiring on normal edits like clearing the last char of a
+        // paragraph.
+        if (
+          activePluginRef.current &&
+          editor.children.length === 1 &&
+          Node.string(editor).length === 0
+        ) {
+          activePluginRef.current = null;
+          setActivePluginState(null);
+          activePluginQueryRef.current = "";
+          setActivePluginQuery("");
+          triggerPointRef.current = null;
         }
 
         // Mobile/IME: the keydown never carried the character (Android soft
@@ -375,7 +465,6 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           syncMobilePluginStateRef.current();
         }
 
-        const nextContent = serialize(value as InkwellElement[]);
         // Prevent echo loops
         if (nextContent !== lastContent.current) {
           lastContent.current = nextContent;
@@ -420,8 +509,15 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
       }
       if (content === lastContent.current) return;
 
-      const newValue = deserialize(content, resolvedFeatures);
-      replaceEditorChildren(editor, newValue, true);
+      sourceCacheRef.current.clear();
+      const parsed = deserializeWithRanges(content, resolvedFeatures);
+      populateSourceCacheFromParse(
+        sourceCacheRef.current,
+        content,
+        parsed.nodes,
+        parsed.ranges,
+      );
+      replaceEditorChildren(editor, parsed.nodes, true);
 
       // Reset selection to start to avoid stale selection errors
       Transforms.select(editor, Editor.start(editor, []));
@@ -541,7 +637,7 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     // Wrapped in `HistoryEditor.withoutSaving` so cmd+a-delete + cmd+z still
     // undoes the user's delete — without it, this reshape is recorded as its
     // own batch and the first undo just pops the canonicalize, leaving the
-    // post-delete state (often a stranded code-fence) in place.
+    // post-delete state (often a stranded code-block) in place.
     const canonicalizeEmptyEditor = useCallback(() => {
       if (Node.string(editor).trim().length !== 0) return;
 
@@ -594,20 +690,29 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         options?: { select?: "start" | "end" | "preserve" },
       ) => {
         const select = options?.select ?? "start";
-        const newValue = deserialize(content, resolvedFeatures);
+        sourceCacheRef.current.clear();
+        const parsed = deserializeWithRanges(content, resolvedFeatures);
+        populateSourceCacheFromParse(
+          sourceCacheRef.current,
+          content,
+          parsed.nodes,
+          parsed.ranges,
+        );
 
-        suppressImperativeOnChange.current = true;
-        replaceEditorChildren(editor, newValue, true);
+        replaceEditorChildren(editor, parsed.nodes, true);
         updateCharacterCount();
         bumpStateVersion();
 
         if (select !== "preserve") selectEditor(select);
+        // Prime the echo guard with the cache-faithful serialization so
+        // the `editor.onChange()` below is suppressed in handleChange —
+        // setContent/clear must not emit onChange. Both this and
+        // handleChange serialize through the same source cache, so the
+        // strings match and the guard fires. (This is why the onChange
+        // path above must use the cache too.)
         const nextContent = serializeContent();
         lastContent.current = nextContent;
         editor.onChange();
-        queueMicrotask(() => {
-          suppressImperativeOnChange.current = false;
-        });
       },
       [
         bumpStateVersion,
@@ -628,6 +733,16 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
         setContent: replaceContent,
         insertContent: content => {
           focusEditor();
+          // Pure-newline content means "paragraph break(s)" — the user
+          // wants to split the current block, not insert empty text.
+          // `deserialize("\n")` returns a single empty paragraph, which
+          // `insertFragment` would no-op into the current paragraph.
+          // Route to `insertBreak` per newline instead so the editor
+          // surface gets the structural splits the caller asked for.
+          if (/^\n+$/.test(content)) {
+            for (let i = 0; i < content.length; i++) editor.insertBreak();
+            return;
+          }
           const nodes = deserialize(content, resolvedFeatures);
           Transforms.insertFragment(editor, nodes);
         },
@@ -818,6 +933,10 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
     const insertImage = useCallback(
       (image: { id?: string; url: string; alt: string }) => {
         const id = image.id ?? generateId();
+        // Top-level void block. Block-level so Slate's Up/Down arrow
+        // navigation lands cleanly on the image; the renderer side
+        // already wraps a standalone image in `<p>` so source
+        // round-trip stays mdast-shaped.
         Transforms.insertNodes(editor, {
           type: "image",
           id,
@@ -1318,12 +1437,20 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           }
         }
 
-        // Tab on a Markdown list-like paragraph: indent unordered markers by
-        // two leading spaces; preserve ordered markers verbatim. Either way,
-        // consume the event so focus stays in the editor.
+        // Tab / Shift+Tab inside a list-item: nest the item one level
+        // deeper or un-nest it one level.
+        //
+        // Tab nests by moving the current list-item *into* its previous
+        // sibling's children (under a freshly-created or reused nested
+        // list), matching how `<ul>` → `<li>` → `<ul>` round-trips. The
+        // very first item in a list has no prev sibling to nest under
+        // so Tab is a no-op there.
+        //
+        // Shift+Tab un-nests by moving the current list-item out of
+        // its containing nested list, into the grandparent list as the
+        // next sibling of its current parent list-item.
         if (
           event.key === "Tab" &&
-          !event.shiftKey &&
           !event.metaKey &&
           !event.ctrlKey &&
           !event.altKey
@@ -1332,36 +1459,166 @@ const InkwellEditorClient = forwardRef<InkwellEditorHandle, InkwellEditorProps>(
           if (selection) {
             const [match] = Editor.nodes(editor, {
               match: n => Element.isElement(n),
+              mode: "lowest",
             });
             if (match) {
-              const [node, path] = match;
-              const element = node as InkwellElement;
-              if (element.type === "paragraph") {
-                const text = Node.string(node);
-                if (ORDERED_LIST_MARKER_RE.test(text)) {
-                  event.preventDefault();
-                  return;
-                }
-                if (UNORDERED_LIST_MARKER_RE.test(text)) {
-                  event.preventDefault();
-                  const savedSelection = editor.selection;
-                  Transforms.insertText(editor, "  ", {
-                    at: { path: [...path, 0], offset: 0 },
-                  });
-                  if (savedSelection) {
-                    Transforms.select(editor, {
-                      anchor: {
-                        path: savedSelection.anchor.path,
-                        offset: savedSelection.anchor.offset + 2,
-                      },
-                      focus: {
-                        path: savedSelection.focus.path,
-                        offset: savedSelection.focus.offset + 2,
-                      },
-                    });
+              const [, path] = match;
+              const liPath = nearestListItemPath(editor, path);
+              if (liPath !== null) {
+                event.preventDefault();
+                const listPath = Path.parent(liPath);
+                const list = Node.get(editor, listPath) as InkwellElement;
+
+                if (event.shiftKey) {
+                  // Un-nest. Only meaningful when the containing list
+                  // sits inside another list-item.
+                  if (listPath.length >= 2) {
+                    const parentLiPath = Path.parent(listPath);
+                    const parentLi = Node.get(
+                      editor,
+                      parentLiPath,
+                    ) as InkwellElement;
+                    if (parentLi?.type === "list-item") {
+                      const grandListPath = Path.parent(parentLiPath);
+                      const grandList = Node.get(
+                        editor,
+                        grandListPath,
+                      ) as InkwellElement;
+                      if (grandList?.type === "list") {
+                        const targetIdx =
+                          parentLiPath[parentLiPath.length - 1] + 1;
+                        const targetPath: Path = [...grandListPath, targetIdx];
+                        const liIdx = liPath[liPath.length - 1];
+                        const followerCount = list.children.length - liIdx - 1;
+                        Editor.withoutNormalizing(editor, () => {
+                          Transforms.moveNodes(editor, {
+                            at: liPath,
+                            to: targetPath,
+                          });
+                          // Trailing siblings of the un-nested item stay
+                          // logically beneath it: move them into a nested
+                          // list on the moved item, otherwise they'd jump
+                          // above it in document order.
+                          if (followerCount > 0) {
+                            const movedLi = Node.get(
+                              editor,
+                              targetPath,
+                            ) as InkwellElement;
+                            const lastChild = movedLi.children[
+                              movedLi.children.length - 1
+                            ] as InkwellElement | undefined;
+                            let nestedPath: Path;
+                            // Reuse the moved item's trailing nested list
+                            // only when its ordered-ness matches (same
+                            // guard as the Tab handler) — appending
+                            // unordered followers into an ordered list
+                            // silently renumbers them.
+                            if (
+                              lastChild?.type === "list" &&
+                              lastChild.ordered === list.ordered
+                            ) {
+                              nestedPath = [
+                                ...targetPath,
+                                movedLi.children.length - 1,
+                              ];
+                            } else {
+                              nestedPath = [
+                                ...targetPath,
+                                movedLi.children.length,
+                              ];
+                              Transforms.insertNodes(
+                                editor,
+                                {
+                                  type: "list",
+                                  id: generateId(),
+                                  ordered: list.ordered,
+                                  children: [],
+                                } as InkwellElement,
+                                { at: nestedPath },
+                              );
+                            }
+                            for (let n = 0; n < followerCount; n++) {
+                              const nested = Node.get(
+                                editor,
+                                nestedPath,
+                              ) as InkwellElement;
+                              Transforms.moveNodes(editor, {
+                                at: [...listPath, liIdx],
+                                to: [...nestedPath, nested.children.length],
+                              });
+                            }
+                          }
+                          // Remove the source nested list if it's now
+                          // empty — Slate's normalizer would otherwise
+                          // fill the invalid empty list with a bare text
+                          // leaf, corrupting the tree and the serialized
+                          // output.
+                          const sourceList = Node.get(
+                            editor,
+                            listPath,
+                          ) as InkwellElement;
+                          if (sourceList.children.length === 0) {
+                            Transforms.removeNodes(editor, { at: listPath });
+                          }
+                        });
+                      }
+                    }
                   }
                   return;
                 }
+
+                const liIdx = liPath[liPath.length - 1];
+                if (liIdx === 0) return;
+                const prevPath: Path = [...liPath.slice(0, -1), liIdx - 1];
+                const prevItem = Node.get(editor, prevPath) as InkwellElement;
+                if (!prevItem || prevItem.type !== "list-item") return;
+
+                const lastChild =
+                  prevItem.children[prevItem.children.length - 1];
+                const lastChildIsList =
+                  lastChild &&
+                  "type" in lastChild &&
+                  lastChild.type === "list" &&
+                  lastChild.ordered === list.ordered;
+
+                if (lastChildIsList) {
+                  // Append into the existing nested list.
+                  const nestedListPath: Path = [
+                    ...prevPath,
+                    prevItem.children.length - 1,
+                  ];
+                  const nestedList = Node.get(
+                    editor,
+                    nestedListPath,
+                  ) as InkwellElement;
+                  Transforms.moveNodes(editor, {
+                    at: liPath,
+                    to: [...nestedListPath, nestedList.children.length],
+                  });
+                } else {
+                  // Create a new nested list inside the prev item.
+                  Editor.withoutNormalizing(editor, () => {
+                    const nestedListPath: Path = [
+                      ...prevPath,
+                      prevItem.children.length,
+                    ];
+                    Transforms.insertNodes(
+                      editor,
+                      {
+                        type: "list",
+                        id: generateId(),
+                        ordered: list.ordered,
+                        children: [],
+                      } as InkwellElement,
+                      { at: nestedListPath },
+                    );
+                    Transforms.moveNodes(editor, {
+                      at: liPath,
+                      to: [...nestedListPath, 0],
+                    });
+                  });
+                }
+                return;
               }
             }
           }
